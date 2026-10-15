@@ -88,7 +88,7 @@ void RingBuffer::clear() {
 
 bool AudioManager::begin(I2cBus* bus) {
     Serial.println("[Audio] Initializing...");
-    if (!_playback.init(AUDIO_PLAYBACK_BUFFER) || !_capture.init(AUDIO_CAPTURE_BUFFER)) {
+    if (!_playback.init(AUDIO_PLAYBACK_BUFFER) || !_capture.init(AUDIO_CAPTURE_BUFFER) || !_radio.init(AUDIO_RADIO_BUFFER)) {
         Serial.println("[Audio] ERROR: ring buffer allocation failed");
         return false;
     }
@@ -170,35 +170,59 @@ void AudioManager::inTaskEntry(void* self) { static_cast<AudioManager*>(self)->i
 
 void AudioManager::outLoop() {
     static int16_t chunk[kOutChunkSamples];
+    static int16_t radio[kOutChunkSamples];
     static int16_t stereo[kOutChunkSamples * 2];
     const size_t prebufferBytes = (size_t)AUDIO_I2S_RATE * 2 * AUDIO_PREBUFFER_MS / 1000;
+    const size_t radioPrebufferBytes = (size_t)AUDIO_I2S_RATE * 2 * AUDIO_RADIO_PREBUFFER_MS / 1000;
 
     for (;;) {
+        // ---- assistant voice: prebuffered turns (unchanged behaviour) ----
         const size_t avail = _playback.available();
-        if (!_playing) {
-            if (avail >= prebufferBytes || (avail > 0 && _flush)) {
-                _playing = true;
-            } else {
-                _playLevel *= 0.85f;
-                vTaskDelay(pdMS_TO_TICKS(5));
-                continue;
-            }
-        }
-        if (avail == 0) {  // turn finished (or network underrun)
+        if (!_playing && (avail >= prebufferBytes || (avail > 0 && _flush))) _playing = true;
+        if (_playing && avail == 0) {  // turn finished (or network underrun)
             _playing = false;
             _flush = false;
+        }
+        // ---- radio: sounds once a second is queued, stops when the stream runs dry ----
+        const size_t ravail = _radio.available();
+        if (!_radioOn && ravail >= radioPrebufferBytes) _radioOn = true;
+        if (_radioOn && ravail == 0) _radioOn = false;
+
+        if (!_playing && !_radioOn) {
+            _playLevel *= 0.85f;
+            vTaskDelay(pdMS_TO_TICKS(5));
             continue;
         }
 
-        const size_t n = _playback.read((uint8_t*)chunk, sizeof(chunk)) / 2;
-        _playLevel = rms(chunk, n);
-        for (size_t i = 0; i < n; i++) {
-            stereo[2 * i] = chunk[i];
-            stereo[2 * i + 1] = chunk[i];
+        size_t nv = 0, nr = 0;
+        if (_playing) {
+            nv = _playback.read((uint8_t*)chunk, sizeof(chunk)) / 2;
+            _playLevel = rms(chunk, nv);  // speaking animation: the assistant only
+        } else {
+            _playLevel *= 0.85f;
         }
+        if (_radioOn) nr = _radio.read((uint8_t*)radio, sizeof(radio)) / 2;
+        const size_t n = nv > nr ? nv : (nr ? nr : nv);
+        for (size_t i = nv; i < n; i++) chunk[i] = 0;
+
+        // radio gain ramps toward the target within the chunk (no clicks when ducking)
+        const float target = _radioTarget;
+        const float step = (target - _radioGain) / (float)(n ? n : 1) * 0.25f;  // ~80 ms to settle
+        for (size_t i = 0; i < n; i++) {
+            int32_t v = chunk[i];
+            if (i < nr) {
+                _radioGain += step;
+                v += (int32_t)(radio[i] * _radioGain);
+            }
+            if (v > 32767) v = 32767;
+            if (v < -32768) v = -32768;
+            stereo[2 * i] = (int16_t)v;
+            stereo[2 * i + 1] = (int16_t)v;
+        }
+        if (!nr) _radioGain = target;
         size_t written = 0;
         i2s_write(kPort, stereo, n * 4, &written, portMAX_DELAY);  // paced by the DMA
-        _lastPlayMs = millis();
+        if (nv) _lastPlayMs = millis();  // "speaker busy" = the assistant, not the radio
     }
 }
 
@@ -227,7 +251,7 @@ void AudioManager::inLoop() {
         // Choose the mic slot only while the speaker is quiet: if the other slot carries the DAC
         // loopback, playback would win the comparison and the first ~0.7 s the user says after
         // each reply would be read from the wrong slot.
-        if (msSincePlayback() > 1500) {
+        if (msSincePlayback() > 1500 && !_radioOn) {  // the radio would win the comparison too
             energyL = energyL * 0.95f + _rmsLeft * 0.05f;
             energyR = energyR * 0.95f + _rmsRight * 0.05f;
             _micRight = energyR > energyL * 1.5f;

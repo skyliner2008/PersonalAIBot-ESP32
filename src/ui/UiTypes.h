@@ -32,6 +32,7 @@ struct UiStatus {
     uint16_t openTasks = 0;
     uint32_t tokensPerMin = 0;
     char clock[6] = "";
+    char radio[160] = "";      // "station - now playing" while the Internet radio is on
 };
 
 /** Actions the UI asks the agent to perform (implemented by AgentController). */

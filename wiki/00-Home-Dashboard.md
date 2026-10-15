@@ -28,6 +28,7 @@ status: in-progress
 | 07 | [[07-Troubleshooting-Log]] | ปัญหาจริงที่พบและวิธีแก้ (T013–T042) | ✅ |
 | 08 | [[08-Long-Term-Memory-GraphRAG]] | ความจำระยะยาว standalone: BM25 + Knowledge Graph | ✅ Implemented |
 | 09 | [[09-Assistant-Profiles-and-Tools]] | โปรไฟล์เสียง/นิสัย, เมนูทัช + คีย์บอร์ดไทย, 37+ tools, งบโทเคน, auto fallback, ทดสอบ API key | ✅ v3.1 |
+| 12 | [[12-Internet-Radio]] | วิทยุออนไลน์: Radio Browser + Helix MP3/AAC, ผสมเสียงใต้เสียง AI, ลดเสียงตอนคุย, ปลุกด้วยการแตะ/พูดดังกว่าวิทยุ | 🔄 เฟส 1 (รอทดสอบสตรีมจริง) |
 | 11 | [[11-Data-Tools-and-Cards]] | tools ข้อมูลสด + การ์ดกราฟิก: อากาศ/PM2.5, ราคาน้ำมัน, TradingView, ค่าเงิน, ข่าว + พอร์ตจาก PersonalAIBot: เครื่องคิดเลข, แปลงหน่วย, เวลาโลก, Wikipedia, โน้ต, วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, แจ้งเตือนราคา, MT5 | ✅ v3.2 |
 | 10 | [[10-PC-Studio-App]] | แอป PC: ตั้งค่า, เครื่องมือ, debug log สด, แชทพิมพ์, จอเสมือน + แตะจากระยะไกล, build/upload | ✅ v3.1 |
 
@@ -130,6 +131,7 @@ ESP32-AI/
 | 2026-10-15 | ผู้ใช้: AI ไม่ค่อยตอบ (3.8 แย่กว่า 3.1) → hybrid VAD + ฟังต่อ 6 วิ + AGC + server VAD tuning + log `[Mic]` + `rec` อัดเสียงที่ AI ได้ยิน (WAV ใน PC app) • ภาพ app เขินอาย = จังหวะท่าทางหลังแตะ | [[07-Troubleshooting-Log#T036 ไอคอนไมค์ขึ้นแต่ AI เงียบ - 3.8 Live ไม่ค่อยตอบ]] |
 | 2026-10-15 | **แก้บอร์ดรีบูตเอง (CORRUPT HEAP)**: race ใน esp_websocket_client → เขียนใหม่เป็น task `geminiIO` ตัวเดียวถือการเชื่อมต่อ • 3 โมเดลรับ VAD tuning • พัก↔ตื่น 4 รอบผ่าน | [[07-Troubleshooting-Log#T039 บอร์ดรีบูตเอง CORRUPT HEAP หลัง error เครือข่าย - race ใน esp_websocket_client]] |
 | 2026-10-15 | ไมค์ต้องพูดใกล้ → ADC 18→36 dB + ปรับ "ความไวไมค์" ได้ • `apitest` ทดสอบ Search grounding: 429 = โควตา Search หมด (โมเดลรองรับ) • `searchretry` | [[07-Troubleshooting-Log#T036 ไอคอนไมค์ขึ้นแต่ AI เงียบ - 3.8 Live ไม่ค่อยตอบ]] |
+| 2026-10-15 | **Internet Radio เฟส 1**: `play_radio`/`stop_radio`, ตัวเล่นสตรีม + Helix (RPSL, ไม่ใช้ส่วน GPL), mixer + ducking 12%, ปลุกด้วยเสียงต้องดังกว่าวิทยุ 2 เท่า, ชื่อสถานี/เพลงบนจอและนาฬิกา, host test resampler — build/บูตผ่าน รอ Wi-Fi ทดสอบสตรีม | [[12-Internet-Radio]] |
 | 2026-10-15 | **คำสั่งเสียง "พักหน้าจอ"** (`rest_screen` → นาฬิกาหรี่แสงทันที) + **สถานะปิดไมค์จำข้ามรีบูต** (เดิมรีบูต/แฟลชแล้วไมค์เปิดเอง) | [[06-Avatar-and-Thai-UI#โหมดนาฬิกา ประหยัดพลังงาน (v3.2.1)]] |
 | 2026-10-15 | **โหมดนาฬิกาประหยัดไฟ** (พักครบ 5 นาที → นาฬิกา + หรี่จอ 8%, ได้ยินเสียง/แตะ → สว่าง + ตื่น) + **สั่งเครื่องด้วยเสียง**: เสียง/แสงปรับขึ้นลง (`change`), `configure_device`, `mute_microphone` (เปิดไมค์ได้เฉพาะบนจอ) — ทดสอบบนบอร์ด: ตั้งเวลา 1 นาทีเข้าโหมดที่ 59 วิ | [[06-Avatar-and-Thai-UI#โหมดนาฬิกา ประหยัดพลังงาน (v3.2.1)]] |
 | 2026-10-15 | **ออก Release แบบแมนนวล** (ผู้ใช้ตัดสินใจ: แก้ billing ไม่ผ่าน) — `tools/publish_release.py` ทำ ร่าง → แนบไฟล์ → เผยแพร่ → ตรวจ sha256; workflow เหลือแบบกดรันเอง | [[02-Installation-and-Setup#ติดตั้งจากไฟล์เฟิร์มแวร์สำเร็จรูป (ไม่ต้อง build)]] |

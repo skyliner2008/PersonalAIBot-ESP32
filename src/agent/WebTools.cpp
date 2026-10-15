@@ -28,7 +28,7 @@ const char* const kWebTools[] = {"get_weather",     "get_oil_price",   "get_mark
                                  "get_news",        "calculate",       "convert_units",     "get_world_time",
                                  "get_location",    "search_knowledge", "market_overview",  "market_analysis",
                                  "market_scan",     "economic_calendar", "position_size",   "notes",
-                                 "price_alert",     "mt5_account",     "mt5_trade"};
+                                 "price_alert",     "mt5_account",     "mt5_trade",       "play_radio"};
 
 constexpr uint32_t kAlertCheckMs = 120000;
 
@@ -573,6 +573,7 @@ void WebTools::loop() {
         else if (!strcmp(j.name, "price_alert")) runPriceAlert(env, a, out, card);
         else if (!strcmp(j.name, "mt5_account")) runMt5Account(a, out, card);
         else if (!strcmp(j.name, "mt5_trade")) runMt5Trade(a, out, card);
+        else if (!strcmp(j.name, "play_radio")) runRadio(a, out, card);
         else setError(out, "unknown tool");
         if (out.isNull() || out.size() == 0) setError(out, "no data");
         if (card.kind != CardData::None && out["error"].isNull()) gCard.show(card, 30000);

@@ -296,7 +296,26 @@ void FaceScreen::drawClock(LGFX_Sprite& c) {
                  lt.tm_year + 1900 + 543);
         gUi.drawFitted(c, date, cx, 182 + dy, 300, gUi.thai20(), ui::DIM, textdatum_t::middle_center);
     }
-    gUi.drawFitted(c, "พูดหรือแตะเพื่อปลุก", cx, 222 + dy, 300, gUi.thai20(), 0x4208, textdatum_t::middle_center);
+    UiStatus st;
+    {
+        Guard g(_lock);
+        st = _status;
+    }
+    if (st.radio[0]) {  // radio keeps playing under the clock
+        drawRadioIcon(c, cx - 140, 222 + dy, ui::ACCENT);
+        gUi.drawFitted(c, st.radio, cx - 122, 222 + dy, 262, gUi.thai20(), ui::DIM, textdatum_t::middle_left);
+    } else {
+        gUi.drawFitted(c, "พูดหรือแตะเพื่อปลุก", cx, 222 + dy, 300, gUi.thai20(), 0x4208, textdatum_t::middle_center);
+    }
+}
+
+// Small radio: body, speaker grille and antenna (fonts have no emoji)
+void FaceScreen::drawRadioIcon(LGFX_Sprite& c, int cx, int cy, uint16_t color) {
+    c.drawRoundRect(cx - 9, cy - 5, 18, 12, 2, color);
+    c.fillCircle(cx - 3, cy + 1, 3, color);
+    c.drawFastVLine(cx + 4, cy - 2, 6, color);
+    c.drawFastVLine(cx + 6, cy - 2, 6, color);
+    c.drawLine(cx - 6, cy - 6, cx + 4, cy - 11, color);
 }
 
 void FaceScreen::draw(LGFX_Sprite& c) {
@@ -317,6 +336,11 @@ void FaceScreen::draw(LGFX_Sprite& c) {
         if (showHint) memcpy(hint, _hint, sizeof(hint));
     }
     drawStatus(c, status);
+
+    if (status.radio[0] && !_subtitleVisible) {  // Internet radio: what is playing, under the eyes
+        drawRadioIcon(c, 22, 222, ui::ACCENT);
+        gUi.drawFitted(c, status.radio, 40, 222, ui::W - 48, gUi.thai20(), ui::DIM, textdatum_t::middle_left);
+    }
 
     if (_subtitleVisible && _lineCount > 0) {
         c.fillRect(0, kSubtitleY - 4, ui::W, ui::H - kSubtitleY + 4, ui::BG);

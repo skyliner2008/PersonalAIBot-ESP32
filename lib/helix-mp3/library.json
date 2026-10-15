@@ -1,0 +1,9 @@
+{
+  "name": "helix-mp3",
+  "version": "1.0.0",
+  "description": "RealNetworks Helix fixed-point MP3 decoder (from earlephilhower/ESP8266Audio 1.9.7, unmodified). License: RPSL 1.0 / RCSL 1.0 - see src/LICENSE.txt, src/RPSL.txt.",
+  "license": "RPSL-1.0",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "build": { "flags": "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-maybe-uninitialized" }
+}

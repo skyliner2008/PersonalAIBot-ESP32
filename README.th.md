@@ -4,13 +4,13 @@
 
 ### ผู้ช่วย AI คุยด้วยเสียงภาษาไทยแบบเรียลไทม์ บนบอร์ด ESP32-S3 จอสัมผัส
 
-**คุยเสียงด้วย Gemini Live** · **ความจำระยะยาวในตัวเครื่อง** · **42 tools พร้อมการ์ดกราฟิกบนจอ** · **แอปคู่หูบน PC**
+**คุยเสียงด้วย Gemini Live** · **ความจำระยะยาวในตัวเครื่อง** · **44 tools พร้อมการ์ดกราฟิกบนจอ** · **แอปคู่หูบน PC**
 
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
 [![Firmware](https://img.shields.io/badge/firmware-v3.2.1-3ddc84)](src/app/AppConfig.h)
-[![Tests](https://img.shields.io/badge/host%20tests-1%2C438%20checks%20passing-3ddc84)](host_tests/)
+[![Tests](https://img.shields.io/badge/host%20tests-1%2C446%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -35,6 +35,7 @@
 | 🧑‍💼 **บุคลิก** | โปรไฟล์สำเร็จรูป 8 แบบ (ไข่มุก, ภูมิ, ลีน่า, ธันวา, มะปราง, โอม, น้ำ, ครูเก่ง), เสียง 30 แบบ, นิสัย 7 แบบ, ลงท้าย ค่ะ/ครับ — เปลี่ยนผ่านเมนูทัชหรือสั่งด้วยเสียง |
 | 👀 **ใบหน้ามีชีวิต** | ดวงตาสไตล์ Cozmo 14 อารมณ์, ซับไตเติลภาษาไทย, ปุ่มเปิด/ปิดไมค์บนจอ, โหมดมืด — พักนานจะเปลี่ยนเป็น**นาฬิกาหรี่แสง** (ประหยัดไฟ) และตื่นพร้อมจอสว่างทันทีที่ได้ยินเสียง |
 | 📊 **การ์ดข้อมูลสด** | อากาศ + PM2.5, ราคาน้ำมันไทย, หุ้น/ทอง/คริปโต/ค่าเงิน, วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, ข่าว, Wikipedia — วาดเป็นกราฟิกขณะ AI พูด |
+| 📻 **วิทยุออนไลน์** | "เปิดวิทยุ Cool 93" — หลายพันสถานีจาก Radio Browser (MP3/AAC, ตัวถอดรหัส Helix) เล่นขณะผู้ช่วยพัก แตะจอหรือพูดดังๆ เพื่อสั่งงาน วิทยุจะเบาลงเหลือ 12% จนคุยเสร็จ [wiki/12](wiki/12-Internet-Radio.md) |
 | ⏰ **ผู้ช่วยส่วนตัว** | ตั้งเวลา, แจ้งเตือน (ทุกวัน/วันทำงาน/ทุกสัปดาห์), รายการงาน, สมุดโน้ต, แจ้งเตือนราคาด้วยเสียง, เครื่องคิดเลข, แปลงหน่วย, เวลาต่างประเทศ |
 | 📈 **MetaTrader 5** *(ไม่บังคับ)* | ดูพอร์ต MT5 ผ่าน [mt5-core-server](#-metatrader-5-ไม่บังคับ) — การเทรดด้วยเสียง **ปิดเป็นค่าเริ่มต้น** และต้องยืนยันด้วยเสียง 2 ขั้น |
 | 🔁 **ซ่อมตัวเองได้** | สลับโมเดลอัตโนมัติ, หยุดพักเมื่อติดโควตา, ปิด Google Search อัตโนมัติเมื่อโควตาหมด, resume เซสชัน, ต่อ Wi-Fi ใหม่ |
@@ -155,13 +156,13 @@ python tools/pc_app/esp32_ai_studio.py
 AI เลือกเรียกเองตามบทสนทนา tool ข้อมูลทำงานใน task เบื้องหลังและวาดการ์ดบนจอขณะ AI พูดต่อได้
 
 <details>
-<summary><b>Tools ทั้งหมด 42 ตัว</b> (ค่าเริ่มต้น 40 ตัว — MT5 อีก 2 ตัวจะเปิดเมื่อตั้งค่า server)</summary>
+<summary><b>Tools ทั้งหมด 44 ตัว</b> (ค่าเริ่มต้น 42 ตัว — MT5 อีก 2 ตัวจะเปิดเมื่อตั้งค่า server)</summary>
 
 | กลุ่ม | Tools |
 |---|---|
 | **ความจำ** | `save_memory` · `save_relation` · `recall_memory` · `forget_memory` · `recall_conversation` |
 | **เวลา & งาน** | `set_timer` · `set_reminder` · `list_reminders` · `cancel_reminder` · `add_task` · `list_tasks` · `update_task` |
-| **ผู้ช่วย & เครื่อง** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (ระบุค่าหรือปรับ +/-) · `configure_device` (ไมค์, เวลาพัก, โหมดนาฬิกา) · `rest_screen` (พักหน้าจอทันที) · `mute_microphone` · `control_led` · `go_to_sleep` |
+| **ผู้ช่วย & เครื่อง** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (ระบุค่าหรือปรับ +/-) · `configure_device` (ไมค์, เวลาพัก, โหมดนาฬิกา) · `rest_screen` (พักหน้าจอทันที) · `play_radio` / `stop_radio` (วิทยุออนไลน์) · `mute_microphone` · `control_led` · `go_to_sleep` |
 | **ข้อมูลสด** 🖼️ | `get_weather` (Open-Meteo + PM2.5, ไม่ระบุที่ = ใช้ตำแหน่งจาก IP) · `get_oil_price` (บางจาก) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
 | **เครื่องมือทั่วไป** 🖼️ | `calculate` · `convert_units` (รวม ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (รองรับ DST) · `get_location` · `search_knowledge` (Wikipedia ไทย/อังกฤษ) · `notes` |
 | **ชุดการเงิน** 🖼️ | `market_overview` (+ ดัชนีกลัว/โลภคริปโต) · `market_analysis` (RSI, MACD, EMA, ADX, หลายกรอบเวลา, P/E, ปันผล) · `market_scan` (ขึ้นแรง/ลงแรง/วอลุ่ม/RSI — ไทย/สหรัฐ/คริปโต) · `economic_calendar` (ForexFactory เวลาไทย) · `position_size` · `price_alert` |
@@ -236,7 +237,7 @@ flowchart LR
 host_tests\run_tests.bat
 ```
 
-28 ชุดทดสอบ · 1,438 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
+29 ชุดทดสอบ · 1,446 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
 
 ## 📁 โครงสร้างโปรเจกต์
 
@@ -264,6 +265,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 | [06 ดวงตา & UI ไทย](wiki/06-Avatar-and-Thai-UI.md) · [08 ความจำระยะยาว](wiki/08-Long-Term-Memory-GraphRAG.md) | ใบหน้า, เมนู, การออกแบบความจำ |
 | [09 โปรไฟล์ & tools](wiki/09-Assistant-Profiles-and-Tools.md) · [11 Tools ข้อมูล & การ์ด](wiki/11-Data-Tools-and-Cards.md) | ผู้ช่วยทำอะไรได้บ้าง |
 | [10 PC Studio](wiki/10-PC-Studio-App.md) · [07 บันทึกการแก้ปัญหา](wiki/07-Troubleshooting-Log.md) | เครื่องมือ และปัญหาที่แก้แล้ว 40+ เรื่อง |
+| [12 วิทยุออนไลน์](wiki/12-Internet-Radio.md) | สตรีม, ผสม/ลดเสียง, ปลุกด้วยเสียงขณะเปิดเพลง |
 
 ## 🔒 ความปลอดภัย & ความเป็นส่วนตัว
 
@@ -299,7 +301,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 ## 🙏 ขอบคุณ
 
 - [Google Gemini Live API](https://ai.google.dev/gemini-api/docs/live) · [LovyanGFX](https://github.com/lovyan03/LovyanGFX) · [ArduinoJson](https://arduinojson.org/) · [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel)
-- ฟอนต์ไทย: **TH Sarabun New** (SIPA, ฟอนต์แห่งชาติ)
+- ฟอนต์ไทย: **TH Sarabun New** (SIPA, ฟอนต์แห่งชาติ) · ถอดรหัส MP3/AAC: **RealNetworks Helix** (RPSL, `lib/helix-*`) · สถานีวิทยุ: [Radio Browser](https://www.radio-browser.info)
 - ข้อมูล: [Open-Meteo](https://open-meteo.com/) · [บางจาก](https://www.bangchak.co.th/) · [TradingView](https://www.tradingview.com/) · [Wikipedia](https://www.wikipedia.org/) · [ForexFactory](https://www.forexfactory.com/) · [alternative.me](https://alternative.me/crypto/fear-and-greed-index/) · [ipwho.is](https://ipwho.is/) · Google News
 - tools และฟีเจอร์การเงินพอร์ตมาจากแอป **PersonalAIBot** บน Android
 

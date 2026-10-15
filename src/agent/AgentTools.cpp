@@ -109,6 +109,7 @@ const AgentTools::Entry AgentTools::kHandlers[] = {
     {"go_to_sleep", &AgentTools::goToSleep},
     {"mute_microphone", &AgentTools::muteMicrophone},
     {"rest_screen", &AgentTools::restScreen},
+    {"stop_radio", &AgentTools::stopRadio},
     {nullptr, nullptr},
 };
 
@@ -214,32 +215,37 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     declare(d, b, "list_assistant_options", "List available profiles, voices, personalities or eye colors.", opts, 1);
     static const Param vol[] = {
         {"level", "INTEGER", "Absolute 0-100.", false, nullptr},
-        {"change", "INTEGER", "Relative: +15 louder, -15 quieter ('a bit' = 10, 'much' = 30).", false, nullptr},
+        {"change", "INTEGER", "Relative, e.g. +10 louder / -10 quieter.", false, nullptr},
     };
     declare(d, b, "set_volume", "Speaker volume: set a level or turn it up/down.", vol, 2);
     static const Param bri[] = {
         {"level", "INTEGER", "Absolute 5-100.", false, nullptr},
-        {"change", "INTEGER", "Relative: +15 brighter, -15 dimmer.", false, nullptr},
+        {"change", "INTEGER", "Relative, e.g. +15 / -15.", false, nullptr},
     };
     declare(d, b, "set_brightness", "Screen brightness: set a level or make it brighter/dimmer.", bri, 2);
     static const Param dev[] = {
-        {"mic_sensitivity", "INTEGER", "0-7 (default 5; higher hears farther).", false, nullptr},
-        {"mic_change", "INTEGER", "Relative mic sensitivity, e.g. +1 / -1.", false, nullptr},
-        {"sleep_minutes", "INTEGER", "Silence before you sleep, 0 = never.", false, nullptr},
-        {"clock_minutes", "INTEGER", "Asleep this long -> clock face + dim screen, 0 = never.", false, nullptr},
-        {"dim_brightness", "INTEGER", "Screen brightness % in clock mode, 1-60.", false, nullptr},
+        {"mic_sensitivity", "INTEGER", "0-7, default 5.", false, nullptr},
+        {"mic_change", "INTEGER", "+1 / -1.", false, nullptr},
+        {"sleep_minutes", "INTEGER", "Silence before sleeping, 0 = never.", false, nullptr},
+        {"clock_minutes", "INTEGER", "Asleep this long -> dim clock, 0 = never.", false, nullptr},
+        {"dim_brightness", "INTEGER", "Clock-mode brightness %, 1-60.", false, nullptr},
     };
     declare(d, b, "configure_device",
-            "Device settings: mic sensitivity, auto-sleep time, clock/power-save mode timing and dim level.", dev, 5);
+            "Mic sensitivity, auto-sleep time, clock-mode delay and dim level.", dev, 5);
     declare(d, b, "rest_screen",
-            "Rest the screen now (พักหน้าจอ / screen saver / clock mode): after this reply show the dim clock and "
-            "sleep until the user speaks or taps.");
+            "Rest the screen now (พักหน้าจอ / clock mode): dim clock after this reply until the user speaks or taps.");
     static const Param led[] = {{"color", "STRING", nullptr, true, kLedColors}};
     declare(d, b, "control_led", "Set the RGB LED ('auto' = status colors).", led, 1);
     declare(d, b, "go_to_sleep", "Stop listening and sleep after this reply (user said goodbye / good night).");
+    static const Param radio[] = {
+        {"query", "STRING", "Station or genre in English, e.g. 'Cool 93', 'news'. Empty = last station.", false, nullptr},
+        {"country", "STRING", "ISO code, default TH, 'any' = worldwide.", false, nullptr},
+    };
+    declare(d, b, "play_radio",
+            "Play Internet radio. Say the station name briefly, then stay quiet (it plays while you sleep).", radio, 2);
+    declare(d, b, "stop_radio", "Stop the Internet radio.");
     declare(d, b, "mute_microphone",
-            "Turn the microphone OFF after this reply (user asked). You cannot turn it back on: tell the user to "
-            "tap the mic button on the screen.");
+            "Mic OFF after this reply. Only the screen mic button turns it back on: tell the user.");
 
     // ---- Live data with on-screen graphics (run by webtools::WebTools, answered asynchronously) ----
     static const Param weather[] = {
@@ -734,6 +740,12 @@ bool AgentTools::controlLed(JsonObjectConst a, JsonObject r, const char*& e) {
     if (!known) return (e = "unsupported color"), false;
     if (!_device.setLedColor(color)) return (e = "LED not available"), false;
     r["color"] = color;
+    return true;
+}
+
+bool AgentTools::stopRadio(JsonObjectConst, JsonObject r, const char*&) {
+    r["was_playing"] = _device.stopRadio();
+    r["status"] = "radio off";
     return true;
 }
 

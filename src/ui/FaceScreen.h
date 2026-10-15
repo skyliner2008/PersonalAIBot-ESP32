@@ -59,6 +59,7 @@ private:
     volatile bool _pokePending = false;
     volatile bool _powerSave = false;
     void drawClock(LGFX_Sprite& c);
+    void drawRadioIcon(LGFX_Sprite& c, int cx, int cy, uint16_t color);
     UiStatus _status;
 
     static constexpr size_t kTextCap = 512;

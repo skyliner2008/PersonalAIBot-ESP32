@@ -184,6 +184,8 @@ public:
         r["mic_sensitivity"] = mic;
     }
     void requestMicMute() override { micMuteRequested = true; }
+    bool radioOn = true;
+    bool stopRadio() override { const bool was = radioOn; radioOn = false; return was; }
     void fillStatus(JsonObject out) override { out["battery_percent"] = 80; }
     bool setExpression(const char* e) override { return expression = e, true; }
     void requestSleep() override { sleepRequested = true; }
@@ -250,7 +252,7 @@ TEST(tool_declarations_per_model) {
     size_t count;
     bool search;
     const size_t bytes = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)40);  // 23 core (incl. configure_device, rest_screen, mute_microphone) + 5 live data + 6 utilities + 6 finance (MT5 off)
+    CHECK_EQ(count, (size_t)42);  // 25 core (incl. configure_device, rest_screen, mute_microphone, play_radio, stop_radio) + 5 live data + 6 utilities + 6 finance (MT5 off)
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
@@ -271,13 +273,13 @@ TEST(tool_declarations_per_model) {
     // optional packs: finance off -> 31; MT5 read-only -> +1; trading only when enabled -> +1
     rig.tools.setPacks(false, false, false);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)34);
+    CHECK_EQ(count, (size_t)36);
     rig.tools.setPacks(true, true, false);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)41);
+    CHECK_EQ(count, (size_t)43);
     rig.tools.setPacks(true, true, true);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)42);
+    CHECK_EQ(count, (size_t)44);
     rig.tools.setPacks(true, false, false);
 
     behaviors(ToolBehavior::NonBlocking, false, expr, recall, count, search);
@@ -391,6 +393,9 @@ TEST(tools_assistant_and_device) {
     CHECK(!callTool(rig.tools, "configure_device", "{}", r));
     CHECK(callTool(rig.tools, "mute_microphone", "{}", r));
     CHECK(rig.dev.micMuteRequested);
+    CHECK(callTool(rig.tools, "stop_radio", "{}", r));
+    CHECK(r["result"]["was_playing"] | false);
+    CHECK(!rig.dev.radioOn);
     CHECK(callTool(rig.tools, "control_led", "{\"color\":\"purple\"}", r));
     CHECK(!callTool(rig.tools, "control_led", "{\"color\":\"pink\"}", r));
     CHECK(callTool(rig.tools, "go_to_sleep", "{}", r));
@@ -675,4 +680,36 @@ TEST(sd_setup_file) {
     CHECK(setupfile::parse(path.c_str(), r));
     CHECK(std::string(r.pass) == "a<b>c");
     CHECK(std::string(r.ssid) == "yourhome");
+}
+
+#include <cmath>
+#include <vector>
+
+#include "util/RadioResampler.h"
+
+static double toneRms(uint32_t inRate, int channels, double hz, size_t* outCount) {
+    RadioResampler rs;
+    rs.reset(inRate);
+    std::vector<int16_t> in(inRate * channels), out(rs.maxOutput(inRate));
+    for (uint32_t i = 0; i < inRate; i++) {
+        const int16_t v = (int16_t)(10000 * std::sin(2 * 3.141592653589793 * hz * i / inRate));
+        for (int c = 0; c < channels; c++) in[i * channels + c] = v;
+    }
+    const size_t n = rs.process(in.data(), inRate, channels, out.data(), out.size());
+    *outCount = n;
+    double e = 0;
+    for (size_t i = n / 4; i < n; i++) e += (double)out[i] * out[i];  // skip the filter warm-up
+    return std::sqrt(e / (n - n / 4));
+}
+
+TEST(radio_resampler) {
+    size_t n = 0;
+    const double pass = toneRms(44100, 2, 1000, &n);  // 1 kHz stereo 44.1 kHz -> passes
+    CHECK(n >= 23990 && n <= 24010);                    // one second at 24 kHz
+    CHECK(pass > 6500 && pass < 7500);                  // ~10000/sqrt(2)
+    const double stop = toneRms(48000, 2, 18000, &n);  // 18 kHz would alias: removed
+    CHECK(stop < pass * 0.15);
+    const double up = toneRms(22050, 1, 1000, &n);      // mono 22.05 kHz is upsampled
+    CHECK(n >= 23990 && n <= 24010);
+    CHECK(up > 6500 && up < 7500);
 }

@@ -1188,4 +1188,74 @@ void runMt5Trade(JsonObjectConst a, JsonDocument& out, CardData& card) {
     copyStr(card.body, sizeof(card.body), resp.substring(0, 300).c_str());
 }
 
+// ============================================================ Internet radio (radio-browser.info)
+
+namespace {
+// MP3 / AAC only (the decoders on the board), working streams, most popular first
+bool radioSearch(const String& query, const char* field, const char* country, JsonDocument& found) {
+    String url = String("https://de1.api.radio-browser.info/json/stations/search?") + field + "=" +
+                 urlEncode(query.c_str()) + "&hidebroken=true&order=clickcount&reverse=true&limit=12";
+    if (country && *country) url += String("&countrycode=") + country;
+    String body;
+    if (httpGet(url, body) != 200) return false;
+    JsonDocument all(JsonPsramAllocator::instance());
+    if (deserializeJson(all, body)) return false;
+    JsonArray keep = found.to<JsonArray>();
+    for (JsonObjectConst s : all.as<JsonArrayConst>()) {
+        String codec = s["codec"] | "";
+        codec.toUpperCase();
+        const int br = s["bitrate"] | 0;
+        const char* u = s["url_resolved"] | "";
+        if (!*u || (codec != "MP3" && codec != "AAC" && codec != "AAC+") || br > 192) continue;
+        keep.add(s);
+    }
+    return keep.size() > 0;
+}
+}  // namespace
+
+void runRadio(JsonObjectConst a, JsonDocument& out, CardData& card) {
+    String q = a["query"] | "";
+    q.trim();
+    String country = a["country"] | "TH";
+    country.toUpperCase();
+    if (country == "ANY" || country == "ALL") country = "";
+    JsonObject r = out["result"].to<JsonObject>();
+
+    if (q.isEmpty()) {  // "เปิดวิทยุ" = the last station
+        const SettingsData s = gSettings.get();
+        if (!s.radioUrl[0]) {
+            setError(out, "ยังไม่เคยเปิดสถานีไหน ให้ระบุชื่อสถานีหรือแนวเพลง");
+            return;
+        }
+        r["station"] = s.radioName;
+        r["url"] = s.radioUrl;
+        r["note"] = "เปิดสถานีล่าสุดแล้ว บอกผู้ใช้สั้นๆ";
+    } else {
+        JsonDocument found(JsonPsramAllocator::instance());
+        const char* cc = country.c_str();
+        if (!radioSearch(q, "name", cc, found) && !radioSearch(q, "tag", cc, found) &&
+            !(*cc && radioSearch(q, "name", "", found)) && !(*cc && radioSearch(q, "tag", "", found))) {
+            setError(out, "ไม่พบสถานีที่เล่นได้ (ต้องเป็น MP3/AAC) ลองชื่ออื่นหรือแนวเพลงเป็นภาษาอังกฤษ");
+            return;
+        }
+        JsonObjectConst st = found[0];
+        r["station"] = st["name"] | "";
+        r["url"] = st["url_resolved"] | "";
+        r["codec"] = st["codec"] | "";
+        r["bitrate_kbps"] = st["bitrate"] | 0;
+        r["country"] = st["countrycode"] | "";
+        r["tags"] = String((const char*)(st["tags"] | "")).substring(0, 80);
+        JsonArray alt = r["other_matches"].to<JsonArray>();
+        for (size_t i = 1; i < found.size() && alt.size() < 4; i++) alt.add(found[i]["name"] | "");
+        r["note"] = "กำลังเปิดสถานีนี้ บอกผู้ใช้ชื่อสถานีสั้นๆ แล้วเงียบ (วิทยุจะดังขึ้นเมื่อคุณพูดจบ)";
+    }
+    card.kind = CardData::Text;
+    copyStr(card.title, sizeof(card.title), "วิทยุออนไลน์");
+    copyStr(card.big, sizeof(card.big), r["station"] | "");
+    char body[200];
+    snprintf(body, sizeof(body), "%s %d kbps • %s • กำลังเชื่อมต่อ... แตะจอหรือพูดดังๆ เพื่อสั่งงาน",
+             (const char*)(r["codec"] | ""), (int)(r["bitrate_kbps"] | 0), (const char*)(r["tags"] | ""));
+    copyStr(card.body, sizeof(card.body), body);
+}
+
 }  // namespace webtools

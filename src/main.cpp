@@ -22,6 +22,7 @@
 #include "app/AppConfig.h"
 #include "app/Settings.h"
 #include "audio/AudioManager.h"
+#include "audio/RadioPlayer.h"
 #include "display/LGFX_ES3C28P.hpp"
 #include "display/TouchFT6336.h"
 #include "pins_config.h"
@@ -457,7 +458,7 @@ static void handleConsoleLine(String line) {
 
     if (cmd == "help") {
         Serial.println("status | audio | tone [hz] [ms] | mic [sec] | vol <0-100> | i2c | regs | reg <r> [v]");
-        Serial.println("tool <name> [json] | say <u|a|s> <text> | expr <emotion> | sleep | powersave | wake | screenshot");
+        Serial.println("tool <name> [json] | say <u|a|s> <text> | expr <emotion> | sleep | powersave | wake | screenshot | radio [<url> [name]|stop]");
         Serial.println("ask <text> (type to the assistant) | mute (toggle mic) | retry | new (fresh session) | memclear <facts|history>");
         Serial.println("rec [sec] (record what the mic sends to Gemini: RECINFO <json> + RECORD <rate> <bytes> + PCM + END)");
         Serial.println("ui tap x y | ui long x y | ui drag x0 y0 x1 y1 | ui open <menu|wifi|apikey|agent|user|profile|voice|info>");
@@ -562,6 +563,20 @@ static void handleConsoleLine(String line) {
         String r;
         agent.runTool("go_to_sleep", "{}", r);
         Serial.println(r);
+    } else if (cmd == "radio") {  // radio <url> [name] | radio stop | radio (status)
+        if (rest == "stop") {
+            gRadio.stop();
+        } else if (rest.startsWith("http")) {
+            const int s2 = rest.indexOf(" ");
+            const String url = s2 < 0 ? rest : rest.substring(0, s2);
+            const String name = s2 < 0 ? String("console") : rest.substring(s2 + 1);
+            Serial.println(gRadio.play(url.c_str(), name.c_str()) ? "OK radio" : "ERR radio");
+        } else {
+            char rn[64], rt[128];
+            gRadio.info(rn, sizeof(rn), rt, sizeof(rt));
+            Serial.printf("radio %s | %s | %s | %s %lu Hz | buffered %u ms | %s\n", gRadio.stateName(), rn, rt, gRadio.codec(),
+                          (unsigned long)gRadio.sampleRate(), (unsigned)(audio.radioBuffered() / 24), gRadio.lastError());
+        }
     } else if (cmd == "powersave") {
         agent.requestPowerSave();  // sleep now + dim clock face (voice or a tap wakes it)
     } else if (cmd == "wake") {
@@ -704,6 +719,7 @@ void setup() {
     // also imports ai-setup.txt from the card root. Before agent.begin(), which reads the settings.
     gSettings.attachSecretStore(storage.kind() == StorageKind::SdCard ? "/sdcard" : nullptr);
     if (!audio.begin(&i2c)) gFace.setSystemText("ระบบเสียงผิดพลาด (ES8311 / I2S) ดู Serial log", 0);
+    gRadio.begin(&audio);  // Internet radio task (idle until play_radio)
     agent.begin(&audio, &gFace, &storage);
 
     if (audio.i2sReady()) audio.startTasks();

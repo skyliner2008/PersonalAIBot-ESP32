@@ -83,6 +83,7 @@
 | LCD sprite | PSRAM | 150 KB |
 | WebSocket buffers + reassembly | PSRAM | 2 × 16 KB + ตามข้อความ |
 | JSON (server messages) | PSRAM allocator | ชั่วคราว |
+| Radio ring (วิทยุ → mixer) | PSRAM | 192 KB (~4 วิ) + input 16 KB + PCM 17 KB ต่อการเชื่อมต่อ |
 | mbedTLS buffers (ทุกการเชื่อมต่อ TLS) | PSRAM (`mbedtls_platform_set_calloc_free`, ก้อน < 512 B อยู่ RAM ภายใน) | ~40 KB ต่อการเชื่อมต่อ |
 | ความลับ (Wi-Fi pass, API key, MT5 token) | การ์ด SD `agent/secrets.json` (ไม่มีการ์ด: NVS) เข้ารหัส AES-256-GCM (`SecretBox`, กุญแจจาก MAC + eFuse unique ID); นำเข้า `ai-setup.txt` จากรากการ์ดแล้วลบ | ~30 B overhead ต่อค่า |
 | ความจำระยะยาว index | PSRAM | ~0.8 KB/รายการ (≤ 2,000) |
@@ -198,7 +199,7 @@ flowchart TB
 | 3 Semantic facts | `ltm.jsonl` (`k:"f"`) | `save_memory`, `recall_memory`, core memory |
 | 4 Knowledge graph | `ltm.jsonl` (`k:"r"`) | `save_relation`, ขยายกราฟตอน recall |
 
-Tools (v3.2.1, 40 + MT5 2 ตัวเมื่อตั้งค่า + Google Search; สั่งเครื่องด้วยเสียง: set_volume/set_brightness (level หรือ change +/-), configure_device, rest_screen (พักหน้าจอ), mute_microphone (เปิดไมค์ได้เฉพาะบนจอ, จำข้ามรีบูต); tools ข้อมูลแสดงการ์ดกราฟิก — `wiki/11-Data-Tools-and-Cards.md`): get_weather • get_oil_price • get_market_quote • convert_currency • get_news • calculate • convert_units • get_world_time • get_location • search_knowledge • notes • [finance] market_overview • market_analysis • market_scan • economic_calendar • position_size • price_alert • [MT5] mt5_account • mt5_trade (ยืนยัน 2 ขั้น, จำกัด lot) • ความจำ 5 • set_timer/set_reminder/list_reminders/cancel_reminder • add_task/list_tasks/update_task •
+Tools (v3.2.1, 42 + MT5 2 ตัวเมื่อตั้งค่า + Google Search; สั่งเครื่องด้วยเสียง: set_volume/set_brightness (level หรือ change +/-), configure_device, rest_screen (พักหน้าจอ), play_radio/stop_radio (วิทยุออนไลน์ — wiki/12), mute_microphone (เปิดไมค์ได้เฉพาะบนจอ, จำข้ามรีบูต); tools ข้อมูลแสดงการ์ดกราฟิก — `wiki/11-Data-Tools-and-Cards.md`): get_weather • get_oil_price • get_market_quote • convert_currency • get_news • calculate • convert_units • get_world_time • get_location • search_knowledge • notes • [finance] market_overview • market_analysis • market_scan • economic_calendar • position_size • price_alert • [MT5] mt5_account • mt5_trade (ยืนยัน 2 ขั้น, จำกัด lot) • ความจำ 5 • set_timer/set_reminder/list_reminders/cancel_reminder • add_task/list_tasks/update_task •
 get_device_status • set_expression • configure_assistant • list_assistant_options • set_volume • set_brightness • control_led • go_to_sleep
 — behavior ตามโมเดล (3.8 Live BLOCKING, Extended Thinking NON_BLOCKING, 3.1 ไม่ระบุ) — ดู `wiki/09-Assistant-Profiles-and-Tools.md`
 

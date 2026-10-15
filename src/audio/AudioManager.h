@@ -59,6 +59,20 @@ public:
     float playbackLevel() const { return _playLevel; }
     size_t playbackDropped() const { return _droppedBytes; }
 
+    // ---- Internet radio: a second mono 24 kHz source mixed under the assistant's voice ----
+    size_t writeRadio(const int16_t* pcm, size_t samples) {
+        return _radio.write((const uint8_t*)pcm, samples * 2) / 2;
+    }
+    size_t radioFree() const { return _radio.freeSpace() / 2; }
+    size_t radioBuffered() const { return _radio.available() / 2; }
+    void clearRadio() {
+        _radio.clear();
+        _radioOn = false;
+    }
+    /** 1.0 = full, ~0.12 = ducked under the assistant; ramps smoothly (~200 ms). */
+    void setRadioGain(float g) { _radioTarget = g; }
+    bool radioSounding() const { return _radioOn; }
+
     // ---- Capture (16 kHz, 16-bit mono PCM) ----
     void setCaptureEnabled(bool on);
     bool captureEnabled() const { return _captureOn; }
@@ -90,6 +104,10 @@ private:
     ES8311 _codec;
     RingBuffer _playback;
     RingBuffer _capture;
+    RingBuffer _radio;
+    volatile float _radioTarget = 1.0f;
+    float _radioGain = 1.0f;
+    volatile bool _radioOn = false;
     Downsampler24to16 _resampler;
 
     bool _i2sReady = false;

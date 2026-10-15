@@ -4,13 +4,13 @@
 
 ### A Thai-speaking, real-time voice AI assistant on an ESP32-S3 touch screen
 
-**Gemini Live voice** · **on-device long-term memory** · **42 tools with on-screen cards** · **PC companion app**
+**Gemini Live voice** · **on-device long-term memory** · **44 tools with on-screen cards** · **PC companion app**
 
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
 [![Firmware](https://img.shields.io/badge/firmware-v3.2.1-3ddc84)](src/app/AppConfig.h)
-[![Tests](https://img.shields.io/badge/host%20tests-1%2C438%20checks%20passing-3ddc84)](host_tests/)
+[![Tests](https://img.shields.io/badge/host%20tests-1%2C446%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -35,6 +35,7 @@ Everything runs on the board itself: **no server, no Raspberry Pi, no vector dat
 | 🧑‍💼 **Personalities** | 8 ready-made profiles, 30 voices, 7 personalities, male/female Thai politeness (ค่ะ / ครับ). Change them by touch or just by asking. |
 | 👀 **Expressive face** | Cozmo-style eyes with 14 emotions, Thai subtitles, on-screen mic button, dark theme. After a while asleep it turns into a **dim clock** (power save) and wakes up — full brightness — as soon as it hears you. |
 | 📊 **Live data cards** | Weather + PM2.5, Thai fuel prices, stocks / gold / crypto / FX, technical analysis, market scanner, economic calendar, news, Wikipedia — drawn as graphics while the AI talks. |
+| 📻 **Internet radio** | "Play Cool 93" — thousands of stations via Radio Browser (MP3/AAC, Helix decoder). It plays while the assistant sleeps; tap or speak up to talk, and the radio dips to 12 % until you are done. [wiki/12](wiki/12-Internet-Radio.md) |
 | ⏰ **Personal assistant** | Timers, reminders (daily / weekdays / weekly), to-do list, notes, price alerts that speak up, calculator, unit & world-time conversion. |
 | 📈 **MetaTrader 5** *(optional)* | Read your MT5 account through [mt5-core-server](#-metatrader-5-optional); voice trading is **off by default** and needs a spoken two-step confirmation. |
 | 🔁 **Self-healing** | Automatic model fallback, quota-aware back-off, Google Search auto-disable on quota, session resumption, Wi-Fi reconnect. |
@@ -154,13 +155,13 @@ On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio 
 The model calls these by itself. Data tools run in a background task and draw a card while the AI keeps talking.
 
 <details>
-<summary><b>All 42 tools</b> (40 by default; the 2 MT5 tools appear when an MT5 server is configured)</summary>
+<summary><b>All 44 tools</b> (42 by default; the 2 MT5 tools appear when an MT5 server is configured)</summary>
 
 | Group | Tools |
 |---|---|
 | **Memory** | `save_memory` · `save_relation` · `recall_memory` · `forget_memory` · `recall_conversation` |
 | **Time & tasks** | `set_timer` · `set_reminder` · `list_reminders` · `cancel_reminder` · `add_task` · `list_tasks` · `update_task` |
-| **Assistant & device** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (level or +/- change) · `configure_device` (mic, sleep, clock mode) · `rest_screen` (clock now) · `mute_microphone` · `control_led` · `go_to_sleep` |
+| **Assistant & device** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (level or +/- change) · `configure_device` (mic, sleep, clock mode) · `rest_screen` (clock now) · `play_radio` / `stop_radio` (Internet radio) · `mute_microphone` · `control_led` · `go_to_sleep` |
 | **Live data** 🖼️ | `get_weather` (Open-Meteo + PM2.5, IP location by default) · `get_oil_price` (Bangchak) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
 | **Utilities** 🖼️ | `calculate` · `convert_units` (incl. Thai ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (DST-aware) · `get_location` · `search_knowledge` (Wikipedia th/en) · `notes` |
 | **Finance pack** 🖼️ | `market_overview` (+ crypto Fear & Greed) · `market_analysis` (RSI, MACD, EMA, ADX, multi-timeframe, P/E, dividend) · `market_scan` (gainers / losers / volume / RSI, TH-US-crypto) · `economic_calendar` (ForexFactory, Thai time) · `position_size` · `price_alert` |
@@ -235,7 +236,7 @@ Portable modules (memory, tools, scheduler, tasks, personas, model fallback, cal
 host_tests\run_tests.bat
 ```
 
-28 suites · 1,438 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+29 suites · 1,446 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
 
 ## 📁 Project layout
 
@@ -263,6 +264,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 | [06 Eyes & Thai UI](wiki/06-Avatar-and-Thai-UI.md) · [08 Long-term memory](wiki/08-Long-Term-Memory-GraphRAG.md) | Face, menus, memory design |
 | [09 Profiles & tools](wiki/09-Assistant-Profiles-and-Tools.md) · [11 Data tools & cards](wiki/11-Data-Tools-and-Cards.md) | What the assistant can do |
 | [10 PC Studio](wiki/10-PC-Studio-App.md) · [07 Troubleshooting log](wiki/07-Troubleshooting-Log.md) | Tools and 40+ solved problems |
+| [12 Internet radio](wiki/12-Internet-Radio.md) | Streaming, mixing/ducking, voice wake over music |
 
 ## 🔒 Security & privacy
 
@@ -298,7 +300,7 @@ Pull requests and issues are welcome.
 ## 🙏 Credits
 
 - [Google Gemini Live API](https://ai.google.dev/gemini-api/docs/live) · [LovyanGFX](https://github.com/lovyan03/LovyanGFX) · [ArduinoJson](https://arduinojson.org/) · [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel)
-- Thai font: **TH Sarabun New** (SIPA, Thai national font)
+- Thai font: **TH Sarabun New** (SIPA, Thai national font) · MP3/AAC decoding: **RealNetworks Helix** (RPSL, `lib/helix-*`) · stations: [Radio Browser](https://www.radio-browser.info)
 - Data: [Open-Meteo](https://open-meteo.com/) · [Bangchak](https://www.bangchak.co.th/) · [TradingView](https://www.tradingview.com/) · [Wikipedia](https://www.wikipedia.org/) · [ForexFactory](https://www.forexfactory.com/) · [alternative.me](https://alternative.me/crypto/fear-and-greed-index/) · [ipwho.is](https://ipwho.is/) · Google News
 - Tools and finance features ported from the **PersonalAIBot** Android app
 

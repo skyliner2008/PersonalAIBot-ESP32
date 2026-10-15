@@ -68,6 +68,7 @@ public:
     virtual bool setExpression(const char* emotion) = 0;
     virtual void requestSleep() = 0;                // after the current reply
     virtual void requestMicMute() = 0;              // mic off after the current reply (only the screen turns it on)
+    virtual bool stopRadio() = 0;                   // true if the Internet radio was on
     virtual bool applyAssistantChange(const AssistantChange& change, JsonObject result) = 0;
     virtual void describeAssistant(JsonObject out) = 0;
 };
@@ -140,4 +141,5 @@ private:
     bool goToSleep(JsonObjectConst a, JsonObject r, const char*& e);
     bool muteMicrophone(JsonObjectConst a, JsonObject r, const char*& e);
     bool restScreen(JsonObjectConst a, JsonObject r, const char*& e);
+    bool stopRadio(JsonObjectConst a, JsonObject r, const char*& e);
 };

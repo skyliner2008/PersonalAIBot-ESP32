@@ -1,0 +1,383 @@
+/**
+ * @file RadioPlayer.cpp
+ * @brief Internet radio stream task (see RadioPlayer.h)
+ */
+
+#include "RadioPlayer.h"
+
+#include <HTTPClient.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <WiFiClientSecure.h>
+#include <aacdec.h>
+#include <esp_heap_caps.h>
+#include <mp3dec.h>
+
+#include "../util/RadioResampler.h"
+#include "../util/Utf8.h"
+#include "AudioManager.h"
+
+RadioPlayer gRadio;
+
+namespace {
+
+constexpr size_t kInBuf = 16 * 1024;     // compressed bytes waiting for the decoder
+constexpr size_t kPcmMax = 4096;         // HE-AAC: 2048 samples x 2 channels per frame
+constexpr size_t kOutMax = 4608;         // resampled mono samples per frame (upsampling worst case)
+constexpr uint32_t kStallMs = 12000;     // no stream data this long -> reconnect
+constexpr int kMaxRetries = 4;
+
+struct Guard {
+    SemaphoreHandle_t m;
+    explicit Guard(SemaphoreHandle_t mutex) : m(mutex) { xSemaphoreTake(m, portMAX_DELAY); }
+    ~Guard() { xSemaphoreGive(m); }
+};
+
+void copyStr(char* dst, size_t cap, const char* src, size_t len = (size_t)-1) {
+    if (!src) src = "";
+    size_t n = strnlen(src, len == (size_t)-1 ? cap - 1 : len);
+    if (n > cap - 1) n = cap - 1;
+    n = utf8::clampToBoundary(src, n, cap - 1);
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
+bool validUtf8(const uint8_t* s, size_t n) {
+    for (size_t i = 0; i < n;) {
+        const uint8_t c = s[i];
+        size_t extra = c < 0x80 ? 0 : (c >> 5) == 6 ? 1 : (c >> 4) == 14 ? 2 : (c >> 3) == 30 ? 3 : 9;
+        if (extra == 9 || i + extra >= n + (extra ? 0 : 1)) return false;
+        for (size_t k = 1; k <= extra; k++) {
+            if ((s[i + k] & 0xC0) != 0x80) return false;
+        }
+        i += extra + 1;
+    }
+    return true;
+}
+
+/** Thai stations often send TIS-620 titles: 0xA1-0xFB -> U+0E01-U+0E5B. */
+void tis620ToUtf8(const uint8_t* s, size_t n, char* out, size_t cap) {
+    size_t o = 0;
+    for (size_t i = 0; i < n && o + 4 < cap; i++) {
+        const uint8_t c = s[i];
+        if (c < 0x80) {
+            out[o++] = (char)c;
+        } else if (c >= 0xA1 && c <= 0xFB) {
+            const uint16_t cp = 0x0E00 + (c - 0xA0);
+            out[o++] = (char)(0xE0 | (cp >> 12));
+            out[o++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+            out[o++] = (char)(0x80 | (cp & 0x3F));
+        }
+    }
+    out[o] = '\0';
+}
+
+}  // namespace
+
+bool RadioPlayer::begin(AudioManager* audio) {
+    _audio = audio;
+    _lock = xSemaphoreCreateMutex();
+    return _lock && xTaskCreatePinnedToCore(taskEntry, "radio", 16384, this, 4, &_task, 0) == pdPASS;
+}
+
+bool RadioPlayer::play(const char* url, const char* name) {
+    if (!_task || !url || strncmp(url, "http", 4) != 0) return false;
+    {
+        Guard g(_lock);
+        copyStr(_url, sizeof(_url), url);
+        copyStr(_name, sizeof(_name), name && *name ? name : "Internet radio");
+        _title[0] = '\0';
+        _error[0] = '\0';
+    }
+    _gen = _gen + 1;
+    _want = true;
+    _state = State::Connecting;
+    if (_audio) _audio->clearRadio();
+    xTaskNotifyGive(_task);
+    return true;
+}
+
+void RadioPlayer::stop() {
+    _want = false;
+    _gen = _gen + 1;
+    _state = State::Idle;
+    if (_audio) _audio->clearRadio();
+}
+
+const char* RadioPlayer::stateName() const {
+    switch (_state) {
+        case State::Connecting: return "connecting";
+        case State::Playing: return "playing";
+        case State::Error: return "error";
+        default: return "idle";
+    }
+}
+
+void RadioPlayer::info(char* name, size_t nameCap, char* title, size_t titleCap) const {
+    Guard g(_lock);
+    if (name) copyStr(name, nameCap, _name);
+    if (title) copyStr(title, titleCap, _title);
+}
+
+void RadioPlayer::setError(const char* e) {
+    Guard g(_lock);
+    copyStr(_error, sizeof(_error), e);
+}
+
+void RadioPlayer::setTitle(const char* raw, size_t len) {
+    char buf[sizeof(_title)];
+    if (validUtf8((const uint8_t*)raw, len)) copyStr(buf, sizeof(buf), raw, len);
+    else tis620ToUtf8((const uint8_t*)raw, len, buf, sizeof(buf));
+    Guard g(_lock);
+    if (strcmp(buf, _title) != 0) {
+        copyStr(_title, sizeof(_title), buf);
+        Serial.printf("[Radio] Now playing: %s\n", _title);
+    }
+}
+
+void RadioPlayer::taskEntry(void* self) { static_cast<RadioPlayer*>(self)->loop(); }
+
+void RadioPlayer::loop() {
+    int retries = 0;
+    for (;;) {
+        if (!_want) {
+            retries = 0;
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            continue;
+        }
+        const uint32_t gen = _gen;
+        const bool played = session(gen);
+        if (!_want || gen != _gen) {  // stopped or switched station: start over at once
+            retries = 0;
+            continue;
+        }
+        retries = played ? 1 : retries + 1;  // a stream that played resets the count
+        if (retries > kMaxRetries) {
+            Serial.printf("[Radio] Giving up: %s\n", _error);
+            _want = false;
+            _state = State::Error;
+            continue;
+        }
+        _state = State::Connecting;
+        Serial.printf("[Radio] Reconnecting (%d/%d) in %d s\n", retries, kMaxRetries, retries * 2);
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(retries * 2000));  // play()/stop() cut the wait short
+    }
+}
+
+// One connection. Returns true if any audio was played (for the retry policy).
+bool RadioPlayer::session(uint32_t gen) {
+    if (WiFi.status() != WL_CONNECTED) {
+        setError("no Wi-Fi");
+        return false;
+    }
+    char url[sizeof(_url)];
+    {
+        Guard g(_lock);
+        copyStr(url, sizeof(url), _url);
+    }
+
+    WiFiClientSecure tls;
+    WiFiClient plain;
+    tls.setInsecure();  // public audio, no credentials: radio hosts use all kinds of CAs
+    tls.setTimeout(10);
+    plain.setTimeout(10);
+    HTTPClient http;
+    http.setTimeout(10000);
+    http.setUserAgent("Mozilla/5.0 (ESP32-AI radio)");
+    static const char* kHeaders[] = {"icy-metaint", "content-type", "location", "icy-name"};
+    int code = 0;
+    for (int hop = 0; hop < 4; hop++) {  // manual redirects: http <-> https changes the client
+        const bool https = !strncmp(url, "https://", 8);
+        if (!(https ? http.begin(tls, url) : http.begin(plain, url))) {
+            setError("bad URL");
+            return false;
+        }
+        http.collectHeaders(kHeaders, 4);
+        http.addHeader("Icy-MetaData", "1");
+        code = http.GET();
+        if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+            String loc = http.header("location");
+            http.end();
+            if (loc.isEmpty()) break;
+            copyStr(url, sizeof(url), loc.c_str());
+            continue;
+        }
+        break;
+    }
+    if (code != 200) {
+        char e[48];
+        snprintf(e, sizeof(e), "HTTP %d", code);
+        setError(e);
+        Serial.printf("[Radio] Stream refused: %s\n", e);
+        http.end();
+        return false;
+    }
+
+    String ctype = http.header("content-type");
+    ctype.toLowerCase();
+    const int metaint = http.header("icy-metaint").toInt();
+    bool aac = ctype.indexOf("aac") >= 0 || ctype.indexOf("mp4a") >= 0;
+    const bool mp3 = ctype.indexOf("mpeg") >= 0 || ctype.indexOf("mp3") >= 0;
+    if (!aac && !mp3) {
+        String u = url;
+        u.toLowerCase();
+        if (u.indexOf(".aac") >= 0) aac = true;
+        else if (u.indexOf(".mp3") < 0 && ctype.length() && ctype.indexOf("octet") < 0) {
+            char e[64];
+            snprintf(e, sizeof(e), "unsupported stream (%s)", ctype.c_str());
+            setError(e);
+            Serial.printf("[Radio] %s\n", e);
+            http.end();
+            return false;
+        }
+    }
+    _codec = aac ? "AAC" : "MP3";
+    WiFiClient* stream = http.getStreamPtr();
+
+    uint8_t* in = (uint8_t*)heap_caps_malloc(kInBuf, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    int16_t* pcm = (int16_t*)heap_caps_malloc(kPcmMax * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    int16_t* out = (int16_t*)heap_caps_malloc(kOutMax * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    HMP3Decoder mp3dec = nullptr;
+    HAACDecoder aacdec = nullptr;
+    if (aac) aacdec = AACInitDecoder();
+    else mp3dec = MP3InitDecoder();
+    if (!in || !pcm || !out || (!mp3dec && !aacdec)) {
+        setError("out of memory");
+        if (mp3dec) MP3FreeDecoder(mp3dec);
+        if (aacdec) AACFreeDecoder(aacdec);
+        heap_caps_free(in);
+        heap_caps_free(pcm);
+        heap_caps_free(out);
+        http.end();
+        return false;
+    }
+    Serial.printf("[Radio] Connected: %s, %s%s\n", url, _codec, metaint ? ", ICY titles" : "");
+
+    RadioResampler rs;
+    uint32_t rate = 0;
+    size_t fill = 0;           // bytes in `in`
+    int untilMeta = metaint;   // audio bytes before the next ICY metadata block
+    uint32_t lastData = millis();
+    bool played = false;
+    char meta[256 * 16 + 1];
+
+    while (_want && gen == _gen) {
+        // ---- network -> input buffer (ICY metadata stripped out) ----
+        int avail = stream->available();
+        if (avail > 0 && fill < kInBuf) {
+            int want = (int)(kInBuf - fill);
+            if (want > avail) want = avail;
+            if (metaint && want > untilMeta) want = untilMeta;
+            const int got = stream->read(in + fill, want);
+            if (got > 0) {
+                fill += got;
+                lastData = millis();
+                if (metaint) {
+                    untilMeta -= got;
+                    if (untilMeta == 0) {  // 1 length byte (x16) + StreamTitle='...';
+                        int len = -1;
+                        for (int t = 0; t < 200 && len < 0; t++) {
+                            len = stream->read();
+                            if (len < 0) vTaskDelay(pdMS_TO_TICKS(10));
+                        }
+                        len = len < 0 ? 0 : len * 16;
+                        int m = 0;
+                        const uint32_t t0 = millis();
+                        while (m < len && millis() - t0 < 3000) {
+                            const int r = stream->read((uint8_t*)meta + m, len - m);
+                            if (r > 0) m += r;
+                            else vTaskDelay(pdMS_TO_TICKS(5));
+                        }
+                        meta[m] = '\0';
+                        const char* s = strstr(meta, "StreamTitle='");
+                        if (s) {
+                            s += 13;
+                            const char* e = strstr(s, "';");
+                            if (!e) e = s + strlen(s);
+                            setTitle(s, (size_t)(e - s));
+                        }
+                        untilMeta = metaint;
+                    }
+                }
+            }
+        } else if (avail <= 0) {
+            if (!stream->connected() && avail <= 0 && fill < 2048) {
+                setError("stream ended");
+                break;
+            }
+            if (millis() - lastData > kStallMs) {
+                setError("stream stalled");
+                break;
+            }
+        }
+
+        // ---- decode as many frames as the buffer holds ----
+        bool progressed = false;
+        while (fill > 0 && _want && gen == _gen) {
+            const int sync = aac ? AACFindSyncWord(in, (int)fill) : MP3FindSyncWord(in, (int)fill);
+            if (sync < 0) {  // keep the last bytes: a sync word may straddle the boundary
+                if (fill > 4) {
+                    memmove(in, in + fill - 4, 4);
+                    fill = 4;
+                }
+                break;
+            }
+            if (sync > 0) {
+                memmove(in, in + sync, fill - sync);
+                fill -= sync;
+            }
+            unsigned char* ptr = in;
+            int left = (int)fill;
+            int err;
+            int nChans, sr, samps;
+            if (aac) {
+                err = AACDecode(aacdec, &ptr, &left, pcm);
+                AACFrameInfo fi;
+                AACGetLastFrameInfo(aacdec, &fi);
+                nChans = fi.nChans, sr = fi.sampRateOut, samps = fi.outputSamps;
+            } else {
+                err = MP3Decode(mp3dec, &ptr, &left, pcm, 0);
+                MP3FrameInfo fi;
+                MP3GetLastFrameInfo(mp3dec, &fi);
+                nChans = fi.nChans, sr = fi.samprate, samps = fi.outputSamps;
+            }
+            if (err == ERR_AAC_INDATA_UNDERFLOW || err == ERR_MP3_INDATA_UNDERFLOW) break;  // need more bytes
+            if (err != 0 && !(err == ERR_MP3_MAINDATA_UNDERFLOW && !aac)) {
+                // corrupt frame: skip a byte and look for the next sync word
+                memmove(in, in + 1, fill - 1);
+                fill -= 1;
+                continue;
+            }
+            const size_t used = fill - (size_t)left;
+            memmove(in, in + used, (size_t)left);
+            fill = (size_t)left;
+            progressed = true;
+            if (err != 0 || samps <= 0 || nChans < 1 || nChans > 2) continue;
+
+            if ((uint32_t)sr != rate) {
+                rate = (uint32_t)sr;
+                _sampleRate = rate;
+                rs.reset(rate);
+                Serial.printf("[Radio] %s %lu Hz, %d ch\n", _codec, (unsigned long)rate, nChans);
+            }
+            const size_t n = rs.process(pcm, (size_t)samps / nChans, nChans, out, kOutMax);
+            // pace to real time: wait for room in the speaker's radio buffer
+            while (_audio->radioFree() < n && _want && gen == _gen) vTaskDelay(pdMS_TO_TICKS(15));
+            if (!_want || gen != _gen) break;
+            _audio->writeRadio(out, n);
+            if (!played) {
+                played = true;
+                _state = State::Playing;
+            }
+        }
+        if (!progressed && stream->available() <= 0) vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    if (mp3dec) MP3FreeDecoder(mp3dec);
+    if (aacdec) AACFreeDecoder(aacdec);
+    heap_caps_free(in);
+    heap_caps_free(pcm);
+    heap_caps_free(out);
+    http.end();
+    return played;
+}

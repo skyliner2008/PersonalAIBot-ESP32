@@ -35,6 +35,11 @@
 #define AUDIO_MIC_CHUNK_MS      40      // size of each realtimeInput audio message
 #define AUDIO_PLAYBACK_BUFFER   (1024 * 1024)   // PSRAM, ~21 s of 24 kHz speech
 #define AUDIO_CAPTURE_BUFFER    (64 * 1024)     // PSRAM, ~2 s of 16 kHz mic
+#define AUDIO_RADIO_BUFFER      (192 * 1024)    // PSRAM, ~4 s of 24 kHz mono radio (absorbs network jitter)
+#define AUDIO_RADIO_PREBUFFER_MS 1000           // radio starts sounding once this much is queued
+#define RADIO_DUCK_GAIN         0.12f           // radio level while the assistant listens / talks
+#define RADIO_RESUME_MS         6000            // idle this long with the radio on -> back to sleep, radio up
+#define RADIO_WAKE_FACTOR       2.0f            // while the radio plays, wake only on a voice this many times the threshold
 #define AUDIO_PREBUFFER_MS      120     // jitter buffer before playback starts
 #define AUDIO_DEFAULT_VOLUME    70      // 0-100 (ES8311 DAC)
 #define AUDIO_MIC_GAIN          5       // boot value of the ES8311 ADC scale (0-7, x6 dB); NVS "micgain" overrides

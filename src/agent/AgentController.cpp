@@ -11,6 +11,7 @@
 #include <time.h>
 
 #include "../app/AppConfig.h"
+#include "../audio/RadioPlayer.h"
 #include "../ui/FaceScreen.h"
 #include "../ui/UiManager.h"
 #include "../util/JsonAlloc.h"
@@ -588,7 +589,7 @@ void AgentController::buildSystemPrompt(PsString& p) {
                            : "ตอนนี้ Google Search ใช้ไม่ได้ เรื่องอื่นที่ต้องค้นเว็บให้บอกตรงๆ ว่ายังค้นไม่ได้ ";
     p += "เปลี่ยนเสียง/นิสัย/ชื่อด้วย configure_assistant ถ้าผู้ใช้บอกลาหรือราตรีสวัสดิ์ให้เรียก go_to_sleep\n"
          "ควบคุมเครื่อง: เสียงดัง/เบา = set_volume (change +/-), จอสว่าง/มืด = set_brightness (change +/-), "
-         "ความไวไมค์ / ตั้งเวลาพัก / ตั้งเวลาโหมดนาฬิกา = configure_device, พักหน้าจอ / โหมดนาฬิกาเดี๋ยวนี้ = rest_screen, ปิดไมค์ = mute_microphone "
+         "ความไวไมค์ / ตั้งเวลาพัก / ตั้งเวลาโหมดนาฬิกา = configure_device, พักหน้าจอ / โหมดนาฬิกาเดี๋ยวนี้ = rest_screen, วิทยุ = play_radio / stop_radio (เปิดแล้วพูดชื่อสถานีสั้นๆ แล้วเงียบ เพลงที่เล่นอยู่ดูได้จาก get_device_status), ปิดไมค์ = mute_microphone "
          "(เปิดไมค์ด้วยเสียงไม่ได้ บอกผู้ใช้ให้แตะปุ่มไมค์บนจอ)\n"
          "ข้อความที่ขึ้นต้นด้วย [แจ้งเตือนจากระบบ] หรือ [แจ้งเตือนราคาจากระบบ] มาจากอุปกรณ์ ให้แจ้งผู้ใช้ทันทีสั้นๆ\n";
 
@@ -1042,6 +1043,7 @@ void AgentController::handleWebResults() {
             continue;
         }
         const bool ok = result["error"].isNull();
+        if (ok && !strcmp(r.name, "play_radio")) startRadio(result["result"]);
         Serial.printf("[Tool] %s -> %s (%.1f s)\n", r.name, ok ? "ok" : (const char*)(result["error"] | "error"),
                       r.elapsedMs / 1000.0f);
         if (r.tag == kConsoleTag) {
@@ -1231,8 +1233,12 @@ void AgentController::handleAudioInput() {
         if (_sleeping) {  // only listen for a wake-up
             _preroll.push(chunk, kChunk);
             _preroll.trimTo(kWakeBufferSamples * 3 / 4);
-            _wakeVotes = voice ? _wakeVotes + 1 : 0;
-            if (_wakeVotes >= AGENT_WAKE_CHUNKS) wake(true);
+            // radio on: the speaker leaks into the mic - only a voice clearly louder than the radio,
+            // held twice as long, wakes the assistant (a tap always works)
+            const bool radioOn = _audio->radioSounding();
+            const bool loud = radioOn ? level > _threshold * RADIO_WAKE_FACTOR : voice;
+            _wakeVotes = loud ? _wakeVotes + 1 : 0;
+            if (_wakeVotes >= (radioOn ? AGENT_WAKE_CHUNKS * 2 : AGENT_WAKE_CHUNKS)) wake(true);
             recordChunk(chunk, kChunk, voice, false);
             continue;
         }
@@ -1402,6 +1408,7 @@ void AgentController::wake(bool byVoice) {
 void AgentController::handleSleepAndRestarts(uint32_t now) {
     const bool busy = _audio->isPlaying() || sinceMs(now, _lastAgentAudio) < 600 || _awaitingReply;
 
+    handleRadio(now, busy);
     if (_sleepPending && !busy) enterSleep();
     if (_mutePending && !busy) {  // voice can only turn the mic OFF; the screen button turns it on
         _mutePending = false;
@@ -1628,6 +1635,13 @@ void AgentController::publishStatus() {
         const timefmt::Civil c = timefmt::toCivil(now, TIME_UTC_OFFSET_SEC);
         snprintf(st.clock, sizeof(st.clock), "%02d:%02d", c.hour, c.minute);
     }
+    if (gRadio.active()) {
+        char name[64], title[128];
+        gRadio.info(name, sizeof(name), title, sizeof(title));
+        if (gRadio.state() != RadioPlayer::State::Playing) snprintf(st.radio, sizeof(st.radio), "%s (กำลังเชื่อมต่อ...)", name);
+        else if (title[0]) snprintf(st.radio, sizeof(st.radio), "%s - %s", name, title);
+        else snprintf(st.radio, sizeof(st.radio), "%s", name);
+    }
     _face->setStatus(st);
 }
 
@@ -1738,6 +1752,61 @@ int AgentController::setBrightness(int level) {
     return level;
 }
 
+// ============================================================
+// Internet radio: plays while the assistant sleeps, ducked while it listens / talks
+// ============================================================
+
+bool AgentController::stopRadio() {
+    const bool was = gRadio.active();
+    gRadio.stop();
+    return was;
+}
+
+void AgentController::startRadio(JsonObjectConst st) {
+    const char* url = st["url"] | "";
+    const char* name = st["station"] | "";
+    if (!gRadio.play(url, name)) return;
+    const SettingsData s = gSettings.get();
+    if (strcmp(s.radioUrl, url) != 0 || strcmp(s.radioName, name) != 0) {  // "เปิดวิทยุ" resumes it
+        gSettings.update([&](SettingsData& d) {
+            strncpy(d.radioUrl, url, sizeof(d.radioUrl) - 1);
+            d.radioUrl[sizeof(d.radioUrl) - 1] = '\0';
+            strncpy(d.radioName, name, sizeof(d.radioName) - 1);
+            d.radioName[sizeof(d.radioName) - 1] = '\0';
+        });
+    }
+    noteActivity();
+    Serial.printf("[Radio] Starting %s\n", name);
+}
+
+void AgentController::handleRadio(uint32_t now, bool busy) {
+    if (!gRadio.active()) {
+        if (_radioWasOn) {  // stopped, or gave up after retries
+            _radioWasOn = false;
+            _audio->setRadioGain(1.0f);
+            if (gRadio.state() == RadioPlayer::State::Error) {
+                char msg[128];
+                snprintf(msg, sizeof(msg), "เปิดวิทยุไม่ได้ (%s)", gRadio.lastError());
+                _face->setHint(msg, 5000);
+                if (!_sleeping) {
+                    PsString a = "[แจ้งเตือนจากระบบ] ";
+                    a += msg;
+                    a += " — บอกผู้ใช้สั้นๆ";
+                    _announcements.push_back(a);
+                }
+            }
+        }
+        return;
+    }
+    _radioWasOn = true;
+    _audio->setRadioGain(_sleeping ? 1.0f : RADIO_DUCK_GAIN);
+    // talked to the assistant and nothing more to say: back to the radio (session closes, no tokens)
+    if (!_sleeping && !busy && !_vadOpen && !_awaitingReply && !_ringing && !_sleepPending &&
+        sinceMs(now, _lastActivity) > RADIO_RESUME_MS) {
+        enterSleep();
+    }
+}
+
 int AgentController::volume() { return _audio->volume(); }
 int AgentController::brightness() { return gSettings.get().brightness; }
 int AgentController::micGain() { return gSettings.get().micGain; }
@@ -1767,6 +1836,14 @@ void AgentController::fillStatus(JsonObject out) {
     out["wifi_connected"] = (bool)_wifiUp;
     if (_wifiUp) out["wifi_rssi_dbm"] = WiFi.RSSI();
     out["speaker_volume"] = _audio->volume();
+    if (gRadio.active()) {  // "เพลงอะไรอยู่" can be answered from here
+        char rn[64], rt[128];
+        gRadio.info(rn, sizeof(rn), rt, sizeof(rt));
+        JsonObject ro = out["radio"].to<JsonObject>();
+        ro["station"] = rn;
+        ro["now_playing"] = rt;
+        ro["state"] = gRadio.stateName();
+    }
     out["screen_brightness"] = _cfg.brightness;
     out["mic_muted"] = (bool)_muted;
     out["live_model"] = liveModelId(_activeModel);
@@ -1795,6 +1872,16 @@ void AgentController::fillDiagnostics(JsonObject out) {
     out["muted"] = (bool)_muted;
     out["sleeping"] = (bool)_sleeping;
     out["power_save"] = (bool)_powerSave;
+    out["radio"] = gRadio.stateName();
+    if (gRadio.active()) {
+        char rn[64], rt[128];
+        gRadio.info(rn, sizeof(rn), rt, sizeof(rt));
+        out["radio_station"] = rn;
+        out["radio_title"] = rt;
+        out["radio_codec"] = gRadio.codec();
+        out["radio_rate"] = gRadio.sampleRate();
+    }
+    if (gRadio.lastError()[0]) out["radio_error"] = gRadio.lastError();
     out["auth_error"] = _fatalError;
     out["error_text"] = _errorText;
     out["hold_s"] = _holdUntil > sec ? _holdUntil - sec : 0;

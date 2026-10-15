@@ -106,6 +106,7 @@ public:
     bool setExpression(const char* emotion) override;
     void requestSleep() override { _sleepPending = true; }
     void requestMicMute() override { _mutePending = true; }
+    bool stopRadio() override;
     bool applyAssistantChange(const AssistantChange& change, JsonObject result) override;
     void describeAssistant(JsonObject out) override;
 
@@ -308,6 +309,9 @@ private:
     void enterSleep();
     void enterPowerSave();
     void leavePowerSave();
+    void startRadio(JsonObjectConst station);
+    void handleRadio(uint32_t now, bool busy);
+    bool _radioWasOn = false;
     void wake(bool byVoice);
     void startFreshSession(const char* hint);
     void enterHold(uint32_t sec);

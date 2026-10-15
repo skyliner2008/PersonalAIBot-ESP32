@@ -153,5 +153,7 @@ bool checkPriceAlerts(const ToolEnv& env, String& message);
 bool hasPriceAlerts(const ToolEnv& env);
 void runMt5Account(JsonObjectConst a, JsonDocument& out, CardData& card);
 void runMt5Trade(JsonObjectConst a, JsonDocument& out, CardData& card);
+/** Find an Internet radio station (Radio Browser) - the agent starts playback from the result. */
+void runRadio(JsonObjectConst a, JsonDocument& out, CardData& card);
 
 }  // namespace webtools

@@ -24,6 +24,8 @@ SOFTWARE.
 Third-party components keep their own licenses:
   - Thai bitmap fonts in src/display/fonts are generated from TH Sarabun New
     (Software Industry Promotion Agency, Thailand - free Thai national font).
+  - MP3/AAC decoders in lib/helix-mp3 and lib/helix-aac: RealNetworks Helix,
+    RealNetworks Public Source License 1.0 (RPSL) - see lib/helix-*/src/RPSL.txt.
   - Libraries fetched by PlatformIO (LovyanGFX, ArduinoJson, Adafruit NeoPixel)
     and the Arduino-ESP32 / ESP-IDF framework are covered by their own licenses.
   - Data services used at runtime (Google Gemini API, Open-Meteo, TradingView,
