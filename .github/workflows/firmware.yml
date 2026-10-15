@@ -1,22 +1,11 @@
-# Build the firmware on every push / pull request. When FIRMWARE_VERSION in src/app/AppConfig.h is a
-# version that has no "v<version>" tag yet, publish a GitHub Release with the factory image attached.
-#
-#   Release a new version:  bump FIRMWARE_VERSION -> commit -> git push        (that's all)
-#   (Releases are immutable here: a published version cannot get new files, so bump the version instead.)
+# MANUAL ONLY: GitHub Actions cannot run on this account (locked for billing), so releases are published
+# from a PC with `python tools/publish_release.py` (draft -> upload -> publish, immutable releases).
+# This workflow is kept for when Actions works again: Actions -> Firmware -> Run workflow builds the
+# image and, if FIRMWARE_VERSION has no tag yet, publishes it the same way.
+#   To make it automatic again, add:   push: { branches: [main] }   under "on:".
 name: Firmware
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "include/**"
-      - "platformio.ini"
-      - "tools/make_release.py"
-      - "tools/pio_strip_paths.py"
-      - "host_tests/**"
-      - ".github/workflows/firmware.yml"
-  pull_request:
   workflow_dispatch:
 
 permissions:

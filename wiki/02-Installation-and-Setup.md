@@ -21,7 +21,10 @@ status: reference
 
 ไฟล์ factory เขียนตั้งแต่ `0x0` จึงล้างค่าตั้งค่าเดิมในบอร์ดด้วย — ถ้าจะอัปเดตโดยเก็บค่าเดิม ให้ build จากซอร์ส (`pio run -t upload`)
 
-**ผู้ดูแลโปรเจกต์ — ออก release:** อัตโนมัติด้วย GitHub Actions (`.github/workflows/firmware.yml`) — แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` แล้ว push → ได้ Release `v<เวอร์ชัน>` พร้อมไฟล์ factory (เวอร์ชันที่มี tag แล้วจะไม่ออกซ้ำ; Release เป็น immutable — ขั้นตอนต้องเป็น ร่าง → แนบไฟล์ → เผยแพร่ และชื่อ tag ที่เคยเผยแพร่ใช้ซ้ำไม่ได้ จึงข้าม v3.2.0 ไปเป็น v3.2.1) — สร้างในเครื่องเองได้ด้วย `python tools/make_release.py` → `dist/*.bin` + `.sha256`
+**ผู้ดูแลโปรเจกต์ — ออก release (แบบแมนนวล):** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py`
+(build → Release แบบร่าง → แนบ `.bin` + `.sha256` → เผยแพร่ → ดาวน์โหลดกลับมาเทียบ sha256) — ใช้ token ที่ Git Credential Manager เก็บไว้ ไม่แสดงออกมา
+- **ทำไมไม่อัตโนมัติ:** บัญชี GitHub ถูกล็อกเรื่อง billing (แก้หลายรอบไม่ผ่าน) GitHub Actions จึงรันไม่ได้ — workflow `.github/workflows/firmware.yml` ตั้งเป็นกดรันเองเท่านั้น (ใส่ `push: {branches: [main]}` กลับเมื่อ Actions ใช้ได้)
+- **Immutable releases:** แนบไฟล์ได้เฉพาะตอนเป็นร่าง และชื่อ tag ที่เคยเผยแพร่แล้วใช้ซ้ำไม่ได้ (v3.2.0 ถูกล็อกถาวร → ข้ามไป v3.2.1) — ทุก Release ต้องเปลี่ยนเลขเวอร์ชัน
 (สคริปต์ไม่ยอมสร้างถ้า `include/secrets.h` มีค่าจริง, สแกนหา key ในไฟล์ และ `tools/pio_strip_paths.py` ตัด path เครื่องผู้ build ออกจากเฟิร์มแวร์)
 
 ## Prerequisites Overview
