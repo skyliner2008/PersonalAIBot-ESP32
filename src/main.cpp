@@ -169,12 +169,18 @@ static void uiTask(void*) {
             lastBattery = now;
             agent.setBattery(readBatteryPercent());
         }
-        gUi.frame(now);
+        // power save: the clock face changes once a second - redraw (SPI push) only then, poll slower
+        static uint32_t lastFrame = 0;
+        const bool clockFace = agent.powerSave() && gUi.atRoot();
+        if (!clockFace || now - lastFrame >= 500 || shotRequested) {
+            lastFrame = now;
+            gUi.frame(now);
+        }
         if (shotRequested) {
             shotRequested = false;
             dumpScreenshot();
         }
-        vTaskDelay(pdMS_TO_TICKS(16));
+        vTaskDelay(pdMS_TO_TICKS(clockFace ? 40 : 16));
     }
 }
 
@@ -264,6 +270,8 @@ static void printConfig() {
     d["volume"] = s.volume;
     d["brightness"] = s.brightness;
     d["sleep"] = s.sleepMinutes;
+    d["clock"] = s.clockMinutes;
+    d["dimlevel"] = s.dimBrightness;
     d["rotation"] = s.rotation;
     d["invert"] = s.lcdInvert;
     d["consolidate"] = s.consolidate;
@@ -365,7 +373,7 @@ static int indexOrFind(const String& v, int (*find)(const char*)) {
 static bool handleSet(const String& field, const String& value) {
     static const char* const kFields[] = {"ssid", "pass", "key", "agent", "user", "voice", "profile",
                                           "personality", "gender", "eye", "model", "thinking", "textmodel",
-                                          "volume", "brightness", "sleep", "rotation", "invert", "consolidate",
+                                          "volume", "brightness", "sleep", "clock", "dimlevel", "rotation", "invert", "consolidate",
                                           "search", "micgain", "touch", "mt5url", "mt5token", "mt5trade",
                                           "mt5maxlot", "finance"};
     bool known = false;
@@ -409,6 +417,8 @@ static bool handleSet(const String& field, const String& value) {
         else if (field == "volume") d.volume = (uint8_t)constrain(value.toInt(), 0, 100);
         else if (field == "brightness") d.brightness = (uint8_t)constrain(value.toInt(), 5, 100);
         else if (field == "sleep") d.sleepMinutes = (uint8_t)constrain(value.toInt(), 0, 120);
+        else if (field == "clock") d.clockMinutes = (uint8_t)constrain(value.toInt(), 0, 120);
+        else if (field == "dimlevel") d.dimBrightness = (uint8_t)constrain(value.toInt(), 1, 60);
         else if (field == "rotation") rotation = d.rotation = value.toInt() == 3 ? 3 : 1;
         else if (field == "invert") invert = d.lcdInvert = on;
         else if (field == "consolidate") d.consolidate = on;
@@ -447,13 +457,13 @@ static void handleConsoleLine(String line) {
 
     if (cmd == "help") {
         Serial.println("status | audio | tone [hz] [ms] | mic [sec] | vol <0-100> | i2c | regs | reg <r> [v]");
-        Serial.println("tool <name> [json] | say <u|a|s> <text> | expr <emotion> | sleep | wake | screenshot");
+        Serial.println("tool <name> [json] | say <u|a|s> <text> | expr <emotion> | sleep | powersave | wake | screenshot");
         Serial.println("ask <text> (type to the assistant) | mute (toggle mic) | retry | new (fresh session) | memclear <facts|history>");
         Serial.println("rec [sec] (record what the mic sends to Gemini: RECINFO <json> + RECORD <rate> <bytes> + PCM + END)");
         Serial.println("ui tap x y | ui long x y | ui drag x0 y0 x1 y1 | ui open <menu|wifi|apikey|agent|user|profile|voice|info>");
         Serial.println("ui type <text> | ui back | ui home");
         Serial.println("set <ssid|pass|key|agent|user|voice|profile|personality|gender|eye|model|thinking|textmodel|");
-        Serial.println("     volume|brightness|sleep|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|mt5url|mt5token|mt5trade|mt5maxlot> <value>  (mt5url/mt5token \"-\" = clear)");
+        Serial.println("     volume|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|mt5url|mt5token|mt5trade|mt5maxlot> <value>  (mt5url/mt5token \"-\" = clear)");
         Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
         Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min> | searchretry");
         Serial.println("time <unix-epoch> (set clock offline) | reboot");
@@ -552,6 +562,8 @@ static void handleConsoleLine(String line) {
         String r;
         agent.runTool("go_to_sleep", "{}", r);
         Serial.println(r);
+    } else if (cmd == "powersave") {
+        agent.requestPowerSave();  // sleep now + dim clock face (voice or a tap wakes it)
     } else if (cmd == "wake") {
         agent.requestWake();
     } else if (cmd == "ui") {

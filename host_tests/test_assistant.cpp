@@ -161,15 +161,29 @@ TEST(task_list) {
 class MockDevice : public DeviceOps {
 public:
     uint32_t now = kNow;
-    int volume = 70, brightness = 80;
+    int volumeLevel = 70, brightnessLevel = 80;
     std::string led, expression, voice = "Aoede", agentName = "ไข่มุก", userName;
     bool sleepRequested = false;
     int applied = 0;
 
     uint32_t nowEpoch() override { return now; }
     bool setLedColor(const char* color) override { return led = color, true; }
-    int setVolume(int level) override { return volume = level; }
-    int setBrightness(int level) override { return brightness = level; }
+    int setVolume(int level) override { return volumeLevel = level; }
+    int setBrightness(int level) override { return brightnessLevel = level; }
+    int volume() override { return volumeLevel; }
+    int brightness() override { return brightnessLevel; }
+    int mic = 5, sleepMin = 3, clockMin = 5, dim = 8;
+    bool powerSaveNow = false, micMuteRequested = false;
+    int micGain() override { return mic; }
+    void configureDevice(const DeviceChange& c, JsonObject r) override {
+        if (c.micGain >= 0) mic = c.micGain;
+        if (c.sleepMinutes >= 0) sleepMin = c.sleepMinutes;
+        if (c.clockMinutes >= 0) clockMin = c.clockMinutes;
+        if (c.dimBrightness >= 0) dim = c.dimBrightness;
+        powerSaveNow = c.powerSaveNow;
+        r["mic_sensitivity"] = mic;
+    }
+    void requestMicMute() override { micMuteRequested = true; }
     void fillStatus(JsonObject out) override { out["battery_percent"] = 80; }
     bool setExpression(const char* e) override { return expression = e, true; }
     void requestSleep() override { sleepRequested = true; }
@@ -236,7 +250,7 @@ TEST(tool_declarations_per_model) {
     size_t count;
     bool search;
     const size_t bytes = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)37);  // 20 core + 5 live data + 6 utilities + 6 finance pack (MT5 off by default)
+    CHECK_EQ(count, (size_t)39);  // 22 core (incl. configure_device, mute_microphone) + 5 live data + 6 utilities + 6 finance (MT5 off)
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
@@ -257,13 +271,13 @@ TEST(tool_declarations_per_model) {
     // optional packs: finance off -> 31; MT5 read-only -> +1; trading only when enabled -> +1
     rig.tools.setPacks(false, false, false);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)31);
+    CHECK_EQ(count, (size_t)33);
     rig.tools.setPacks(true, true, false);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)38);
+    CHECK_EQ(count, (size_t)40);
     rig.tools.setPacks(true, true, true);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)39);
+    CHECK_EQ(count, (size_t)41);
     rig.tools.setPacks(true, false, false);
 
     behaviors(ToolBehavior::NonBlocking, false, expr, recall, count, search);
@@ -356,9 +370,27 @@ TEST(tools_assistant_and_device) {
     CHECK(!callTool(rig.tools, "set_expression", "{\"emotion\":\"hungry\"}", r));
 
     CHECK(callTool(rig.tools, "set_brightness", "{\"level\":1}", r));
-    CHECK_EQ(rig.dev.brightness, 5);
+    CHECK_EQ(rig.dev.brightnessLevel, 5);
     CHECK(callTool(rig.tools, "set_volume", "{\"level\":150}", r));
-    CHECK_EQ(rig.dev.volume, 100);
+    CHECK_EQ(rig.dev.volumeLevel, 100);
+    // relative control by voice: "ลดเสียงลงหน่อย" / "เพิ่มความสว่าง"
+    CHECK(callTool(rig.tools, "set_volume", "{\"change\":-30}", r));
+    CHECK_EQ(rig.dev.volumeLevel, 70);
+    CHECK_EQ(r["result"]["previous"] | 0, 100);
+    CHECK(callTool(rig.tools, "set_volume", "{\"change\":-90}", r));
+    CHECK_EQ(rig.dev.volumeLevel, 0);
+    CHECK(callTool(rig.tools, "set_brightness", "{\"change\":20}", r));
+    CHECK_EQ(rig.dev.brightnessLevel, 25);
+    CHECK(!callTool(rig.tools, "set_brightness", "{}", r));
+    CHECK(callTool(rig.tools, "configure_device", "{\"mic_change\":1,\"clock_minutes\":10,\"dim_brightness\":200}", r));
+    CHECK_EQ(rig.dev.mic, 6);
+    CHECK_EQ(rig.dev.clockMin, 10);
+    CHECK_EQ(rig.dev.dim, 60);
+    CHECK(callTool(rig.tools, "configure_device", "{\"power_save_now\":true}", r));
+    CHECK(rig.dev.powerSaveNow);
+    CHECK(!callTool(rig.tools, "configure_device", "{}", r));
+    CHECK(callTool(rig.tools, "mute_microphone", "{}", r));
+    CHECK(rig.dev.micMuteRequested);
     CHECK(callTool(rig.tools, "control_led", "{\"color\":\"purple\"}", r));
     CHECK(!callTool(rig.tools, "control_led", "{\"color\":\"pink\"}", r));
     CHECK(callTool(rig.tools, "go_to_sleep", "{}", r));

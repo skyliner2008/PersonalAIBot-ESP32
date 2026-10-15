@@ -940,6 +940,14 @@ class Studio:
         ttk.Label(row, text="พักเมื่อเงียบ (นาที)", width=18).pack(side="left")
         ttk.Spinbox(row, from_=0, to=120, textvariable=self.sleep_var, width=6).pack(side="left")
         ttk.Label(row, text="0 = ไม่พัก", style="Dim.TLabel").pack(side="left", padx=6)
+        self.clock_var = tk.IntVar(value=5)
+        row = ttk.Frame(df)
+        row.pack(fill="x", pady=2)
+        ttk.Label(row, text="นาฬิกาหลังพัก (นาที)", width=18).pack(side="left")
+        ttk.Spinbox(row, from_=0, to=120, textvariable=self.clock_var, width=6).pack(side="left")
+        ttk.Label(row, text="พักครบเวลานี้ → นาฬิกา + หรี่จอ (0 = ไม่ใช้)", style="Dim.TLabel").pack(side="left", padx=6)
+        self.dim_var = tk.IntVar(value=8)
+        self._scale(df, "แสงจอตอนเป็นนาฬิกา", self.dim_var, 1, 60, lambda: self.send(f"set dimlevel {self.dim_var.get()}"))
         self.rot_var = tk.BooleanVar()
         ttk.Checkbutton(df, text="หมุนจอ 180°", variable=self.rot_var).pack(anchor="w")
         ttk.Label(df, text="สีจอบอร์ดไม่ตรงกับภาพในแอป (พื้นขาว/ตาน้ำเงิน) → แท็บ 🖥️ หน้าจอ → 🌓 สลับสีจอบอร์ด",
@@ -1058,6 +1066,8 @@ class Studio:
         self.bright_var.set(int(c.get("brightness", 80)))
         self.micgain_var.set(int(c.get("micgain", 5)))
         self.sleep_var.set(int(c.get("sleep", 3)))
+        self.clock_var.set(int(c.get("clock", 5)))
+        self.dim_var.set(int(c.get("dimlevel", 8)))
         self.rot_var.set(c.get("rotation", 1) == 3)
         self.finance_var.set(bool(c.get("finance", True)))
         self.mt5url_var.set(c.get("mt5url", ""))
@@ -1116,6 +1126,11 @@ class Studio:
         v["brightness"] = str(self.bright_var.get())
         v["micgain"] = str(self.micgain_var.get())
         v["sleep"] = str(self.sleep_var.get())
+        try:
+            v["clock"] = str(max(0, min(120, int(self.clock_var.get()))))
+        except (tk.TclError, ValueError):
+            v["clock"] = None
+        v["dimlevel"] = str(self.dim_var.get())
         v["rotation"] = "3" if self.rot_var.get() else "1"
         v["finance"] = "1" if self.finance_var.get() else "0"
         v["mt5url"] = self.mt5url_var.get().strip() or "-"
@@ -1258,6 +1273,7 @@ class Studio:
                     "volume": int(s.get("volume", 70)), "brightness": int(s.get("brightness", 80)),
                     "micgain": int(s.get("micgain", 5)),
                     "sleep": int(s.get("sleep", 3)), "rotation": int(s.get("rotation", 1)),
+                    "clock": int(s.get("clock", 5)), "dimlevel": int(s.get("dimlevel", 8)),
                     "finance": s.get("finance", "1") == "1",
                     "mt5url": "" if s.get("mt5url", "-") == "-" else s.get("mt5url"),
                     "mt5trade": False,  # voice trading is never enabled from a file: tick it (with the warning)

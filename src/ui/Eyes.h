@@ -37,6 +37,7 @@ public:
     Mode mode() const { return _mode; }
 
     void setColor(uint16_t rgb565) { _color = rgb565; }
+    uint16_t color() const { return _color; }
     void setCenterY(float y) { _centerY.target = y; }
     /** 0..1 speech level for the talking bounce. */
     void setSpeechLevel(float level) { _speech = level; }

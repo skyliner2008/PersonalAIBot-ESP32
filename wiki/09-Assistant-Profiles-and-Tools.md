@@ -70,7 +70,7 @@ status: implemented
 
 ---
 
-## 3. Tools ของผู้ช่วยส่วนตัว (37–39 ฟังก์ชัน + Google Search)
+## 3. Tools ของผู้ช่วยส่วนตัว (39–41 ฟังก์ชัน + Google Search)
 
 > v3.1: +5 tools ข้อมูลสดพร้อมการ์ดกราฟิก — `get_weather`, `get_oil_price`, `get_market_quote`, `convert_currency`, `get_news` → [[11-Data-Tools-and-Cards]]
 > v3.2: +14 tools พอร์ตจาก PersonalAIBot — `calculate`, `convert_units`, `get_world_time`, `get_location`, `search_knowledge`, `notes` + finance pack (`market_overview`, `market_analysis`, `market_scan`, `economic_calendar`, `position_size`, `price_alert`) + MT5 (`mt5_account`, `mt5_trade` — เปิดเมื่อตั้งค่า) → [[11-Data-Tools-and-Cards#2) Tools ที่พอร์ตจาก PersonalAIBot (`composeApp`)]]
@@ -81,7 +81,7 @@ status: implemented
 | เวลา | `set_timer` (นาที/วินาที), `set_reminder` (`YYYY-MM-DD HH:MM` / `HH:MM` / `tomorrow HH:MM`, repeat none/daily/weekdays/weekly), `list_reminders`, `cancel_reminder` |
 | งาน (to-do) | `add_task` (priority 1-3, due), `list_tasks`, `update_task` (done/undone/delete/rename) |
 | ผู้ช่วย | `get_device_status`, `set_expression` (14 อารมณ์ของดวงตา), `configure_assistant`, `list_assistant_options` |
-| อุปกรณ์ | `set_volume`, `set_brightness`, `control_led`, `go_to_sleep` |
+| อุปกรณ์ | `set_volume` / `set_brightness` (`level` หรือ `change` +/- เช่น "ลดเสียงลงหน่อย" = -10), `configure_device` (ความไวไมค์ / mic_change, sleep_minutes, clock_minutes, dim_brightness, power_save_now), `mute_microphone` (ปิดได้อย่างเดียว — เปิดต้องกดปุ่ม 🎤 บนจอ), `control_led`, `go_to_sleep` |
 | ในตัว | **Google Search** (ข่าว อากาศ ข้อมูลล่าสุด) |
 
 - คำอธิบาย tools เป็นภาษาอังกฤษแบบสั้น (≈6 KB JSON ≈ 1.6k tokens) เพราะถูกนับทุก turn

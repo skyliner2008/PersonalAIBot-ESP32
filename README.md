@@ -4,13 +4,13 @@
 
 ### A Thai-speaking, real-time voice AI assistant on an ESP32-S3 touch screen
 
-**Gemini Live voice** · **on-device long-term memory** · **39 tools with on-screen cards** · **PC companion app**
+**Gemini Live voice** · **on-device long-term memory** · **41 tools with on-screen cards** · **PC companion app**
 
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
 [![Firmware](https://img.shields.io/badge/firmware-v3.2.1-3ddc84)](src/app/AppConfig.h)
-[![Tests](https://img.shields.io/badge/host%20tests-1%2C421%20checks%20passing-3ddc84)](host_tests/)
+[![Tests](https://img.shields.io/badge/host%20tests-1%2C438%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -33,7 +33,7 @@ Everything runs on the board itself: **no server, no Raspberry Pi, no vector dat
 | 🎙️ **Real-time voice** | Full-duplex audio over a TLS-verified WebSocket (mic 16 kHz up, voice 24 kHz down). Local VAD + AGC, barge-in by tapping the screen. |
 | 🧠 **Long-term memory** | Facts, a small knowledge graph (GraphRAG-lite, BM25 search) and a daily conversation log stored on MicroSD — or internal flash when there is no card. Background consolidation with Flash-Lite. |
 | 🧑‍💼 **Personalities** | 8 ready-made profiles, 30 voices, 7 personalities, male/female Thai politeness (ค่ะ / ครับ). Change them by touch or just by asking. |
-| 👀 **Expressive face** | Cozmo-style eyes with 14 emotions, Thai subtitles, on-screen mic button, dark theme. |
+| 👀 **Expressive face** | Cozmo-style eyes with 14 emotions, Thai subtitles, on-screen mic button, dark theme. After a while asleep it turns into a **dim clock** (power save) and wakes up — full brightness — as soon as it hears you. |
 | 📊 **Live data cards** | Weather + PM2.5, Thai fuel prices, stocks / gold / crypto / FX, technical analysis, market scanner, economic calendar, news, Wikipedia — drawn as graphics while the AI talks. |
 | ⏰ **Personal assistant** | Timers, reminders (daily / weekdays / weekly), to-do list, notes, price alerts that speak up, calculator, unit & world-time conversion. |
 | 📈 **MetaTrader 5** *(optional)* | Read your MT5 account through [mt5-core-server](#-metatrader-5-optional); voice trading is **off by default** and needs a spoken two-step confirmation. |
@@ -131,6 +131,8 @@ On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio 
 | Tap the screen or press BOOT while it speaks | Stop talking (barge-in) |
 | Tap while asleep / paused | Wake up / reconnect immediately |
 | Long-press the screen 1.5 s | Fresh conversation (long-term memory stays) |
+| Silent for 3 min → asleep (closed eyes); 5 more min → **dim clock** | Speak or tap to wake: full brightness + eyes open (times: ⚙ menu / Studio / by voice) |
+| "turn it down a bit", "brighter", "mute the mic" | Volume / brightness up-down, mic off by voice — turning the mic **on** is only possible with the 🎤 button |
 | Tap a data card | Close it (cards also close after ~30 s) |
 
 **Things to try** *(Thai shown, English works too)*
@@ -152,13 +154,13 @@ On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio 
 The model calls these by itself. Data tools run in a background task and draw a card while the AI keeps talking.
 
 <details>
-<summary><b>All 39 tools</b> (37 by default; the 2 MT5 tools appear when an MT5 server is configured)</summary>
+<summary><b>All 41 tools</b> (39 by default; the 2 MT5 tools appear when an MT5 server is configured)</summary>
 
 | Group | Tools |
 |---|---|
 | **Memory** | `save_memory` · `save_relation` · `recall_memory` · `forget_memory` · `recall_conversation` |
 | **Time & tasks** | `set_timer` · `set_reminder` · `list_reminders` · `cancel_reminder` · `add_task` · `list_tasks` · `update_task` |
-| **Assistant & device** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` · `control_led` · `go_to_sleep` |
+| **Assistant & device** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (level or +/- change) · `configure_device` (mic, sleep, clock mode) · `mute_microphone` · `control_led` · `go_to_sleep` |
 | **Live data** 🖼️ | `get_weather` (Open-Meteo + PM2.5, IP location by default) · `get_oil_price` (Bangchak) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
 | **Utilities** 🖼️ | `calculate` · `convert_units` (incl. Thai ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (DST-aware) · `get_location` · `search_knowledge` (Wikipedia th/en) · `notes` |
 | **Finance pack** 🖼️ | `market_overview` (+ crypto Fear & Greed) · `market_analysis` (RSI, MACD, EMA, ADX, multi-timeframe, P/E, dividend) · `market_scan` (gainers / losers / volume / RSI, TH-US-crypto) · `economic_calendar` (ForexFactory, Thai time) · `position_size` · `price_alert` |
@@ -233,7 +235,7 @@ Portable modules (memory, tools, scheduler, tasks, personas, model fallback, cal
 host_tests\run_tests.bat
 ```
 
-28 suites · 1,421 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+28 suites · 1,438 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
 
 ## 📁 Project layout
 

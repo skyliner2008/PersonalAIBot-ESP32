@@ -39,6 +39,18 @@ struct AssistantChange {
     }
 };
 
+/** Validated device settings change from configure_device (-1 / false = unchanged). */
+struct DeviceChange {
+    int micGain = -1;          // ES8311 mic sensitivity 0-7
+    int sleepMinutes = -1;     // silence before sleeping (0 = never)
+    int clockMinutes = -1;     // asleep this long -> clock face + dim screen (0 = never)
+    int dimBrightness = -1;    // brightness % in power save
+    bool powerSaveNow = false; // go to sleep after this reply and show the clock right away
+    bool any() const {
+        return micGain >= 0 || sleepMinutes >= 0 || clockMinutes >= 0 || dimBrightness >= 0 || powerSaveNow;
+    }
+};
+
 /** Hardware / app actions the tools can trigger (implemented by the firmware, mocked in tests). */
 class DeviceOps {
 public:
@@ -47,9 +59,15 @@ public:
     virtual bool setLedColor(const char* color) = 0;
     virtual int setVolume(int level) = 0;           // returns the applied level
     virtual int setBrightness(int level) = 0;       // returns the applied level
+    virtual int volume() = 0;                       // current speaker volume 0-100
+    virtual int brightness() = 0;                   // current screen brightness 5-100
+    virtual int micGain() = 0;                      // current mic sensitivity 0-7
+    /** Apply a validated change; fills `result` with the new values. */
+    virtual void configureDevice(const DeviceChange& change, JsonObject result) = 0;
     virtual void fillStatus(JsonObject out) = 0;    // battery, Wi-Fi, storage, ...
     virtual bool setExpression(const char* emotion) = 0;
     virtual void requestSleep() = 0;                // after the current reply
+    virtual void requestMicMute() = 0;              // mic off after the current reply (only the screen turns it on)
     virtual bool applyAssistantChange(const AssistantChange& change, JsonObject result) = 0;
     virtual void describeAssistant(JsonObject out) = 0;
 };
@@ -117,6 +135,8 @@ private:
     bool listAssistantOptions(JsonObjectConst a, JsonObject r, const char*& e);
     bool setVolume(JsonObjectConst a, JsonObject r, const char*& e);
     bool setBrightness(JsonObjectConst a, JsonObject r, const char*& e);
+    bool configureDevice(JsonObjectConst a, JsonObject r, const char*& e);
     bool controlLed(JsonObjectConst a, JsonObject r, const char*& e);
     bool goToSleep(JsonObjectConst a, JsonObject r, const char*& e);
+    bool muteMicrophone(JsonObjectConst a, JsonObject r, const char*& e);
 };

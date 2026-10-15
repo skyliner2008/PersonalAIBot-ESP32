@@ -237,7 +237,8 @@ void AgentController::applySettings(bool initial) {
 
     if (initial || n.volume != _cfg.volume) _audio->setVolume(n.volume);
     if (initial || n.micGain != _cfg.micGain) _audio->setMicGain(n.micGain);
-    if (initial || n.brightness != _cfg.brightness) gUi.setBrightness(n.brightness);
+    if ((initial || n.brightness != _cfg.brightness) && !_powerSave) gUi.setBrightness(n.brightness);
+    if (_powerSave && n.dimBrightness != _cfg.dimBrightness) gUi.setBrightness(n.dimBrightness);
     if (initial || n.eyeColor != _cfg.eyeColor) _face->setEyeColor(eyeColor565(n.eyeColor));
     gUi.setTouchTransform(n.touchMap);
     _tools->setPacks(n.financeTools, n.mt5Url[0] != 0, n.mt5Url[0] != 0 && n.mt5Trade);
@@ -393,6 +394,10 @@ void AgentController::handleCommands() {
                     Serial.println("[Agent] Google Search offered again - fresh session");
                     if (_gemini.started()) startFreshSession("ลองเปิด Google Search อีกครั้ง");
                 }
+                break;
+            case CMD_POWER_SAVE:  // console "powersave": sleep now and show the clock
+                if (!_sleeping) enterSleep();
+                enterPowerSave();
                 break;
             case CMD_RESTART:
                 Serial.println("[Agent] Restarting: closing the Live session and flushing memory");
@@ -581,6 +586,9 @@ void AgentController::buildSystemPrompt(PsString& p) {
     p += searchAvailable() ? "เรื่องอื่นที่ต้องใช้ข้อมูลล่าสุดใช้ Google Search "
                            : "ตอนนี้ Google Search ใช้ไม่ได้ เรื่องอื่นที่ต้องค้นเว็บให้บอกตรงๆ ว่ายังค้นไม่ได้ ";
     p += "เปลี่ยนเสียง/นิสัย/ชื่อด้วย configure_assistant ถ้าผู้ใช้บอกลาหรือราตรีสวัสดิ์ให้เรียก go_to_sleep\n"
+         "ควบคุมเครื่อง: เสียงดัง/เบา = set_volume (change +/-), จอสว่าง/มืด = set_brightness (change +/-), "
+         "ความไวไมค์ / เวลาพัก / โหมดนาฬิกาประหยัดไฟ = configure_device, ปิดไมค์ = mute_microphone "
+         "(เปิดไมค์ด้วยเสียงไม่ได้ บอกผู้ใช้ให้แตะปุ่มไมค์บนจอ)\n"
          "ข้อความที่ขึ้นต้นด้วย [แจ้งเตือนจากระบบ] หรือ [แจ้งเตือนราคาจากระบบ] มาจากอุปกรณ์ ให้แจ้งผู้ใช้ทันทีสั้นๆ\n";
 
     const uint32_t now = nowEpoch();
@@ -1351,12 +1359,35 @@ void AgentController::enterSleep() {
     _wakeVotes = 0;
     _preroll.clear();
     if (_gemini.started()) _gemini.stop();  // no session = no tokens
+    _sleepSince = millis();
     _face->setHint("พักแล้ว แตะหรือพูดเพื่อปลุก", 2500);
     Serial.println("[Agent] Sleeping");
+    if (_powerSaveAfterSleep) {
+        _powerSaveAfterSleep = false;
+        enterPowerSave();
+    }
+}
+
+// Asleep for clockMinutes: clock face + dimmed backlight. Voice (local VAD) or a tap wakes it.
+void AgentController::enterPowerSave() {
+    if (_powerSave || !_sleeping) return;
+    _powerSave = true;
+    _face->setPowerSave(true);
+    gUi.setBrightness(_cfg.dimBrightness);
+    Serial.printf("[Agent] Power save: clock face, screen %u%%\n", (unsigned)_cfg.dimBrightness);
+}
+
+void AgentController::leavePowerSave() {
+    if (!_powerSave) return;
+    _powerSave = false;
+    _face->setPowerSave(false);
+    gUi.setBrightness(_cfg.brightness);
+    Serial.println("[Agent] Power save off");
 }
 
 void AgentController::wake(bool byVoice) {
     if (!_sleeping) return;
+    leavePowerSave();
     _sleeping = false;
     _wakeBuffering = byVoice;  // replay what was said once the session is ready
     if (!byVoice) _preroll.clear();
@@ -1369,6 +1400,11 @@ void AgentController::handleSleepAndRestarts(uint32_t now) {
     const bool busy = _audio->isPlaying() || sinceMs(now, _lastAgentAudio) < 600 || _awaitingReply;
 
     if (_sleepPending && !busy) enterSleep();
+    if (_mutePending && !busy) {  // voice can only turn the mic OFF; the screen button turns it on
+        _mutePending = false;
+        if (!_muted) toggleMic();
+        _face->setHint("ปิดไมค์แล้ว แตะปุ่มไมค์บนจอเพื่อเปิด", 4000);
+    }
 
     if (_restartPending && !busy && (int32_t)(now - _restartAt) >= 0) {
         _restartPending = false;
@@ -1380,6 +1416,10 @@ void AgentController::handleSleepAndRestarts(uint32_t now) {
     if (_cfg.sleepMinutes && !_sleeping && _gemini.started() && !busy && !_ringing && !_vadOpen &&
         sinceMs(now, _lastActivity) > (uint32_t)_cfg.sleepMinutes * 60000u) {
         enterSleep();
+    }
+    if (_sleeping && !_powerSave && _cfg.clockMinutes &&
+        sinceMs(now, _sleepSince) > (uint32_t)_cfg.clockMinutes * 60000u) {
+        enterPowerSave();
     }
 
     if (_ringing) {
@@ -1695,6 +1735,29 @@ int AgentController::setBrightness(int level) {
     return level;
 }
 
+int AgentController::volume() { return _audio->volume(); }
+int AgentController::brightness() { return gSettings.get().brightness; }
+int AgentController::micGain() { return gSettings.get().micGain; }
+
+void AgentController::configureDevice(const DeviceChange& c, JsonObject r) {
+    gSettings.update([&](SettingsData& d) {
+        if (c.micGain >= 0) d.micGain = (uint8_t)c.micGain;
+        if (c.sleepMinutes >= 0) d.sleepMinutes = (uint8_t)c.sleepMinutes;
+        if (c.clockMinutes >= 0) d.clockMinutes = (uint8_t)c.clockMinutes;
+        if (c.dimBrightness >= 0) d.dimBrightness = (uint8_t)c.dimBrightness;
+    });
+    const SettingsData s = gSettings.get();
+    r["mic_sensitivity"] = s.micGain;
+    r["sleep_minutes"] = s.sleepMinutes;
+    r["clock_minutes"] = s.clockMinutes;
+    r["dim_brightness"] = s.dimBrightness;
+    if (c.powerSaveNow) {
+        _powerSaveAfterSleep = true;
+        requestSleep();  // after this reply, then straight to the clock face
+        r["power_save"] = "after this reply: clock face + dim screen; voice or a tap wakes you";
+    }
+}
+
 void AgentController::fillStatus(JsonObject out) {
     if (_battery >= 0) out["battery_percent"] = (int)_battery;
     else out["power"] = "usb";
@@ -1728,6 +1791,7 @@ void AgentController::fillDiagnostics(JsonObject out) {
     }
     out["muted"] = (bool)_muted;
     out["sleeping"] = (bool)_sleeping;
+    out["power_save"] = (bool)_powerSave;
     out["auth_error"] = _fatalError;
     out["error_text"] = _errorText;
     out["hold_s"] = _holdUntil > sec ? _holdUntil - sec : 0;

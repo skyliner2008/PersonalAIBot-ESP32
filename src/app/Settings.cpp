@@ -182,6 +182,10 @@ void Settings::load() {
     d.volume = p.getUChar("vol", d.volume);
     d.brightness = p.getUChar("bri", d.brightness);
     d.sleepMinutes = p.getUChar("sleep", d.sleepMinutes);
+    d.clockMinutes = p.getUChar("clockmin", d.clockMinutes);
+    d.dimBrightness = p.getUChar("dimbri", d.dimBrightness);
+    if (d.clockMinutes > 120) d.clockMinutes = 5;
+    if (d.dimBrightness < 1 || d.dimBrightness > 60) d.dimBrightness = 8;
     d.micGain = p.getUChar("mgain", d.micGain);
     if (p.isKey("mt5url")) p.getString("mt5url", d.mt5Url, sizeof(d.mt5Url));  // isKey: no NOT_FOUND log
     readSecret(p, "mt5tok", "mt5tok_e", d.mt5Token, sizeof(d.mt5Token), _plainFound);
@@ -314,6 +318,8 @@ void Settings::save(const SettingsData& d) {
     p.putUChar("vol", d.volume);
     p.putUChar("bri", d.brightness);
     p.putUChar("sleep", d.sleepMinutes);
+    p.putUChar("clockmin", d.clockMinutes);
+    p.putUChar("dimbri", d.dimBrightness);
     p.putUChar("mgain", d.micGain);
     p.putString("mt5url", d.mt5Url);
     p.putBool("mt5trade", d.mt5Trade);

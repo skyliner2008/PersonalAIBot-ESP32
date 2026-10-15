@@ -4,13 +4,13 @@
 
 ### ผู้ช่วย AI คุยด้วยเสียงภาษาไทยแบบเรียลไทม์ บนบอร์ด ESP32-S3 จอสัมผัส
 
-**คุยเสียงด้วย Gemini Live** · **ความจำระยะยาวในตัวเครื่อง** · **39 tools พร้อมการ์ดกราฟิกบนจอ** · **แอปคู่หูบน PC**
+**คุยเสียงด้วย Gemini Live** · **ความจำระยะยาวในตัวเครื่อง** · **41 tools พร้อมการ์ดกราฟิกบนจอ** · **แอปคู่หูบน PC**
 
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
 [![Firmware](https://img.shields.io/badge/firmware-v3.2.1-3ddc84)](src/app/AppConfig.h)
-[![Tests](https://img.shields.io/badge/host%20tests-1%2C421%20checks%20passing-3ddc84)](host_tests/)
+[![Tests](https://img.shields.io/badge/host%20tests-1%2C438%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -33,7 +33,7 @@
 | 🎙️ **คุยเสียงเรียลไทม์** | เสียงสองทางผ่าน WebSocket ที่ตรวจใบรับรอง TLS (ไมค์ 16 kHz ขึ้น / เสียง AI 24 kHz ลง) มี VAD + AGC ในเครื่อง แตะจอเพื่อขัดจังหวะได้ |
 | 🧠 **ความจำระยะยาว** | เก็บข้อเท็จจริง, กราฟความสัมพันธ์ (GraphRAG-lite ค้นด้วย BM25) และบันทึกบทสนทนารายวันลง MicroSD — ไม่มีการ์ดก็ใช้แฟลชในตัว จัดระเบียบความจำเบื้องหลังด้วย Flash-Lite |
 | 🧑‍💼 **บุคลิก** | โปรไฟล์สำเร็จรูป 8 แบบ (ไข่มุก, ภูมิ, ลีน่า, ธันวา, มะปราง, โอม, น้ำ, ครูเก่ง), เสียง 30 แบบ, นิสัย 7 แบบ, ลงท้าย ค่ะ/ครับ — เปลี่ยนผ่านเมนูทัชหรือสั่งด้วยเสียง |
-| 👀 **ใบหน้ามีชีวิต** | ดวงตาสไตล์ Cozmo 14 อารมณ์, ซับไตเติลภาษาไทย, ปุ่มเปิด/ปิดไมค์บนจอ, โหมดมืด |
+| 👀 **ใบหน้ามีชีวิต** | ดวงตาสไตล์ Cozmo 14 อารมณ์, ซับไตเติลภาษาไทย, ปุ่มเปิด/ปิดไมค์บนจอ, โหมดมืด — พักนานจะเปลี่ยนเป็น**นาฬิกาหรี่แสง** (ประหยัดไฟ) และตื่นพร้อมจอสว่างทันทีที่ได้ยินเสียง |
 | 📊 **การ์ดข้อมูลสด** | อากาศ + PM2.5, ราคาน้ำมันไทย, หุ้น/ทอง/คริปโต/ค่าเงิน, วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, ข่าว, Wikipedia — วาดเป็นกราฟิกขณะ AI พูด |
 | ⏰ **ผู้ช่วยส่วนตัว** | ตั้งเวลา, แจ้งเตือน (ทุกวัน/วันทำงาน/ทุกสัปดาห์), รายการงาน, สมุดโน้ต, แจ้งเตือนราคาด้วยเสียง, เครื่องคิดเลข, แปลงหน่วย, เวลาต่างประเทศ |
 | 📈 **MetaTrader 5** *(ไม่บังคับ)* | ดูพอร์ต MT5 ผ่าน [mt5-core-server](#-metatrader-5-ไม่บังคับ) — การเทรดด้วยเสียง **ปิดเป็นค่าเริ่มต้น** และต้องยืนยันด้วยเสียง 2 ขั้น |
@@ -131,6 +131,8 @@ python tools/pc_app/esp32_ai_studio.py
 | แตะจอหรือกด BOOT ขณะ AI พูด | หยุดพูด |
 | แตะจอขณะพัก / หยุดเชื่อมต่อ | ปลุก / ต่อใหม่ทันที |
 | กดค้างบนจอ 1.5 วิ | เริ่มบทสนทนาใหม่ (ความจำระยะยาวยังอยู่) |
+| เงียบ 3 นาที → พัก (ตาหลับ) ต่ออีก 5 นาที → **นาฬิกาหรี่แสง** | พูดหรือแตะเพื่อปลุก: จอสว่างเหมือนเดิม + ตาลืม (ตั้งเวลาได้ที่เมนู ⚙ / Studio / สั่งด้วยเสียง) |
+| "ลดเสียงลงหน่อย", "เพิ่มความสว่าง", "ปิดไมค์" | ปรับเสียง/แสงขึ้นลง ปิดไมค์ด้วยเสียงได้ — **เปิด**ไมค์ได้เฉพาะปุ่ม 🎤 บนจอ |
 | แตะการ์ดข้อมูล | ปิดการ์ด (ปิดเองหลัง ~30 วิ) |
 
 **ลองพูดว่า**
@@ -153,13 +155,13 @@ python tools/pc_app/esp32_ai_studio.py
 AI เลือกเรียกเองตามบทสนทนา tool ข้อมูลทำงานใน task เบื้องหลังและวาดการ์ดบนจอขณะ AI พูดต่อได้
 
 <details>
-<summary><b>Tools ทั้งหมด 39 ตัว</b> (ค่าเริ่มต้น 37 ตัว — MT5 อีก 2 ตัวจะเปิดเมื่อตั้งค่า server)</summary>
+<summary><b>Tools ทั้งหมด 41 ตัว</b> (ค่าเริ่มต้น 39 ตัว — MT5 อีก 2 ตัวจะเปิดเมื่อตั้งค่า server)</summary>
 
 | กลุ่ม | Tools |
 |---|---|
 | **ความจำ** | `save_memory` · `save_relation` · `recall_memory` · `forget_memory` · `recall_conversation` |
 | **เวลา & งาน** | `set_timer` · `set_reminder` · `list_reminders` · `cancel_reminder` · `add_task` · `list_tasks` · `update_task` |
-| **ผู้ช่วย & เครื่อง** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` · `control_led` · `go_to_sleep` |
+| **ผู้ช่วย & เครื่อง** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (ระบุค่าหรือปรับ +/-) · `configure_device` (ไมค์, เวลาพัก, โหมดนาฬิกา) · `mute_microphone` · `control_led` · `go_to_sleep` |
 | **ข้อมูลสด** 🖼️ | `get_weather` (Open-Meteo + PM2.5, ไม่ระบุที่ = ใช้ตำแหน่งจาก IP) · `get_oil_price` (บางจาก) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
 | **เครื่องมือทั่วไป** 🖼️ | `calculate` · `convert_units` (รวม ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (รองรับ DST) · `get_location` · `search_knowledge` (Wikipedia ไทย/อังกฤษ) · `notes` |
 | **ชุดการเงิน** 🖼️ | `market_overview` (+ ดัชนีกลัว/โลภคริปโต) · `market_analysis` (RSI, MACD, EMA, ADX, หลายกรอบเวลา, P/E, ปันผล) · `market_scan` (ขึ้นแรง/ลงแรง/วอลุ่ม/RSI — ไทย/สหรัฐ/คริปโต) · `economic_calendar` (ForexFactory เวลาไทย) · `position_size` · `price_alert` |
@@ -234,7 +236,7 @@ flowchart LR
 host_tests\run_tests.bat
 ```
 
-28 ชุดทดสอบ · 1,421 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
+28 ชุดทดสอบ · 1,438 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
 
 ## 📁 โครงสร้างโปรเจกต์
 

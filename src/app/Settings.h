@@ -34,6 +34,8 @@ struct SettingsData {
     uint8_t volume = 70;
     uint8_t brightness = 80;
     uint8_t sleepMinutes = 3;      // 0 = never
+    uint8_t clockMinutes = 5;      // asleep this long -> power save: clock face + dimmed screen (0 = never)
+    uint8_t dimBrightness = 8;     // screen brightness % while in power save
     // MT5 bridge (mt5-core-server, same API as the PersonalAIBot app): read-only unless mt5Trade
     char mt5Url[100] = "";         // e.g. http://192.168.1.50:8090  (/api/mt5 is appended)
     char mt5Token[100] = "";       // Bearer token (never printed)

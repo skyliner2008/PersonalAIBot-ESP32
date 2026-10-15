@@ -38,6 +38,9 @@ public:
     void setSpeechLevel(float level) { _speechLevel = level; }
     void setEyeColor(uint16_t c) { _eyes.setColor(c); }
     void poke() { _pokePending = true; }  // bouncy reaction to a tap (applied in tick)
+    /** Power save: a dim clock face instead of the eyes (the agent also lowers the backlight). */
+    void setPowerSave(bool on) { _powerSave = on; }
+    bool powerSave() const { return _powerSave; }
 
     // ---- Screen ----
     void onTouch(const TouchEvent& e) override;
@@ -54,6 +57,8 @@ private:
     volatile AvatarState _state = AVATAR_BOOT;
     volatile float _speechLevel = 0;
     volatile bool _pokePending = false;
+    volatile bool _powerSave = false;
+    void drawClock(LGFX_Sprite& c);
     UiStatus _status;
 
     static constexpr size_t kTextCap = 512;

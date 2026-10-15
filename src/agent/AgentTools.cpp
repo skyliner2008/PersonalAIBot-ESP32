@@ -104,8 +104,10 @@ const AgentTools::Entry AgentTools::kHandlers[] = {
     {"list_assistant_options", &AgentTools::listAssistantOptions},
     {"set_volume", &AgentTools::setVolume},
     {"set_brightness", &AgentTools::setBrightness},
+    {"configure_device", &AgentTools::configureDevice},
     {"control_led", &AgentTools::controlLed},
     {"go_to_sleep", &AgentTools::goToSleep},
+    {"mute_microphone", &AgentTools::muteMicrophone},
     {nullptr, nullptr},
 };
 
@@ -209,13 +211,32 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
             "Voice/personality changes apply after this reply.", cfg, 7);
     static const Param opts[] = {{"kind", "STRING", nullptr, true, kOptionKinds}};
     declare(d, b, "list_assistant_options", "List available profiles, voices, personalities or eye colors.", opts, 1);
-    static const Param vol[] = {{"level", "INTEGER", "0-100.", true, nullptr}};
-    declare(d, b, "set_volume", "Set speaker volume.", vol, 1);
-    static const Param bri[] = {{"level", "INTEGER", "5-100.", true, nullptr}};
-    declare(d, b, "set_brightness", "Set screen brightness.", bri, 1);
+    static const Param vol[] = {
+        {"level", "INTEGER", "Absolute 0-100.", false, nullptr},
+        {"change", "INTEGER", "Relative: +15 louder, -15 quieter ('a bit' = 10, 'much' = 30).", false, nullptr},
+    };
+    declare(d, b, "set_volume", "Speaker volume: set a level or turn it up/down.", vol, 2);
+    static const Param bri[] = {
+        {"level", "INTEGER", "Absolute 5-100.", false, nullptr},
+        {"change", "INTEGER", "Relative: +15 brighter, -15 dimmer.", false, nullptr},
+    };
+    declare(d, b, "set_brightness", "Screen brightness: set a level or make it brighter/dimmer.", bri, 2);
+    static const Param dev[] = {
+        {"mic_sensitivity", "INTEGER", "0-7 (default 5; higher hears farther).", false, nullptr},
+        {"mic_change", "INTEGER", "Relative mic sensitivity, e.g. +1 / -1.", false, nullptr},
+        {"sleep_minutes", "INTEGER", "Silence before you sleep, 0 = never.", false, nullptr},
+        {"clock_minutes", "INTEGER", "Asleep this long -> clock face + dim screen, 0 = never.", false, nullptr},
+        {"dim_brightness", "INTEGER", "Screen brightness % in clock mode, 1-60.", false, nullptr},
+        {"power_save_now", "BOOLEAN", "Sleep after this reply and show the dim clock right away.", false, nullptr},
+    };
+    declare(d, b, "configure_device",
+            "Device settings: mic sensitivity, auto-sleep time, clock/power-save mode (time + dimmed screen).", dev, 6);
     static const Param led[] = {{"color", "STRING", nullptr, true, kLedColors}};
     declare(d, b, "control_led", "Set the RGB LED ('auto' = status colors).", led, 1);
     declare(d, b, "go_to_sleep", "Stop listening and sleep after this reply (user said goodbye / good night).");
+    declare(d, b, "mute_microphone",
+            "Turn the microphone OFF after this reply (user asked). You cannot turn it back on: tell the user to "
+            "tap the mic button on the screen.");
 
     // ---- Live data with on-screen graphics (run by webtools::WebTools, answered asynchronously) ----
     static const Param weather[] = {
@@ -672,15 +693,35 @@ bool AgentTools::listAssistantOptions(JsonObjectConst a, JsonObject r, const cha
     return true;
 }
 
+// "level" = absolute, "change" = relative (+15 louder / -15 quieter); returns the new level
 bool AgentTools::setVolume(JsonObjectConst a, JsonObject r, const char*& e) {
-    if (a["level"].isNull()) return (e = "level is required"), false;
-    r["volume"] = _device.setVolume(clampInt(a["level"] | 0, 0, 100));
+    if (a["level"].isNull() && a["change"].isNull()) return (e = "level or change is required"), false;
+    const int before = _device.volume();
+    const int target = a["level"].isNull() ? before + (a["change"] | 0) : (a["level"] | 0);
+    r["previous"] = before;
+    r["volume"] = _device.setVolume(clampInt(target, 0, 100));
     return true;
 }
 
 bool AgentTools::setBrightness(JsonObjectConst a, JsonObject r, const char*& e) {
-    if (a["level"].isNull()) return (e = "level is required"), false;
-    r["brightness"] = _device.setBrightness(clampInt(a["level"] | 0, 5, 100));
+    if (a["level"].isNull() && a["change"].isNull()) return (e = "level or change is required"), false;
+    const int before = _device.brightness();
+    const int target = a["level"].isNull() ? before + (a["change"] | 0) : (a["level"] | 0);
+    r["previous"] = before;
+    r["brightness"] = _device.setBrightness(clampInt(target, 5, 100));
+    return true;
+}
+
+bool AgentTools::configureDevice(JsonObjectConst a, JsonObject r, const char*& e) {
+    DeviceChange c;
+    if (!a["mic_sensitivity"].isNull()) c.micGain = clampInt(a["mic_sensitivity"] | 5, 0, 7);
+    else if (!a["mic_change"].isNull()) c.micGain = clampInt(_device.micGain() + (a["mic_change"] | 0), 0, 7);
+    if (!a["sleep_minutes"].isNull()) c.sleepMinutes = clampInt(a["sleep_minutes"] | 3, 0, 120);
+    if (!a["clock_minutes"].isNull()) c.clockMinutes = clampInt(a["clock_minutes"] | 5, 0, 120);
+    if (!a["dim_brightness"].isNull()) c.dimBrightness = clampInt(a["dim_brightness"] | 8, 1, 60);
+    c.powerSaveNow = a["power_save_now"] | false;
+    if (!c.any()) return (e = "nothing to change"), false;
+    _device.configureDevice(c, r);
     return true;
 }
 
@@ -691,6 +732,12 @@ bool AgentTools::controlLed(JsonObjectConst a, JsonObject r, const char*& e) {
     if (!known) return (e = "unsupported color"), false;
     if (!_device.setLedColor(color)) return (e = "LED not available"), false;
     r["color"] = color;
+    return true;
+}
+
+bool AgentTools::muteMicrophone(JsonObjectConst, JsonObject r, const char*&) {
+    _device.requestMicMute();
+    r["status"] = "microphone turns off after this reply; only the mic button on the screen turns it back on";
     return true;
 }
 

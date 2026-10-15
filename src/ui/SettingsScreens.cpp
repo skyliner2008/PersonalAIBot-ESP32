@@ -197,6 +197,25 @@ void openSleep() {
     gUi.push(&gPicker);
 }
 
+void openClockMode() {
+    gPicker.setup("โหมดนาฬิกา (หลังพัก)", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        static const uint8_t opts[] = {1, 3, 5, 10, 30, 0};
+        static char label[6][32];
+        for (int i = 0; i < 6; i++) {
+            const uint8_t m = opts[i];
+            if (m) snprintf(label[i], sizeof(label[i]), "หลังพัก %u นาที", m);
+            else snprintf(label[i], sizeof(label[i]), "ไม่ใช้");
+            ListScreen::Item& it = l.add(label[i], m ? "นาฬิกา + หรี่จอ" : "แสดงตาหลับตลอด", [m]() {
+                gSettings.update([&](SettingsData& d) { d.clockMinutes = m; });
+                gUi.pop();
+            });
+            it.checked = s.clockMinutes == m;
+        }
+    });
+    gUi.push(&gPicker);
+}
+
 void openThinking() {
     gPicker.setup("ระดับการคิด", [](ListScreen& l) {
         const SettingsData s = gSettings.get();
@@ -410,6 +429,20 @@ void buildMenu(ListScreen& l) {
         });
     }
     l.addSubmenu("พักเมื่อเงียบ", sleepLabel(s.sleepMinutes), openSleep);
+    {
+        static char clockLabel[24];
+        if (s.clockMinutes) snprintf(clockLabel, sizeof(clockLabel), "หลังพัก %u นาที", (unsigned)s.clockMinutes);
+        else snprintf(clockLabel, sizeof(clockLabel), "ไม่ใช้");
+        l.addSubmenu("โหมดนาฬิกา ประหยัดไฟ", clockLabel, openClockMode);
+        static char dimLabel[16];
+        snprintf(dimLabel, sizeof(dimLabel), "%u%%", (unsigned)s.dimBrightness);
+        l.add("แสงจอตอนเป็นนาฬิกา (แตะ)", dimLabel, []() {  // cycles 4 / 8 / 15 / 25 %
+            gSettings.update([](SettingsData& d) {
+                d.dimBrightness = d.dimBrightness < 8 ? 8 : d.dimBrightness < 15 ? 15 : d.dimBrightness < 25 ? 25 : 4;
+            });
+            gMenu.rebuild();
+        });
+    }
     l.add("จัดความจำอัตโนมัติ", s.consolidate ? "เปิด" : "ปิด", []() {
         gSettings.update([](SettingsData& d) { d.consolidate = !d.consolidate; });
         gMenu.rebuild();

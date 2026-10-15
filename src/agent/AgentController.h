@@ -53,6 +53,9 @@ public:
     void requestRetry() { post(CMD_RETRY); }  // reconnect now (after a pause / auth error)
     /** Offer Google Search again now (it is dropped for 6 h after a grounding-quota error). */
     void retrySearch() { post(CMD_SEARCH_RETRY); }
+    /** Console / test: sleep now and switch to the dim clock face. */
+    void requestPowerSave() { post(CMD_POWER_SAVE); }
+    bool powerSave() const { return _powerSave; }
     /** Send a typed message to the assistant (serial "ask" / PC app chat). Thread-safe. */
     bool ask(const char* text);
     /** Diagnostic: how the Live client passes the key (URL ?key= or x-goog-api-key header). */
@@ -95,9 +98,14 @@ public:
     bool setLedColor(const char* color) override;
     int setVolume(int level) override;
     int setBrightness(int level) override;
+    int volume() override;
+    int brightness() override;
+    int micGain() override;
+    void configureDevice(const DeviceChange& change, JsonObject result) override;
     void fillStatus(JsonObject out) override;
     bool setExpression(const char* emotion) override;
     void requestSleep() override { _sleepPending = true; }
+    void requestMicMute() override { _mutePending = true; }
     bool applyAssistantChange(const AssistantChange& change, JsonObject result) override;
     void describeAssistant(JsonObject out) override;
 
@@ -134,7 +142,8 @@ private:
         CMD_SETUP_MODE,
         CMD_RESTART,
         CMD_RECORD,
-        CMD_SEARCH_RETRY
+        CMD_SEARCH_RETRY,
+        CMD_POWER_SAVE
     };
     enum class SetupMode : uint8_t { Full, NoSearch, Minimal };  // diagnostic setup variants
 
@@ -217,6 +226,10 @@ private:
     // Conversation
     volatile bool _muted = false;
     volatile bool _sleeping = false;
+    volatile bool _powerSave = false;   // asleep + clock face + dimmed backlight
+    bool _powerSaveAfterSleep = false;   // configure_device power_save_now
+    volatile bool _mutePending = false;  // mute_microphone: after the current reply
+    uint32_t _sleepSince = 0;
     bool _dropAudio = false;
     uint32_t _dropSince = 0;
     bool _awaitingReply = false;
@@ -293,6 +306,8 @@ private:
     void updateInfo();
 
     void enterSleep();
+    void enterPowerSave();
+    void leavePowerSave();
     void wake(bool byVoice);
     void startFreshSession(const char* hint);
     void enterHold(uint32_t sec);

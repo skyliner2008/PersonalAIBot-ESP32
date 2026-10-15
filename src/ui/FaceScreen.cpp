@@ -248,7 +248,62 @@ void FaceScreen::drawStatus(LGFX_Sprite& c, const UiStatus& s) {
     drawGear(c, 302, cy + 1, attention ? ui::ACCENT : ui::DIM);
 }
 
+// Power save: big clock, Thai date and two closed eyes. The backlight is already dimmed by the agent
+// and the UI task redraws only once a second. The layout drifts a few pixels every minute so the
+// IPS panel never holds one static image for hours.
+void FaceScreen::drawClock(LGFX_Sprite& c) {
+    static const char* const kMonths[] = {"มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+                                          "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"};
+    static const char* const kDays[] = {"อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"};
+    c.fillScreen(ui::BG);
+    const time_t t = time(nullptr);
+    struct tm lt;
+    localtime_r(&t, &lt);
+    const bool synced = t > 1700000000;
+    const int dx = (lt.tm_min % 5) * 3 - 6;  // pixel drift: -6..+6
+    const int dy = (lt.tm_min % 3) * 3 - 3;
+    const int cx = ui::W / 2 + dx;
+
+    // closed eyes (the avatar is still "here", asleep)
+    const uint16_t eye = _eyes.color();
+    c.fillSmoothRoundRect(cx - 52, 34 + dy, 34, 6, 3, eye);
+    c.fillSmoothRoundRect(cx + 18, 34 + dy, 34, 6, 3, eye);
+
+    // hours and minutes at fixed spots around a blinking colon, so nothing shifts when it blinks
+    char hh[4] = "--", mm[4] = "--";
+    if (synced) {
+        snprintf(hh, sizeof(hh), "%02d", lt.tm_hour);
+        snprintf(mm, sizeof(mm), "%02d", lt.tm_min);
+    }
+    constexpr uint16_t kDigits = 0xCE79;  // light grey: readable on a dimmed backlight without glare
+    const int y = 112 + dy;
+    c.setFont(&fonts::Font7);  // 7-segment digits, 48 px
+    c.setTextSize(2);
+    c.setTextColor(kDigits);
+    c.setTextDatum(textdatum_t::middle_right);
+    c.drawString(hh, cx - 14, y);
+    c.setTextDatum(textdatum_t::middle_left);
+    c.drawString(mm, cx + 14, y);
+    c.setTextSize(1);
+    if (!synced || !(lt.tm_sec & 1)) {
+        c.fillRect(cx - 4, y - 22, 8, 8, kDigits);
+        c.fillRect(cx - 4, y + 14, 8, 8, kDigits);
+    }
+
+    if (synced) {
+        char date[96];
+        snprintf(date, sizeof(date), "วัน%s %d %s %d", kDays[lt.tm_wday % 7], lt.tm_mday, kMonths[lt.tm_mon % 12],
+                 lt.tm_year + 1900 + 543);
+        gUi.drawFitted(c, date, cx, 182 + dy, 300, gUi.thai20(), ui::DIM, textdatum_t::middle_center);
+    }
+    gUi.drawFitted(c, "พูดหรือแตะเพื่อปลุก", cx, 222 + dy, 300, gUi.thai20(), 0x4208, textdatum_t::middle_center);
+}
+
 void FaceScreen::draw(LGFX_Sprite& c) {
+    if (_powerSave) {
+        drawClock(c);
+        return;
+    }
     c.fillScreen(ui::BG);
     _eyes.draw(c);
 
