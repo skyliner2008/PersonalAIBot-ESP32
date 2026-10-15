@@ -15,7 +15,7 @@
 
 namespace {
 constexpr i2s_port_t kPort = I2S_NUM_0;
-constexpr int kDmaBufCount = 6;
+constexpr int kDmaBufCount = 8;  // 80 ms: rides out short stalls of the output task (Wi-Fi bursts)
 constexpr int kDmaBufLen = 240;  // frames per DMA buffer = 10 ms @ 24 kHz
 constexpr size_t kOutChunkSamples = 480;  // 20 ms
 constexpr size_t kInChunkSamples = 480;   // 20 ms @ 24 kHz -> 320 samples @ 16 kHz
@@ -191,8 +191,9 @@ void AudioManager::outLoop() {
             if (_starved && millis() - _starvedAt < 3000) {
                 _underruns = _underruns + 1;
                 _lastGapMs = millis() - _starvedAt;
+                _replyGaps = _replyGaps + 1;
+                if (_lastGapMs > _replyLongestGap) _replyLongestGap = _lastGapMs;
                 _gapThisTurn = true;
-                _cleanTurns = 0;
                 if (_prebufMs < AUDIO_PREBUFFER_MAX_MS) {
                     _prebufMs = _prebufMs * 2 > AUDIO_PREBUFFER_MAX_MS ? AUDIO_PREBUFFER_MAX_MS : _prebufMs * 2;
                 }
@@ -254,6 +255,7 @@ void AudioManager::outLoop() {
         size_t written = 0;
         const uint32_t t = millis();
         if (lastWrite && t - lastWrite > _maxOutGapMs) _maxOutGapMs = t - lastWrite;  // loop held up?
+        if (nv && lastWrite && t - lastWrite > _replyOutGap) _replyOutGap = t - lastWrite;
         i2s_write(kPort, stereo, n * 4, &written, portMAX_DELAY);  // paced by the DMA
         lastWrite = millis();
         if (nv) _lastPlayMs = millis();  // "speaker busy" = the assistant, not the radio
@@ -306,16 +308,20 @@ size_t AudioManager::writePlayback(const uint8_t* pcm, size_t bytes) {
     return n;
 }
 
-// Reply finished: after 5 replies in a row without a gap, ease the jitter buffer back toward the base
-// (slowly - shrinking fast on a jittery link only brings the gaps back)
 void AudioManager::endVoiceTurn() {
     _flush = false;
-    if (!_gapThisTurn && _prebufMs > AUDIO_PREBUFFER_MS && ++_cleanTurns >= 5) {
-        _cleanTurns = 0;
-        const uint32_t next = _prebufMs - AUDIO_PREBUFFER_STEP_MS;
-        _prebufMs = next < AUDIO_PREBUFFER_MS ? AUDIO_PREBUFFER_MS : next;
-    }
     _gapThisTurn = false;
+}
+
+void AudioManager::tunePrebuffer(uint32_t neededMs, bool hadGap) {
+    uint32_t want = neededMs < AUDIO_PREBUFFER_MS ? AUDIO_PREBUFFER_MS : neededMs;
+    if (want > AUDIO_PREBUFFER_MAX_MS) want = AUDIO_PREBUFFER_MAX_MS;
+    if (want > _prebufMs) {
+        _prebufMs = want;  // slow link: start the next reply further ahead
+    } else if (!hadGap) {
+        const uint32_t eased = _prebufMs * 4 / 5;  // fast enough again: give the latency back
+        _prebufMs = eased > want ? eased : want;
+    }
 }
 
 void AudioManager::clearPlayback() {

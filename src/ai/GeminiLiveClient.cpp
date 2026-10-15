@@ -194,6 +194,7 @@ void GeminiLiveClient::closeLink(bool handshake, bool notify) {
     esp_transport_close(_wst);
     _linkUp = false;
     _rxLen = 0;
+    _streamEndPending = false;
     dropOutbox();
     if (notify) pushMessage(MsgKind::Disconnected, nullptr, 0, 0);
 }
@@ -222,9 +223,14 @@ bool GeminiLiveClient::flushOutbox() {
             psramFree(m.data);
             continue;
         }
-        const uint32_t t0 = millis();
+        if (m.micGen != 0xFF && m.micGen != _micGen) {  // mic audio from before the reply started
+            psramFree(m.data);
+            _micDiscarded = _micDiscarded + 1;
+            continue;
+        }
+        const uint32_t w0 = millis();
         const bool ok = writeFrame(m.opcode, m.data, (int)m.len, kWriteTimeoutMs);
-        if (millis() - t0 > _slowWriteMs) _slowWriteMs = millis() - t0;  // diag: uplink stalls
+        if (millis() - w0 > _slowWriteMs) _slowWriteMs = millis() - w0;  // diag: uplink stalls
         const uint32_t len = m.len;
         psramFree(m.data);
         if (!ok) {
@@ -234,7 +240,17 @@ bool GeminiLiveClient::flushOutbox() {
             return false;
         }
         if (isSetup) _setupOnLink = true;
-        if (millis() - t0 > 100) break;  // keep reading as well
+        if (millis() - t0 > 100) return true;  // keep reading as well
+    }
+    if (_streamEndPending && _setupOnLink) {  // after the audio it ends
+        static char msg[] = "{\"realtimeInput\":{\"audioStreamEnd\":true}}";
+        char frame[sizeof(msg)];
+        memcpy(frame, msg, sizeof(msg));  // writeFrame masks in place
+        _streamEndPending = false;
+        if (!writeFrame(WS_TRANSPORT_OPCODES_TEXT, frame, (int)sizeof(msg) - 1, kWriteTimeoutMs)) {
+            dropLink("Send failed (stream end)");
+            return false;
+        }
     }
     return true;
 }
@@ -390,7 +406,8 @@ void GeminiLiveClient::ioLoop() {
             const uint32_t t0 = millis();
             const int r = readFrame(rbuf, sizeof(rbuf));
             const uint32_t took = millis() - t0;
-            if (took > _slowReadMs) _slowReadMs = took;  // diag: a frame trickling in holds up the sends
+            if (took > _slowReadMs) _slowReadMs = took;
+            if (took > _turnReadMs) _turnReadMs = took;  // diag: a frame trickling in holds up the sends
             if (r < 0) {
                 dropLink("Read error");
                 continue;
@@ -496,9 +513,10 @@ bool GeminiLiveClient::ensure(void*& buf, size_t& cap, size_t need) {
 
 // Copy into the outbox; the I/O task writes it. Audio does not wait (a full queue = congested link,
 // dropping 40 ms beats blocking the mic); JSON messages wait a little.
-bool GeminiLiveClient::enqueue(const char* data, size_t len, uint32_t waitMs) {
+bool GeminiLiveClient::enqueue(const char* data, size_t len, uint32_t waitMs, bool mic) {
     if (!_linkUp || !data || !len) return false;
-    OutboundMsg m{(char*)psramMalloc(len), (uint32_t)len, (uint8_t)WS_TRANSPORT_OPCODES_TEXT};
+    OutboundMsg m{(char*)psramMalloc(len), (uint32_t)len, (uint8_t)WS_TRANSPORT_OPCODES_TEXT,
+                  mic ? (uint8_t)_micGen : (uint8_t)0xFF};
     if (!m.data) return false;
     memcpy(m.data, data, len);
     if (xQueueSend(_outbox, &m, pdMS_TO_TICKS(waitMs)) != pdTRUE) {
@@ -546,7 +564,7 @@ bool GeminiLiveClient::sendAudio(const int16_t* pcm, size_t samples, uint32_t sa
                      (unsigned long)sampleRate);
     n += (int)b64::encode((const uint8_t*)pcm, bytes, _tx + n);
     n += snprintf(_tx + n, _txCap - n, "\"}}}");
-    return enqueue(_tx, (size_t)n, 0);
+    return enqueue(_tx, (size_t)n, 0, true);
 }
 
 bool GeminiLiveClient::sendClientText(const char* text, bool turnComplete) {
@@ -563,7 +581,9 @@ bool GeminiLiveClient::sendClientText(const char* text, bool turnComplete) {
 bool GeminiLiveClient::sendAudioStreamEnd() {
     if (_state != GeminiState::Ready) return false;
     static const char kMsg[] = "{\"realtimeInput\":{\"audioStreamEnd\":true}}";
-    return enqueue(kMsg, sizeof(kMsg) - 1, 200);
+    if (enqueue(kMsg, sizeof(kMsg) - 1, 0)) return true;
+    _streamEndPending = true;  // queue full (slow uplink): the I/O task sends it once the queue drains
+    return true;               // - never hold the agent loop (it also delivers the reply's audio)
 }
 
 void GeminiLiveClient::handleMessage(const char* json, size_t len) {

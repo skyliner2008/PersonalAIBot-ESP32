@@ -233,7 +233,11 @@ private:
     bool _powerSaveAfterSleep = false;   // configure_device power_save_now
     volatile bool _mutePending = false;  // mute_microphone: after the current reply
     uint32_t _sleepSince = 0;
-    uint32_t _loopMaxMs = 0;  // longest agent-loop pass (diag; reset on read)
+    uint32_t _loopMaxMs = 0;
+    bool _replyAudio = false;          // audio of the current reply has started
+    bool _replyReportPending = false;  // print the per-reply audio line once playback ends
+    uint32_t _replyT0 = 0, _replyLastMs = 0, _replyBytes0 = 0, _replyNeedMs = 0;
+    float _replyRate = 0.0f;  // audio received / wall time for the last reply (1.0 = real time)  // longest agent-loop pass (diag; reset on read)
     bool _dropAudio = false;
     uint32_t _dropSince = 0;
     bool _awaitingReply = false;
@@ -342,6 +346,7 @@ private:
     void finishRecording();
     uint32_t tokensPerMinute() const;
     void noteActivity() { _lastActivity = millis(); }
+    void reportReply();
     static uint32_t monoSec() { return millis() / 1000; }
     /** ms from t to now, 0 if t is later than now (stamped after `now` was sampled). */
     static uint32_t sinceMs(uint32_t now, uint32_t t) { return (int32_t)(now - t) > 0 ? now - t : 0; }

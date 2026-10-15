@@ -40,13 +40,13 @@
 #define RADIO_DUCK_GAIN         0.12f           // radio level while the assistant listens / talks
 #define RADIO_RESUME_MS         6000            // idle this long with the radio on -> back to sleep, radio up
 #define RADIO_WAKE_FACTOR       3.0f            // while the radio plays, wake on sound this many times the expected radio echo
-// Jitter buffer for the assistant's voice. Gemini sends ~1 s of audio per message and over a phone
-// hotspot one message took 0.3-0.6 s to arrive, so 120 ms gapped 1-2x at the start of each reply.
-// Starts at AUDIO_PREBUFFER_MS, doubles after a gap mid-reply (up to the max), and creeps back down
-// by AUDIO_PREBUFFER_STEP_MS after every 5 replies without a gap.
+// Jitter buffer for the assistant's voice. Gemini streams 24 kHz PCM as base64 (~64 KB/s); the
+// framework's lwIP has a 5.7 KB TCP window, so over a phone hotspot (RTT ~100 ms) audio can arrive
+// SLOWER than it plays. The buffer starts at AUDIO_PREBUFFER_MS, doubles after a gap mid-reply,
+// and after each reply is set from the measured arrival rate (what that reply would have needed
+// to play without a gap); it eases back down after clean replies. Ceiling AUDIO_PREBUFFER_MAX_MS.
 #define AUDIO_PREBUFFER_MS      200
-#define AUDIO_PREBUFFER_MAX_MS  600
-#define AUDIO_PREBUFFER_STEP_MS 40
+#define AUDIO_PREBUFFER_MAX_MS  3000
 #define AUDIO_DEFAULT_VOLUME    70      // 0-100 (ES8311 DAC)
 #define AUDIO_MIC_GAIN          5       // boot value of the ES8311 ADC scale (0-7, x6 dB); NVS "micgain" overrides
 

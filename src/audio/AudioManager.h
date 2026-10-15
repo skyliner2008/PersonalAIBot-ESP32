@@ -67,6 +67,17 @@ public:
     /** Longest pause of the output loop between DMA writes while sounding (> ~60 ms = DMA ran dry). */
     uint32_t maxOutGapMs() const { return _maxOutGapMs; }
     void resetAudioStats() { _maxOutGapMs = 0; }
+    /** Per reply (read and reset by the agent when a reply has finished playing). */
+    struct ReplyStats {
+        uint32_t gaps, longestGapMs, outGapMaxMs, prebufferMs;
+    };
+    /** After a reply: neededMs = buffer that reply would have needed (from its arrival rate). */
+    void tunePrebuffer(uint32_t neededMs, bool hadGap);
+    ReplyStats takeReplyStats() {
+        ReplyStats r{_replyGaps, _replyLongestGap, _replyOutGap, _prebufMs};
+        _replyGaps = _replyLongestGap = _replyOutGap = 0;
+        return r;
+    }
 
     // ---- Internet radio: a second mono 24 kHz source mixed under the assistant's voice ----
     size_t writeRadio(const int16_t* pcm, size_t samples) {
@@ -138,9 +149,9 @@ private:
     volatile size_t _droppedBytes = 0;
     volatile uint32_t _underruns = 0, _lastGapMs = 0, _maxOutGapMs = 0;
     volatile uint32_t _prebufMs = AUDIO_PREBUFFER_MS;
+    volatile uint32_t _replyGaps = 0, _replyLongestGap = 0, _replyOutGap = 0;
     bool _starved = false;        // voice ran dry before the end-of-turn flag
     bool _gapThisTurn = false;
-    uint8_t _cleanTurns = 0;
     uint32_t _starvedAt = 0;
     int _volume = 70;
 

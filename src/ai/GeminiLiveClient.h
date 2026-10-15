@@ -108,6 +108,13 @@ public:
     bool isReady() const { return _state == GeminiState::Ready; }
     GeminiState state() const { return _state; }
     uint32_t droppedMessages() const { return _dropped; }
+    /** The assistant is answering: mic audio still queued is stale - skip it so the reply gets the
+     *  whole link (a phone hotspot uplink could not keep up and delayed the reply's audio). */
+    void discardQueuedMic() { _micGen = (uint8_t)((_micGen + 1) % 0xFF); }
+    /** Mic chunks skipped by discardQueuedMic since the last call. */
+    uint32_t takeMicDiscarded() { const uint32_t v = _micDiscarded; _micDiscarded = 0; return v; }
+    /** Longest frame read since the last call - kept apart from the diag value (per reply). */
+    uint32_t takeTurnReadMs() { const uint32_t v = _turnReadMs; _turnReadMs = 0; return v; }
     /** Longest single frame read / write on the I/O task since the last call (diag). */
     uint32_t takeSlowReadMs() { const uint32_t v = _slowReadMs; _slowReadMs = 0; return v; }
     uint32_t takeSlowWriteMs() { const uint32_t v = _slowWriteMs; _slowWriteMs = 0; return v; }
@@ -125,6 +132,7 @@ private:
         char* data;  // PSRAM copy (the WS transport masks it in place), freed by the I/O task
         uint32_t len;
         uint8_t opcode;
+        uint8_t micGen;  // mic audio: generation stamp (stale ones are skipped), 0xFF = anything else
     };
 
     GeminiListener* _listener = nullptr;
@@ -147,7 +155,9 @@ private:
     volatile bool _linkUp = false;      // WebSocket open (written by the I/O task)
     volatile GeminiState _state = GeminiState::Idle;
     volatile uint32_t _dropped = 0;
-    volatile uint32_t _slowReadMs = 0, _slowWriteMs = 0;
+    volatile uint32_t _slowReadMs = 0, _slowWriteMs = 0, _turnReadMs = 0, _micDiscarded = 0;
+    volatile uint8_t _micGen = 0;
+    volatile bool _streamEndPending = false;  // audioStreamEnd that did not fit the queue: sent after it
     uint32_t _audioBytes = 0;
     uint32_t _setupAt = 0;
     static constexpr uint32_t kSetupTimeoutMs = 15000;
@@ -185,7 +195,7 @@ private:
     void pushMessage(MsgKind kind, const char* data, size_t len, int code);
     bool appendRx(const char* data, size_t len);
 
-    bool enqueue(const char* data, size_t len, uint32_t waitMs);
+    bool enqueue(const char* data, size_t len, uint32_t waitMs, bool mic = false);
     void sendSetup();
     void handleMessage(const char* json, size_t len);
     bool ensure(void*& buf, size_t& cap, size_t need);

@@ -334,6 +334,7 @@ void AgentController::loop() {
         handleConsolidation(now);
         lap("consolidation");
         updateState(now);
+        reportReply();
         lap("state");
         const uint32_t took = millis() - loopStart;
         if (took > _loopMaxMs) _loopMaxMs = took;
@@ -725,6 +726,7 @@ void AgentController::onSetupComplete() {
 }
 
 void AgentController::onDisconnected(bool wasReady) {
+    _replyAudio = false;  // a reply cut off by the drop: the next one discards stale mic audio again
     flushUserTurn();
     flushAgentTurn(!wasReady);
     _awaitingReply = false;
@@ -935,6 +937,14 @@ void AgentController::toggleMic() {
 void AgentController::onAudio(const int16_t* pcm, size_t samples) {
     if (_dropAudio) return;
     if (!_userTurn.empty()) flushUserTurn();
+    if (!_replyAudio) {  // first audio of this reply: free the uplink for it
+        _replyAudio = true;
+        _gemini.discardQueuedMic();
+        _gemini.takeTurnReadMs();  // per-reply network figure starts now
+        _replyT0 = millis();
+        _replyBytes0 = _gemini.audioBytesReceived();  // already counts this first message
+    }
+    _replyLastMs = millis();
     _awaitingReply = false;
     _ringing = false;
     _lastAgentAudio = millis();
@@ -1003,6 +1013,34 @@ void AgentController::onTurnComplete() {
     _audio->flushPlayback();
     _dropAudio = false;
     _awaitingReply = false;
+    if (_replyAudio) {
+        // arrival rate: audio after the first message vs the time it took to come in (1.0 = real time)
+        const uint32_t wall = _replyLastMs - _replyT0;
+        const uint32_t audioMs = (_gemini.audioBytesReceived() - _replyBytes0) / (AUDIO_I2S_RATE * 2 / 1000);
+        _replyRate = wall >= 1500 ? (float)audioMs / (float)wall : 0.0f;  // short replies say little
+        _replyNeedMs = _replyRate > 0.0f && _replyRate < 1.0f ? (uint32_t)((float)audioMs * (1.0f - _replyRate)) : 0;
+        _replyReportPending = true;  // one line once the reply has finished playing
+    }
+    _replyAudio = false;
+}
+
+// After each spoken reply: how smooth it was, so a user's log shows why it stuttered
+void AgentController::reportReply() {
+    if (!_replyReportPending || _audio->isPlaying()) return;
+    _replyReportPending = false;
+    const AudioManager::ReplyStats s = _audio->takeReplyStats();
+    const uint32_t netMs = _gemini.takeTurnReadMs();
+    const uint32_t stale = _gemini.takeMicDiscarded();
+    // +20 % headroom: the next reply may be longer or the link a little slower
+    if (_replyRate > 0.0f) _audio->tunePrebuffer(_replyNeedMs * 6 / 5, s.gaps > 0);
+    char rate[48] = "-";
+    if (_replyRate > 0.0f) snprintf(rate, sizeof(rate), "%d%%", (int)(_replyRate * 100.0f + 0.5f));
+    Serial.printf("[Audio] จบคำตอบ: กระตุก %lu ครั้ง (นานสุด %lu ms) | บัฟเฟอร์ %lu -> %lu ms"
+                  " | เน็ตส่งเสียงทัน %s ของเวลาจริง (ต่ำกว่า 100%% = เน็ตช้ากว่าเสียง)"
+                  " | ก้อนหนึ่งมาช้าสุด %lu ms | ลำโพงรอนานสุด %lu ms | ทิ้งเสียงไมค์ค้างส่ง %lu ก้อน\n",
+                  (unsigned long)s.gaps, (unsigned long)s.longestGapMs, (unsigned long)s.prebufferMs,
+                  (unsigned long)_audio->prebufferMs(), rate, (unsigned long)netMs, (unsigned long)s.outGapMaxMs,
+                  (unsigned long)stale);
 }
 
 void AgentController::onToolCall(JsonArrayConst calls) {
