@@ -284,7 +284,8 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 - **Fork & build:** `pio run` build ได้จาก clone ใหม่โดยไม่ต้องมี `secrets.h` — ค่าตั้งค่าอยู่ใน NVS (`src/app/Settings.*`) key ของคุณจึงไม่เข้าไปอยู่ในซอร์สโค้ด
 - **เพิ่ม tool:** ประกาศใน `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`) tool ที่ใช้เน็ตใส่ใน `src/agent/WebToolsExtra.cpp` และวาด `CardData` (ดู [wiki/11](wiki/11-Data-Tools-and-Cards.md))
 - **ทดสอบไม่ต้องมีบอร์ด:** `host_tests\run_tests.bat` — บนบอร์ดเรียก tool ทุกตัวได้จากแท็บ 🧰 ใน Studio หรือ serial (`tool <name> {json}`)
-- **ออก release เฟิร์มแวร์:** `python tools/make_release.py` → `dist/PersonalAIBot-ESP32-v<ver>-factory.bin` + `.sha256` สคริปต์จะไม่ทำงานถ้า `include/secrets.h` มีค่าจริง และสแกนไฟล์หาสิ่งที่หน้าตาเหมือน API key — นำไฟล์ไปแนบใน GitHub Release (`dist/` ถูก git-ignore)
+- **ออก Release อัตโนมัติ:** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` — GitHub Actions ([`.github/workflows/firmware.yml`](.github/workflows/firmware.yml)) จะ build เฟิร์มแวร์ รัน host test และสร้าง Release `v<เวอร์ชัน>` พร้อมแนบ `PersonalAIBot-ESP32-v<เวอร์ชัน>-factory.bin` + `.sha256` ให้เอง push ครั้งอื่นๆ แค่ build ตรวจ (เก็บไฟล์ไว้ใน artifact) ถ้าอยากอัปไฟล์เวอร์ชันเดิมซ้ำ: *Actions → Firmware → Run workflow*
+- **สร้างไฟล์ในเครื่อง:** `python tools/make_release.py` (สคริปต์เดียวกับที่ GitHub ใช้) — ไม่ยอมทำงานถ้า `include/secrets.h` มีค่าจริง และสแกนไฟล์หาสิ่งที่หน้าตาเหมือน API key
 - **เอกสาร:** โฟลเดอร์ `wiki/` เป็น Obsidian vault — ปัญหาที่แก้ได้ช่วยบันทึกใน [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md)
 
 ยินดีรับ Pull request และ Issue

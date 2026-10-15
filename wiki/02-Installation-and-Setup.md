@@ -21,7 +21,7 @@ status: reference
 
 ไฟล์ factory เขียนตั้งแต่ `0x0` จึงล้างค่าตั้งค่าเดิมในบอร์ดด้วย — ถ้าจะอัปเดตโดยเก็บค่าเดิม ให้ build จากซอร์ส (`pio run -t upload`)
 
-**ผู้ดูแลโปรเจกต์ — ออก release:** `python tools/make_release.py` → `dist/*.bin` + `.sha256` แล้วแนบใน GitHub Release
+**ผู้ดูแลโปรเจกต์ — ออก release:** อัตโนมัติด้วย GitHub Actions (`.github/workflows/firmware.yml`) — แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` แล้ว push → ได้ Release `v<เวอร์ชัน>` พร้อมไฟล์ factory (เวอร์ชันที่มี tag แล้วจะไม่ออกซ้ำ; อัปซ้ำได้ที่ Actions → Firmware → Run workflow) — สร้างในเครื่องเองได้ด้วย `python tools/make_release.py` → `dist/*.bin` + `.sha256`
 (สคริปต์ไม่ยอมสร้างถ้า `include/secrets.h` มีค่าจริง, สแกนหา key ในไฟล์ และ `tools/pio_strip_paths.py` ตัด path เครื่องผู้ build ออกจากเฟิร์มแวร์)
 
 ## Prerequisites Overview

@@ -283,7 +283,8 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 - **Fork & build:** `pio run` builds from a clean clone — no `secrets.h` needed. Settings live in NVS (`src/app/Settings.*`), so your own keys never touch the source tree.
 - **Add a tool:** declare it in `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`); network tools go in `src/agent/WebToolsExtra.cpp` and draw a `CardData` (see [wiki/11](wiki/11-Data-Tools-and-Cards.md)).
 - **Test without a board:** `host_tests\run_tests.bat`; on a board, every tool can be called from the Studio's 🧰 tab or the serial console (`tool <name> {json}`).
-- **Publish a firmware release:** `python tools/make_release.py` → `dist/PersonalAIBot-ESP32-v<ver>-factory.bin` + `.sha256`. It refuses to run while `include/secrets.h` holds real values and scans the image for API-key-like strings. Attach the files to a GitHub Release (`dist/` is git-ignored).
+- **Releases are automatic:** bump `FIRMWARE_VERSION` in `src/app/AppConfig.h`, commit, `git push` — GitHub Actions ([`.github/workflows/firmware.yml`](.github/workflows/firmware.yml)) builds the firmware, runs the host tests and publishes Release `v<version>` with `PersonalAIBot-ESP32-v<version>-factory.bin` + `.sha256`. Every other push / pull request just builds (the image is kept as a workflow artifact). *Actions → Firmware → Run workflow* re-uploads the current version.
+- **Local release image:** `python tools/make_release.py` (same script the workflow uses) — refuses to run while `include/secrets.h` holds real values and scans the image for API-key-like strings.
 - **Docs:** the `wiki/` folder is an Obsidian vault; please add problems you solve to [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md).
 
 Pull requests and issues are welcome.

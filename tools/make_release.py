@@ -60,9 +60,10 @@ def main() -> None:
 
     boot_app0 = Path.home() / ".platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"
     esptool = Path.home() / ".platformio/packages/tool-esptoolpy/esptool.py"
+    esptool_cmd = [sys.executable, str(esptool)] if esptool.exists() else [sys.executable, "-m", "esptool"]
     DIST.mkdir(exist_ok=True)
     out = DIST / f"PersonalAIBot-ESP32-v{version()}-factory.bin"
-    subprocess.run([sys.executable, str(esptool), "--chip", "esp32s3", "merge_bin", "-o", str(out),
+    subprocess.run(esptool_cmd + ["--chip", "esp32s3", "merge_bin", "-o", str(out),
                     "--flash_mode", "dio", "--flash_freq", "80m", "--flash_size", "16MB",
                     "0x0", str(BUILD / "bootloader.bin"), "0x8000", str(BUILD / "partitions.bin"),
                     "0xe000", str(boot_app0), "0x10000", str(BUILD / "firmware.bin")], check=True)
