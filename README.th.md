@@ -9,7 +9,7 @@
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
-[![Firmware](https://img.shields.io/badge/firmware-v3.2.1-3ddc84)](src/app/AppConfig.h)
+[![Firmware](https://img.shields.io/badge/firmware-v3.3.0-3ddc84)](src/app/AppConfig.h)
 [![Tests](https://img.shields.io/badge/host%20tests-1%2C446%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -35,7 +35,7 @@
 | 🧑‍💼 **บุคลิก** | โปรไฟล์สำเร็จรูป 8 แบบ (ไข่มุก, ภูมิ, ลีน่า, ธันวา, มะปราง, โอม, น้ำ, ครูเก่ง), เสียง 30 แบบ, นิสัย 7 แบบ, ลงท้าย ค่ะ/ครับ — เปลี่ยนผ่านเมนูทัชหรือสั่งด้วยเสียง |
 | 👀 **ใบหน้ามีชีวิต** | ดวงตาสไตล์ Cozmo 14 อารมณ์, ซับไตเติลภาษาไทย, ปุ่มเปิด/ปิดไมค์บนจอ, โหมดมืด — พักนานจะเปลี่ยนเป็น**นาฬิกาหรี่แสง** (ประหยัดไฟ) และตื่นพร้อมจอสว่างทันทีที่ได้ยินเสียง |
 | 📊 **การ์ดข้อมูลสด** | อากาศ + PM2.5, ราคาน้ำมันไทย, หุ้น/ทอง/คริปโต/ค่าเงิน, วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, ข่าว, Wikipedia — วาดเป็นกราฟิกขณะ AI พูด |
-| 📻 **วิทยุออนไลน์** | "เปิดวิทยุ Cool 93" — หลายพันสถานีจาก Radio Browser (MP3/AAC, ตัวถอดรหัส Helix) เล่นขณะผู้ช่วยพัก แตะจอหรือพูดดังๆ เพื่อสั่งงาน วิทยุจะเบาลงเหลือ 12% จนคุยเสร็จ [wiki/12](wiki/12-Internet-Radio.md) |
+| 📻 **วิทยุออนไลน์** | หน้าจอแบบแอปวิทยุ พร้อม 16 สถานีไทยที่ทดสอบแล้ว: เลื่อนแล้วแตะเลือกสถานี ปุ่มเพิ่ม/ลดเสียง และแตะกลางจอเพื่อสั่งงาน AI ได้เหมือนเดิม พูด "เปิดวิทยุลูกทุ่ง" หรือ "สถานีที่ 4" แล้ว AI จะเลือกจากรายการให้ แก้รายการ (เพิ่ม แก้ ลบ เรียงลำดับ ทดสอบ URL) ได้ใน ESP32-AI Studio ถอดรหัส MP3/AAC ด้วย Helix และวิทยุจะเบาลงเหลือ 12% ระหว่างคุย [wiki/12](wiki/12-Internet-Radio.md) |
 | ⏰ **ผู้ช่วยส่วนตัว** | ตั้งเวลา, แจ้งเตือน (ทุกวัน/วันทำงาน/ทุกสัปดาห์), รายการงาน, สมุดโน้ต, แจ้งเตือนราคาด้วยเสียง, เครื่องคิดเลข, แปลงหน่วย, เวลาต่างประเทศ |
 | 📈 **MetaTrader 5** *(ไม่บังคับ)* | ดูพอร์ต MT5 ผ่าน [mt5-core-server](#-metatrader-5-ไม่บังคับ) — การเทรดด้วยเสียง **ปิดเป็นค่าเริ่มต้น** และต้องยืนยันด้วยเสียง 2 ขั้น |
 | 🔁 **ซ่อมตัวเองได้** | สลับโมเดลอัตโนมัติ, หยุดพักเมื่อติดโควตา, ปิด Google Search อัตโนมัติเมื่อโควตาหมด, resume เซสชัน, ต่อ Wi-Fi ใหม่ |
@@ -226,6 +226,7 @@ flowchart LR
 | 🖥️ หน้าจอ | ภาพจอสด — คลิก = แตะ, ลาก = เลื่อน, คลิกขวา = กดค้าง |
 | 📊 สถานะ | เซสชัน, โมเดล & เวลาพัก, กราฟโทเคน/นาที, RAM, ที่เก็บข้อมูล, แบตเตอรี่ |
 | 🔧 เฟิร์มแวร์ | Build, Build + Upload, host unit tests |
+| 📻 วิทยุ | รายการสถานี: เล่น/หยุด, เพิ่ม, แก้ไข, ลบ, เรียงลำดับ, คืนค่าเริ่มต้น, ทดสอบ URL สตรีมจาก PC |
 
 คัดลอก/วางได้ทั้งแป้นพิมพ์ไทยและอังกฤษ เอกสาร → [wiki/10-PC-Studio-App.md](wiki/10-PC-Studio-App.md)
 
@@ -301,7 +302,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 ## 🙏 ขอบคุณ
 
 - [Google Gemini Live API](https://ai.google.dev/gemini-api/docs/live) · [LovyanGFX](https://github.com/lovyan03/LovyanGFX) · [ArduinoJson](https://arduinojson.org/) · [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel)
-- ฟอนต์ไทย: **TH Sarabun New** (SIPA, ฟอนต์แห่งชาติ) · ถอดรหัส MP3/AAC: **RealNetworks Helix** (RPSL, `lib/helix-*`) · สถานีวิทยุ: [Radio Browser](https://www.radio-browser.info)
+- ฟอนต์ไทย: **TH Sarabun New** (SIPA, ฟอนต์แห่งชาติ) · ถอดรหัส MP3/AAC: **RealNetworks Helix** (RPSL, `lib/helix-*`) · รายการสถานีเริ่มต้นตรวจด้วย [Radio Browser](https://www.radio-browser.info)
 - ข้อมูล: [Open-Meteo](https://open-meteo.com/) · [บางจาก](https://www.bangchak.co.th/) · [TradingView](https://www.tradingview.com/) · [Wikipedia](https://www.wikipedia.org/) · [ForexFactory](https://www.forexfactory.com/) · [alternative.me](https://alternative.me/crypto/fear-and-greed-index/) · [ipwho.is](https://ipwho.is/) · Google News
 - tools และฟีเจอร์การเงินพอร์ตมาจากแอป **PersonalAIBot** บน Android
 

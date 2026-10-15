@@ -65,7 +65,7 @@ MONO = ("Consolas", 10)
 EMOTIONS = ["neutral", "happy", "excited", "love", "sad", "worried", "angry", "surprised", "sleepy",
             "thinking", "curious", "confused", "shy", "wink"]
 
-TAG_RE = re.compile(r"^(CONFIG|OPTIONS|TOOLS|DIAG|WIFISCAN|APITEST|RECINFO|TOOL)\s+(.*)$")
+TAG_RE = re.compile(r"^(CONFIG|OPTIONS|TOOLS|DIAG|WIFISCAN|APITEST|RECINFO|RADIOLIST|TOOL)\s+(.*)$")
 SECRET_RE = re.compile(r"(key=)[^&\s\"]+")
 
 
@@ -306,6 +306,7 @@ class Studio:
         self._build_screen_tab()
         self._build_status_tab()
         self._build_firmware_tab()
+        self._build_radio_tab()  # appended last: other code refers to tab indices
         self._install_clipboard()
         self.refresh_ports(auto_connect=True)
         root.after(30, self._pump)
@@ -478,7 +479,7 @@ class Studio:
         self.conn_btn.configure(text="ตัดการเชื่อมต่อ", style="TButton")
         self.status_var.set(f"เชื่อมต่อ {port} แล้ว • กำลังอ่านค่า...")
         self.log_local(f"เชื่อมต่อ {port} @ {BAUD}", "ok")
-        for cmd in ("config", "options", "tools", "diag"):
+        for cmd in ("config", "options", "tools", "diag", "radiolist"):
             self.send(cmd, echo=False)
 
     def _on_disconnected(self, why):
@@ -549,7 +550,7 @@ class Studio:
             self.link.open(self._reconnect_port)
             self.conn_btn.configure(text="ตัดการเชื่อมต่อ", style="TButton")
             self.log_local(f"เชื่อมต่อ {self._reconnect_port} ใหม่แล้ว", "ok")
-            for cmd in ("config", "options", "tools", "diag"):
+            for cmd in ("config", "options", "tools", "diag", "radiolist"):
                 self.send(cmd, echo=False)
         except (serial.SerialException, OSError):
             self.root.after(2500, self._try_reconnect)
@@ -652,6 +653,10 @@ class Studio:
             self.show_apitest(data)
         elif tag == "RECINFO":
             self.rec_info = data
+        elif tag == "RADIOLIST":
+            self.show_radio_list(data)
+            if data.get("error"):
+                messagebox.showwarning(APP_TITLE, f"บอร์ดตอบกลับ: {data['error']}")
         elif tag == "TOOL":
             self.show_tool_result(name, data)
 
@@ -1658,6 +1663,182 @@ class Studio:
         if path:
             self.screen_img.write(path, format="png")
             self.log_local(f"บันทึกภาพจอแล้ว: {path}", "ok")
+
+    # ---------------------------------------------------------- radio tab
+    def _build_radio_tab(self):
+        tab = ttk.Frame(self.nb)
+        self.nb.add(tab, text="📻 วิทยุ")
+        self.radio_list: list[dict] = []
+        bar = ttk.Frame(tab)
+        bar.pack(fill="x", pady=6)
+        ttk.Button(bar, text="โหลดรายการ", command=lambda: self.send("radiolist", echo=False)).pack(side="left")
+        ttk.Button(bar, text="▶ เล่น", style="Accent.TButton", command=self.radio_play).pack(side="left", padx=(12, 4))
+        ttk.Button(bar, text="⏹ หยุด", command=self.radio_stop).pack(side="left", padx=4)
+        ttk.Button(bar, text="⬆", width=3, command=lambda: self.radio_move(-1)).pack(side="left", padx=(12, 2))
+        ttk.Button(bar, text="⬇", width=3, command=lambda: self.radio_move(1)).pack(side="left", padx=2)
+        ttk.Button(bar, text="ลบ", style="Danger.TButton", command=self.radio_delete).pack(side="left", padx=(12, 4))
+        ttk.Button(bar, text="คืนค่ารายการเริ่มต้น", command=self.radio_reset).pack(side="right")
+        self.radio_status = ttk.Label(tab, text="ยังไม่ได้โหลดรายการ — กด \"โหลดรายการ\"", style="Dim.TLabel")
+        self.radio_status.pack(anchor="w")
+
+        body = ttk.Frame(tab)
+        body.pack(fill="both", expand=True, pady=4)
+        self.radio_tree = ttk.Treeview(body, columns=("name", "genre", "url"), show="headings", height=14,
+                                       selectmode="browse")
+        for col, text, w in (("name", "สถานี", 240), ("genre", "แนว", 150), ("url", "URL สตรีม", 520)):
+            self.radio_tree.heading(col, text=text)
+            self.radio_tree.column(col, width=w, stretch=col == "url")
+        sb = ttk.Scrollbar(body, orient="vertical", command=self.radio_tree.yview)
+        self.radio_tree.configure(yscrollcommand=sb.set)
+        self.radio_tree.pack(side="left", fill="both", expand=True)
+        sb.pack(side="left", fill="y")
+        self.radio_tree.tag_configure("playing", foreground=OK)
+        self.radio_tree.bind("<<TreeviewSelect>>", lambda e: self.radio_fill_form())
+        self.radio_tree.bind("<Double-1>", lambda e: self.radio_play())
+
+        form = ttk.LabelFrame(tab, text="เพิ่ม / แก้ไขสถานี")
+        form.pack(fill="x", pady=6)
+        self.radio_name = tk.StringVar()
+        self.radio_url = tk.StringVar()
+        self.radio_genre = tk.StringVar()
+        fields = (("ชื่อสถานี", self.radio_name, 40), ("URL สตรีม (http/https)", self.radio_url, 80),
+                  ("แนว (เช่น ลูกทุ่ง, ข่าว)", self.radio_genre, 40))
+        for r, (label, var, w) in enumerate(fields):
+            ttk.Label(form, text=label).grid(row=r, column=0, sticky="w", padx=6, pady=3)
+            ttk.Entry(form, textvariable=var, width=w).grid(row=r, column=1, sticky="w", padx=6, pady=3)
+        btns = ttk.Frame(form)
+        btns.grid(row=3, column=0, columnspan=2, sticky="w", padx=6, pady=6)
+        ttk.Button(btns, text="➕ เพิ่มเป็นสถานีใหม่", style="Accent.TButton", command=self.radio_add).pack(side="left")
+        ttk.Button(btns, text="💾 บันทึกทับสถานีที่เลือก", command=self.radio_edit).pack(side="left", padx=6)
+        ttk.Button(btns, text="🔎 ทดสอบ URL จาก PC", command=self.radio_test_url).pack(side="left", padx=6)
+        self.radio_test_label = ttk.Label(form, text="", style="Dim.TLabel")
+        self.radio_test_label.grid(row=4, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 6))
+        ttk.Label(tab, text="AI เลือกสถานีจากรายการนี้ตามชื่อ / ลำดับ / แนวเพลง (\"เปิดวิทยุลูกทุ่ง\", \"เปิดสถานีที่ 3\")  •  "
+                            "เก็บในการ์ด SD: agent/radio_stations.json (สูงสุด 40 สถานี, MP3 / AAC)",
+                  style="Dim.TLabel").pack(anchor="w")
+
+    def radio_selected(self) -> int:
+        sel = self.radio_tree.selection()
+        return int(sel[0]) if sel else -1
+
+    def show_radio_list(self, data: dict):
+        self.radio_list = data.get("stations", [])
+        playing = int(data.get("playing", 0))
+        keep = self.radio_selected()
+        self.radio_tree.delete(*self.radio_tree.get_children())
+        for i, s in enumerate(self.radio_list):
+            mark = "▶ " if i + 1 == playing else ""
+            self.radio_tree.insert("", "end", iid=str(i),
+                                   values=(f"{mark}{i + 1}. {s.get('name', '')}", s.get("genre", ""), s.get("url", "")),
+                                   tags=("playing",) if i + 1 == playing else ())
+        if 0 <= keep < len(self.radio_list):
+            self.radio_tree.selection_set(str(keep))
+        now = (f"กำลังเล่น: {self.radio_list[playing - 1].get('name', '')}" if 0 < playing <= len(self.radio_list)
+               else f"วิทยุ: {data.get('state', '-')}")
+        self.radio_status.configure(text=f"{len(self.radio_list)}/{data.get('max', 40)} สถานี  •  {now}")
+
+    def radio_fill_form(self):
+        i = self.radio_selected()
+        if 0 <= i < len(self.radio_list):
+            s = self.radio_list[i]
+            self.radio_name.set(s.get("name", ""))
+            self.radio_url.set(s.get("url", ""))
+            self.radio_genre.set(s.get("genre", ""))
+
+    def radio_form_line(self) -> str | None:
+        name, url, genre = (v.get().strip() for v in (self.radio_name, self.radio_url, self.radio_genre))
+        err = None
+        if not name:
+            err = "ใส่ชื่อสถานีก่อน"
+        elif "|" in name + url + genre:
+            err = "ห้ามใช้เครื่องหมาย |"
+        elif not re.match(r"^https?://\S+$", url) or not url.isascii():
+            err = "URL ต้องขึ้นต้นด้วย http:// หรือ https:// และไม่มีช่องว่าง / ภาษาไทย"
+        elif len(name.encode()) > 47 or len(genre.encode()) > 39 or len(url) > 199:
+            err = "ยาวเกินไป (ชื่อ ≤ 47 ไบต์ ≈ ภาษาไทย 15 ตัว, แนว ≤ 39 ไบต์, URL ≤ 199 ตัว)"
+        if err:
+            messagebox.showwarning(APP_TITLE, err)
+            return None
+        return f"{name}|{url}|{genre}"
+
+    def radio_add(self):
+        line = self.radio_form_line()
+        if line:
+            self.send(f"radioadd {line}")
+
+    def radio_edit(self):
+        i = self.radio_selected()
+        if i < 0:
+            messagebox.showwarning(APP_TITLE, "เลือกสถานีในตารางก่อน")
+            return
+        line = self.radio_form_line()
+        if line:
+            self.send(f"radioedit {i + 1} {line}")
+
+    def radio_delete(self):
+        i = self.radio_selected()
+        if 0 <= i < len(self.radio_list) and messagebox.askyesno(
+                APP_TITLE, f"ลบสถานี \"{self.radio_list[i].get('name', '')}\" ออกจากรายการ?"):
+            self.radio_tree.selection_remove(*self.radio_tree.selection())
+            self.send(f"radiodel {i + 1}")
+
+    def radio_move(self, step: int):
+        i = self.radio_selected()
+        j = i + step
+        if 0 <= i < len(self.radio_list) and 0 <= j < len(self.radio_list):
+            self.radio_tree.selection_set(str(j))  # the reply redraws the list and keeps this row selected
+            self.send(f"radiomove {i + 1} {j + 1}", echo=False)
+
+    def radio_play(self):
+        i = self.radio_selected()
+        if i < 0:
+            messagebox.showwarning(APP_TITLE, "เลือกสถานีในตารางก่อน")
+            return
+        if self.send(f"radio {i + 1}"):
+            self.root.after(2000, lambda: self.send("radiolist", echo=False))
+
+    def radio_stop(self):
+        if self.send("radio stop"):
+            self.root.after(800, lambda: self.send("radiolist", echo=False))
+
+    def radio_reset(self):
+        if messagebox.askyesno(APP_TITLE, "แทนที่รายการทั้งหมดด้วยสถานีเริ่มต้น 16 สถานี?\n(สถานีที่เพิ่มเองจะหายไป)"):
+            self.send("radioreset")
+
+    def radio_test_url(self):
+        url = self.radio_url.get().strip()
+        if not re.match(r"^https?://", url):
+            messagebox.showwarning(APP_TITLE, "ใส่ URL ก่อน")
+            return
+        self.radio_test_label.configure(text="กำลังทดสอบ...", foreground=DIM)
+
+        def work():
+            import ssl
+            import urllib.request
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "ESP32-AI-Radio/1.0", "Icy-MetaData": "1"})
+                ctx = ssl._create_unverified_context()  # the board does not verify stream certificates either
+                t0 = time.time()
+                with urllib.request.urlopen(req, timeout=8, context=ctx) as r:
+                    ctype = (r.headers.get("Content-Type") or "?").lower()
+                    icy = r.headers.get("icy-name") or ""
+                    got = 0
+                    while got < 32768 and time.time() - t0 < 6:
+                        chunk = r.read(4096)
+                        if not chunk:
+                            break
+                        got += len(chunk)
+                fmt = "MP3" if ("mpeg" in ctype or "mp3" in ctype) else "AAC" if "aac" in ctype else ctype
+                ok = got >= 8192 and fmt in ("MP3", "AAC")
+                msg = (f"{'✅ ใช้ได้' if ok else '⚠ น่าสงสัย'}: {fmt}, ได้ข้อมูล {got // 1024} KB ใน {time.time() - t0:.1f} วิ"
+                       + (f"  •  icy-name: {icy}" if icy else "")
+                       + ("" if ok else "  (บอร์ดเล่นได้เฉพาะสตรีม MP3 / AAC)"))
+                color = OK if ok else WARN
+            except Exception as e:  # noqa: BLE001 - any network error goes to the label
+                msg, color = f"❌ เปิดไม่ได้: {e}", ERR
+            self.root.after(0, lambda: self.radio_test_label.configure(text=msg, foreground=color))
+
+        threading.Thread(target=work, daemon=True).start()
 
     # ---------------------------------------------------------- status tab
     def _build_status_tab(self):

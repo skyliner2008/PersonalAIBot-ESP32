@@ -49,4 +49,5 @@ public:
     virtual void uiClearHistory() = 0;  // episodic log
     virtual void uiSystemInfo(String& out) = 0;
     virtual AvatarState uiState() = 0;
+    virtual void uiActivity() {}        // touch on a non-face screen (radio player): delay the power-save clock
 };

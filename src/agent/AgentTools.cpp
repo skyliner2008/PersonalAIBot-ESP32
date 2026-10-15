@@ -110,6 +110,7 @@ const AgentTools::Entry AgentTools::kHandlers[] = {
     {"mute_microphone", &AgentTools::muteMicrophone},
     {"rest_screen", &AgentTools::restScreen},
     {"stop_radio", &AgentTools::stopRadio},
+    {"play_radio", &AgentTools::playRadio},
     {nullptr, nullptr},
 };
 
@@ -238,11 +239,10 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     declare(d, b, "control_led", "Set the RGB LED ('auto' = status colors).", led, 1);
     declare(d, b, "go_to_sleep", "Stop listening and sleep after this reply (user said goodbye / good night).");
     static const Param radio[] = {
-        {"query", "STRING", "Station or genre in English, e.g. 'Cool 93', 'news'. Empty = last station.", false, nullptr},
-        {"country", "STRING", "ISO code, default TH, 'any' = worldwide.", false, nullptr},
+        {"station", "STRING", "Number, name or genre from the station list. Empty = last station.", false, nullptr},
     };
     declare(d, b, "play_radio",
-            "Play Internet radio. Say the station name briefly, then stay quiet (it plays while you sleep).", radio, 2);
+            "Play a station from the radio list (in your instructions). Name it briefly, then stay quiet.", radio, 1);
     declare(d, b, "stop_radio", "Stop the Internet radio.");
     declare(d, b, "mute_microphone",
             "Mic OFF after this reply. Only the screen mic button turns it back on: tell the user.");
@@ -740,6 +740,11 @@ bool AgentTools::controlLed(JsonObjectConst a, JsonObject r, const char*& e) {
     if (!known) return (e = "unsupported color"), false;
     if (!_device.setLedColor(color)) return (e = "LED not available"), false;
     r["color"] = color;
+    return true;
+}
+
+bool AgentTools::playRadio(JsonObjectConst a, JsonObject r, const char*& e) {
+    if (const char* err = _device.playRadio(a["station"] | "", r)) return (e = err), false;
     return true;
 }
 

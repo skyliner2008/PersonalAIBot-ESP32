@@ -1,14 +1,14 @@
 ---
-tags: [radio, audio, streaming, helix, mp3, aac, ducking, vad]
+tags: [radio, audio, streaming, helix, mp3, aac, ducking, vad, station-list, ui]
 created: 2026-10-15
 updated: 2026-10-15
-status: implemented (phase 1) — tested on hardware 2026-10-15 (COOL Fahrenheit 93)
+status: implemented — station list + touch player, tested on hardware 2026-10-15
 ---
 
 # 📻 Internet Radio
 
 > **Related:** [[06-Avatar-and-Thai-UI]] | [[09-Assistant-Profiles-and-Tools]] | [[11-Data-Tools-and-Cards]] | [[04-System-Architecture]]
-> **Code:** `src/audio/RadioPlayer.*` (stream + decode) · `src/util/RadioResampler.h` (→ mono 24 kHz) · `src/audio/AudioManager.*` (mixer + ducking) · `src/agent/WebToolsExtra.cpp` (`runRadio`) · `src/agent/AgentController.cpp` (`startRadio`, `handleRadio`) · `lib/helix-mp3`, `lib/helix-aac`
+> **Code:** `src/audio/RadioStations.*` (รายการสถานี) · `src/ui/RadioScreen.*` (หน้าจอวิทยุ) · `src/audio/RadioPlayer.*` (stream + decode) · `src/util/RadioResampler.h` (→ mono 24 kHz) · `src/audio/AudioManager.*` (mixer + ducking) · `src/agent/AgentController.cpp` (`playRadio`, `handleRadio`) · `lib/helix-mp3`, `lib/helix-aac`
 
 ## ปัญหาที่ต้องแก้ก่อนเพิ่มวิทยุ
 
@@ -20,7 +20,7 @@ status: implemented (phase 1) — tested on hardware 2026-10-15 (COOL Fahrenheit
 ## การออกแบบ (เฟส 1 — ผู้ใช้เลือก: "แตะ/พูดดังเพื่อสั่ง" + "ลดเสียงเบาๆ ตอน AI พูด")
 
 ```
-"เปิดวิทยุ Cool 93" → play_radio (Radio Browser) → RadioPlayer.play(url)
+"เปิดวิทยุ Cool 93" → play_radio(station) → RadioStations.find() → RadioPlayer.play(url)
    AI พูดชื่อสถานีสั้นๆ (วิทยุดัง 12% ข้างใต้)
    เงียบ RADIO_RESUME_MS (6 วิ) → enterSleep(): ปิดเซสชัน Gemini (ไม่เสียโทเคน) → วิทยุดัง 100%
 ขณะพัก + วิทยุเล่น:
@@ -34,6 +34,42 @@ status: implemented (phase 1) — tested on hardware 2026-10-15 (COOL Fahrenheit
   - วัดจริง: coupling ≈ 0.04–0.10 (ไมค์ได้ยินลำโพง 4–10%)
   - เดิมใช้ noise floor × 2: ตื่นเองทุก ~1.5 วิหลังเข้าพัก (noise floor ยังเป็นค่าตอนวิทยุเบา 12%) → แบบใหม่ 55 วิ ไม่ตื่นเองเลย
 - ระหว่างวิทยุเล่น หยุดการเลือกช่องไมค์ (L/R) ใหม่ — ไม่งั้นอาจไปเลือกช่องที่เป็น DAC loopback
+
+## รายการสถานี (ล็อกไว้ — ไม่ค้นออนไลน์)
+
+ผู้ใช้เลือก (2026-10-15): **ไม่ค้นสถานีเอง** ใช้รายการที่ล็อกไว้แทน — เดิม `play_radio` ค้น Radio Browser ออนไลน์ ช้า (~20 วิ) และบางครั้งได้ URL เสีย จึงตัดทิ้ง
+
+- เก็บที่ `<การ์ด SD>/agent/radio_stations.json` (`[{name,url,genre}]`, สูงสุด 40) — ไม่มีไฟล์ = เขียนรายการเริ่มต้น 16 สถานีไทยที่ทดสอบแล้ว (ยิงจาก PC: HTTP 200, MP3/AAC, มีข้อมูลเสียงไหล) · ไม่มีการ์ด = ใช้รายการเริ่มต้นในหน่วยความจำ
+- สถานีล่าสุดจำเป็น **ชื่อ** (`cfg/radioname`) ไม่ใช่ URL — แก้ URL ใน Studio แล้วยังจำได้
+- ชื่อ ≤ 47 ไบต์ (ภาษาไทย ≈ 15 ตัว), แนว ≤ 39 ไบต์, URL ≤ 199 ตัว ASCII เท่านั้น
+- **AI เห็นรายการทั้งหมดใน system prompt** ("สถานีวิทยุในรายการ: 1 COOL Fahrenheit 93 (เพลงฟังสบาย), 2 …") จึงเลือกได้เองจากคำพูด
+- `RadioStations::find(query)` ลำดับการจับคู่: เลขลำดับล้วน ("4") → ชื่อมีคำนั้น (ไม่สนช่องว่าง/ตัวพิมพ์) → แนวเพลง ("ลูกทุ่ง", "ข่าว") → คำใดคำหนึ่งในชื่อ ("เปิด 93.5") → เลขในประโยค ("สถานีที่ 4")
+
+| สถานีเริ่มต้น | แนว |
+|---|---|
+| COOL Fahrenheit 93 · Smooth 105.5 (อสมท) · Radio Samui | ฟังสบาย / สากล / ชิลล์ |
+| ลูกทุ่ง รักไทย 90 · FM 103 คนลูกทุ่ง · Isan FM 98 | ลูกทุ่ง / อีสาน |
+| มิติข่าว 90.5 · JS100 · สวท. FM 92.5 · Radio Thailand FM 88 | ข่าว / จราจร / ข่าวภาษาอังกฤษ |
+| 94 Bangkok Smile · 106 Yes Radio · 93.5 Top Radio | เพลงไทย / เพลงเก่า |
+| Surf 102.5 · BKK.FM | ป๊อป ร็อก / อัลเทอร์เนทีฟ |
+| บ้านธัมมะ | ธรรมะ |
+
+## หน้าจอวิทยุ (`RadioScreen`)
+
+![[images/radio-player.png]] ![[images/radio-player-stopped.png]]
+
+| ส่วน | การแตะ |
+|---|---|
+| หัว: `<` / ชื่อ / นาฬิกา / ⏹ หรือ ▶ | `<` กลับ · ⏹ หยุด · ▶ เล่นสถานีล่าสุด |
+| **แผงกลาง** (ชื่อสถานี, เพลง, แท่งระดับเสียง, สถานะ AI) | **แตะ = สั่งงาน AI เหมือนแตะหน้า avatar** (`uiTap`), กดค้าง = เริ่มเซสชันใหม่ · บรรทัดล่างบอก "AI กำลังฟัง / คิด / พูด" |
+| แถบสถานี (เลื่อนซ้าย-ขวา) | แตะ = เปลี่ยนสถานี (สถานีที่เล่นเป็นสีฟ้า, เลื่อนมากลางเองเมื่อ AI เปลี่ยนให้) |
+| ⏮ − 70% + ⏭ | สถานีก่อน/ถัดไป · เสียง ±10% (บันทึกในการตั้งค่า) |
+
+- **เปิดหน้าจออัตโนมัติ** เมื่อวิทยุเริ่มเล่น (สั่งด้วยเสียง / console / Studio) ขณะอยู่หน้า avatar
+- เปิดเอง: แตะแถบชื่อสถานีใต้ดวงตา หรือ ⚙ ตั้งค่า → "วิทยุออนไลน์"
+- เข้าโหมดประหยัดพลังงาน → หน้าวิทยุหลบให้นาฬิกา (หรี่จอ) → ตื่น → กลับมาเอง; แตะหน้าวิทยุ = ยืดเวลาก่อนเข้าโหมดนาฬิกา (`uiActivity`)
+- การ์ดข้อมูล (อากาศ ฯลฯ) แสดงทับหน้าวิทยุได้ ปิดแล้วกลับหน้าวิทยุ
+- แท่งระดับเสียง = `sqrt(radioOutLevel)` (หลัง duck gain) — ยังขยับตอน AI พูด
 
 ## Signal path
 
@@ -57,16 +93,18 @@ HTTP(S) stream ──► ICY metadata strip (StreamTitle, TIS-620 → UTF-8) ─
 | อัตราเสียงกระโดด 44.1 → 22.05 → 48 kHz, เสียงสะดุด | สถานี (CDN byteark) ส่ง `Transfer-Encoding: chunked` + ICY — ตัวเลขขนาด chunk ปนในข้อมูลเสียง → false sync | ตัวอ่าน body ถอด chunk ก่อนตัด ICY + ล็อก rate/ช่องเสียงหลังเฟรมแรก (เปลี่ยนเมื่อเจอซ้ำ 8 เฟรม) |
 | บอร์ดรีบูต: `task_wdt: IDLE0 (CPU 0)` ขณะ `webTools` ทำงาน | ช่วงเติมบัฟเฟอร์ ตัวถอดรหัสไม่ได้รอเลย + TLS handshake/JSON ของ webTools บน core 0 เดียวกัน → idle task ของ core 0 ไม่ได้รัน > 5 วิ (Arduino เฝ้าเฉพาะ IDLE0) | `vTaskDelay(1)` ทุกเฟรม + ย้าย `webTools` และ `textModel` ไป core 1 (core 0 = เสียง, วิทยุ, Wi-Fi) |
 | ตื่นเองหลังเข้าพัก | ดูหัวข้อการปลุกด้านบน | ประมาณเสียงสะท้อน |
-| การ์ดสถานีค้างทับนาฬิกา, ชื่อยาวถูกตัด | — | ปิดการ์ดเมื่อเข้าโหมดนาฬิกา, การ์ดวิทยุโชว์ 8 วิ, ชื่อยาวใช้ฟอนต์เล็ก + "..." |
+| การ์ดสถานีค้างทับนาฬิกา, ชื่อยาวถูกตัด | — | ปิดการ์ดเมื่อเข้าโหมดนาฬิกา, ชื่อยาวใช้ฟอนต์เล็ก + "..." (การ์ดวิทยุเลิกใช้ — แทนด้วยหน้าจอวิทยุ) |
+| ค้นออนไลน์ช้า 21 วิ แล้วล้ม, "Starting ?", URL สถานีล่าสุดเป็นขยะ | Radio Browser ช้า/ล้มบ่อยบนเน็ตมือถือ; ต้นเหตุ URL ขยะหาไม่พบ | เลิกค้นออนไลน์ → รายการล็อก + จำชื่อสถานีแทน URL |
 
-ผล: เล่นต่อเนื่อง ~2 นาที พร้อมเรียก Wikipedia/ภาพรวมตลาด/อากาศซ้อน — ไม่รีบูต, 44.1 kHz นิ่ง, บัฟเฟอร์เต็ม ~4 วิ, แตะ → ตื่น (วิทยุ 12%) → เงียบ 6 วิ → พัก (วิทยุ 100%)
+ผล (เฟส 1): เล่นต่อเนื่อง ~2 นาที พร้อมเรียก Wikipedia/ภาพรวมตลาด/อากาศซ้อน — ไม่รีบูต, 44.1 kHz นิ่ง, บัฟเฟอร์เต็ม ~4 วิ, แตะ → ตื่น (วิทยุ 12%) → เงียบ 6 วิ → พัก (วิทยุ 100%)
+ผล (รายการ + หน้าจอ): `play_radio` "ลูกทุ่ง" → ลูกทุ่ง รักไทย 90, "สถานีที่ 4" → Smooth 105.5, "เปิด 93.5" → 93.5 Top Radio, "ข่าว" → มิติข่าว 90.5, ชื่อที่ไม่มี → error · แตะแถบสถานี/ปุ่มเสียง/โหมดนาฬิกา-ตื่น ทำงานถูกต้อง · เพิ่ม/ย้าย/ลบผ่าน console แล้วรายการคงอยู่หลังรีบูต
 ยังไม่ได้ทดสอบ: ผู้ใช้พูดแทรกเพลงเพื่อปลุก (ต้องคนจริง) — ถ้าปลุกยากให้ลด `RADIO_WAKE_FACTOR`, ตื่นเองบ่อยให้เพิ่ม
 
 ## Tools
 
 | Tool | ทำอะไร |
 |---|---|
-| `play_radio(query?, country?)` | ค้น [Radio Browser](https://www.radio-browser.info) (`de1.api.radio-browser.info`, ฟรี ไม่ใช้ key): ชื่อ → แนวเพลง (tag) → ทั่วโลก; กรองเฉพาะ MP3/AAC ที่ใช้ได้, เรียงตามความนิยม; ไม่ระบุ query = สถานีล่าสุด (`cfg/radiourl`) • การ์ดชื่อสถานีบนจอ |
+| `play_radio(station?)` | เล่นสถานีจาก **รายการ** — เลขลำดับ / ชื่อ / แนวเพลง; ว่าง = สถานีล่าสุด; ไม่มีในรายการ → error ให้ AI เลือกจากรายชื่อใน prompt (เป็น tool ในเครื่อง ไม่ผ่าน webTools) |
 | `stop_radio()` | ปิดวิทยุ |
 | `get_device_status` | มี `radio.station / now_playing` — ตอบ "เพลงอะไรอยู่" ได้ |
 
@@ -74,9 +112,10 @@ HTTP(S) stream ──► ICY metadata strip (StreamTitle, TIS-620 → UTF-8) ─
 
 ## Console / Studio
 
-- `radio <url> [ชื่อ]` เล่นสตรีมตรงๆ · `radio stop` · `radio` = สถานะ (state, สถานี, เพลง, codec, Hz, buffered ms, error)
+- `radio <n>` เล่นสถานีลำดับ n · `radio <url> [ชื่อ]` เล่นสตรีมตรงๆ (ไม่เพิ่มในรายการ) · `radio stop` · `radio` = สถานะ (state, สถานี, เพลง, codec, Hz, buffered ms, error)
+- รายการ (เลขเริ่ม 1): `radiolist` · `radioadd ชื่อ|url|แนว` · `radioedit <n> ชื่อ|url|แนว` · `radiodel <n>` · `radiomove <จาก> <ไป>` · `radioreset` — ทุกคำสั่งตอบ `OK`/`ERR …` แล้วตามด้วย `RADIOLIST {"stations":[…],"playing":n,"state":"…","max":40,"error"?}`
 - `diag`: `radio`, `radio_station`, `radio_title`, `radio_codec`, `radio_rate`, `radio_error`
-- Studio → 🧰 → รัน tool `play_radio` / `stop_radio`
+- **Studio → 📻 วิทยุ**: ตารางสถานี (▶ = กำลังเล่น), เล่น/หยุด, ⬆⬇ เรียงลำดับ, ลบ, ฟอร์มเพิ่ม/แก้ไข, **🔎 ทดสอบ URL จาก PC** (ดึง 32 KB ดู content-type ว่าเป็น MP3/AAC), คืนค่ารายการเริ่มต้น — ดู [[10-PC-Studio-App]]
 
 ## License
 

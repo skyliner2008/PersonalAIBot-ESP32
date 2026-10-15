@@ -107,6 +107,7 @@ public:
     void requestSleep() override { _sleepPending = true; }
     void requestMicMute() override { _mutePending = true; }
     bool stopRadio() override;
+    const char* playRadio(const char* station, JsonObject result) override;
     bool applyAssistantChange(const AssistantChange& change, JsonObject result) override;
     void describeAssistant(JsonObject out) override;
 
@@ -126,6 +127,7 @@ public:
     void uiClearHistory() override { post(CMD_CLEAR_HISTORY); }
     void uiSystemInfo(String& out) override;
     AvatarState uiState() override { return state(); }
+    void uiActivity() override { _sleepSince = millis(); }  // asleep under the radio player: restart the clock-face timer
 
 private:
     enum Command : uint8_t {
@@ -311,7 +313,7 @@ private:
     void enterSleep();
     void enterPowerSave();
     void leavePowerSave();
-    void startRadio(JsonObjectConst station);
+
     void handleRadio(uint32_t now, bool busy);
     bool _radioWasOn = false;
     void wake(bool byVoice);

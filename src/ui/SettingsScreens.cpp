@@ -15,6 +15,8 @@
 #include "../util/TextWrap.h"
 #include "KeyboardScreen.h"
 #include "ListScreen.h"
+#include "RadioScreen.h"
+#include "../audio/RadioPlayer.h"
 
 namespace {
 
@@ -410,6 +412,7 @@ void buildMenu(ListScreen& l) {
     if (s.model == (uint8_t)LiveModel::Live38Thinking) {
         l.addSubmenu("ระดับการคิด", thinkingLevelId(s.thinking), openThinking);
     }
+    l.addSubmenu("วิทยุออนไลน์", gRadio.active() ? "กำลังเล่น" : "เลือกสถานี", []() { gUi.push(&gRadioUi); });
     l.addSubmenu("ระดับเสียง", String(s.volume) + "%", []() {
         openNumberPicker("ระดับเสียง", 0, 100, 10, gSettings.get().volume / 10 * 10, "%",
                          [](int v) { gSettings.update([&](SettingsData& d) { d.volume = (uint8_t)v; }); });

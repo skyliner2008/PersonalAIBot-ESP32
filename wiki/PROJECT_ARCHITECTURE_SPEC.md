@@ -199,7 +199,7 @@ flowchart TB
 | 3 Semantic facts | `ltm.jsonl` (`k:"f"`) | `save_memory`, `recall_memory`, core memory |
 | 4 Knowledge graph | `ltm.jsonl` (`k:"r"`) | `save_relation`, ขยายกราฟตอน recall |
 
-Tools (v3.2.1, 42 + MT5 2 ตัวเมื่อตั้งค่า + Google Search; สั่งเครื่องด้วยเสียง: set_volume/set_brightness (level หรือ change +/-), configure_device, rest_screen (พักหน้าจอ), play_radio/stop_radio (วิทยุออนไลน์ — wiki/12), mute_microphone (เปิดไมค์ได้เฉพาะบนจอ, จำข้ามรีบูต); tools ข้อมูลแสดงการ์ดกราฟิก — `wiki/11-Data-Tools-and-Cards.md`): get_weather • get_oil_price • get_market_quote • convert_currency • get_news • calculate • convert_units • get_world_time • get_location • search_knowledge • notes • [finance] market_overview • market_analysis • market_scan • economic_calendar • position_size • price_alert • [MT5] mt5_account • mt5_trade (ยืนยัน 2 ขั้น, จำกัด lot) • ความจำ 5 • set_timer/set_reminder/list_reminders/cancel_reminder • add_task/list_tasks/update_task •
+Tools (v3.3.0, 42 + MT5 2 ตัวเมื่อตั้งค่า + Google Search; สั่งเครื่องด้วยเสียง: set_volume/set_brightness (level หรือ change +/-), configure_device, rest_screen (พักหน้าจอ), play_radio(station: เลข/ชื่อ/แนว จากรายการสถานีใน prompt)/stop_radio (วิทยุออนไลน์ — wiki/12), mute_microphone (เปิดไมค์ได้เฉพาะบนจอ, จำข้ามรีบูต); tools ข้อมูลแสดงการ์ดกราฟิก — `wiki/11-Data-Tools-and-Cards.md`): get_weather • get_oil_price • get_market_quote • convert_currency • get_news • calculate • convert_units • get_world_time • get_location • search_knowledge • notes • [finance] market_overview • market_analysis • market_scan • economic_calendar • position_size • price_alert • [MT5] mt5_account • mt5_trade (ยืนยัน 2 ขั้น, จำกัด lot) • ความจำ 5 • set_timer/set_reminder/list_reminders/cancel_reminder • add_task/list_tasks/update_task •
 get_device_status • set_expression • configure_assistant • list_assistant_options • set_volume • set_brightness • control_led • go_to_sleep
 — behavior ตามโมเดล (3.8 Live BLOCKING, Extended Thinking NON_BLOCKING, 3.1 ไม่ระบุ) — ดู `wiki/09-Assistant-Profiles-and-Tools.md`
 
@@ -234,8 +234,8 @@ ESP32-AI/
 │   ├── app/                AppConfig.h, Settings (NVS)
 │   ├── agent/              AgentController, AgentTools, WebTools(+Extra, Common), Personas, Scheduler, TaskList, Consolidation
 │   ├── ai/                 GeminiLiveClient, TextModelClient, ModelFallback, GoogleRootCA.h
-│   ├── ui/                 Eyes, FaceScreen, CardScreen, UiManager, ListScreen, KeyboardScreen, SettingsScreens
-│   ├── audio/              AudioManager, ES8311, Resampler
+│   ├── ui/                 Eyes, FaceScreen, CardScreen, RadioScreen, UiManager, ListScreen, KeyboardScreen, SettingsScreens
+│   ├── audio/              AudioManager, ES8311, Resampler, RadioPlayer, RadioStations
 │   ├── display/            TouchFT6336, LGFX_ES3C28P, fonts/ThaiFont26 + ThaiFont20
 │   ├── memory/             MemoryStore, EpisodicLog, TextFeatures, AppendSink, AsyncFileSink
 │   ├── system/             I2cBus, Storage

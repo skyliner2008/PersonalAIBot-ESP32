@@ -1,7 +1,7 @@
 ---
 tags: [pc-app, tools, settings, debug, serial, python]
 created: 2026-10-14
-updated: 2026-10-14
+updated: 2026-10-15
 status: implemented
 ---
 
@@ -44,6 +44,7 @@ python tools\pc_app\esp32_ai_studio.py
 | 🖥️ **หน้าจอ** | ภาพจอสด (ขยาย 2 เท่า) • **คลิก = แตะจอ, ลาก = เลื่อน, คลิกขวา = กดค้าง** • หน้าหลัก/ย้อนกลับ/เมนู/ข้อมูลระบบ • อัปเดตอัตโนมัติ • บันทึก PNG • **🌓 สลับสีจอบอร์ด** (ภาพใน app = framebuffer สีที่ถูกต้อง; ถ้าจอบอร์ดพื้นขาว/ตาน้ำเงิน กดปุ่มนี้) |
 | 📊 **สถานะ** | ค่าจาก `diag` ทุก N วิ: สถานะ, เซสชัน, Wi-Fi/IP, โมเดลที่ใช้/หลัก, cool-down แต่ละโมเดล, Google Search, การพักเชื่อมต่อ, close reason ล่าสุด, ความจำ, RAM/PSRAM, SD, แบต + กราฟโทเคน/นาทีเทียบลิมิต 65k |
 | 🔧 **เฟิร์มแวร์** | Build • Build + Upload (ปิดพอร์ตให้เอง แล้วต่อกลับหลังอัปโหลด) • Host unit tests • เปิดโฟลเดอร์โปรเจกต์ |
+| 📻 **วิทยุ** | รายการสถานีบนบอร์ด (▶ = กำลังเล่น) • ▶ เล่น (หรือดับเบิลคลิก) / ⏹ หยุด • ⬆⬇ เรียงลำดับ • ลบ • ฟอร์มเพิ่ม/แก้ไข (ชื่อ, URL, แนว — ตรวจความยาว/URL ก่อนส่ง) • 🔎 ทดสอบ URL จาก PC (ดึง 32 KB, บอกว่าเป็น MP3/AAC หรือไม่) • คืนค่ารายการเริ่มต้น — ดู [[12-Internet-Radio]] (แท็บต่อท้ายสุด เพื่อไม่ให้เลขแท็บอื่นเลื่อน) |
 
 ## ตรวจปุ่มทั้งแอป (2026-10-15)
 
@@ -107,6 +108,7 @@ log สีเขียวอมฟ้า `[Mic]` บอกทุกครั้�
 | `screenshot` | `SCREENSHOT w h n` + n ไบต์ RGB565 big-endian + `END` | ภาพจาก framebuffer |
 | `set <field> <value>` | `OK set ...` / `ERR set ...` | บันทึก NVS ทันที |
 | `ask <text>` | `OK ask` แล้ว log `[Chat] ...` | ข้อความถึงผู้ช่วย |
+| `radiolist` / `radioadd` / `radioedit` / `radiodel` / `radiomove` / `radioreset` | `OK`/`ERR …` + `RADIOLIST {...}` | `stations[{name,url,genre}]`, `playing` (เลข 1.., 0 = ไม่เล่น), `state`, `max`, `error` — ส่งตอนเชื่อมต่อด้วย |
 
 บรรทัด log ปกติขึ้นต้นด้วย `[Agent]`, `[Gemini]`, `[Fallback]`, `[Chat]`, `[WiFi]`, `[Touch]`, `[Health]` หรือ `E (...)` (ESP-IDF error)
 

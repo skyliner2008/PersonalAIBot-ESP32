@@ -23,6 +23,7 @@
 #include "app/Settings.h"
 #include "audio/AudioManager.h"
 #include "audio/RadioPlayer.h"
+#include "audio/RadioStations.h"
 #include "display/LGFX_ES3C28P.hpp"
 #include "display/TouchFT6336.h"
 #include "pins_config.h"
@@ -31,6 +32,7 @@
 #include "ui/CardScreen.h"
 #include "ui/FaceScreen.h"
 #include "ui/KeyboardScreen.h"
+#include "ui/RadioScreen.h"
 #include "ui/SettingsScreens.h"
 #include "ui/UiManager.h"
 
@@ -158,13 +160,29 @@ static void uiTask(void*) {
         if (gCard.hasPending()) {
             if (gUi.top() == &gCard) {
                 gCard.activate();
-            } else if (gUi.atRoot()) {
+            } else if (gUi.atRoot() || gUi.top() == &gRadioUi) {
                 gCard.activate();
                 gUi.push(&gCard);
             }
         } else if (gUi.top() == &gCard && (gCard.expired(now) || agent.powerSave())) {
             gUi.pop();  // power save: the clock face must not stay hidden under a card
         }
+
+        // radio player screen: opens when a station starts (voice or console) over the face; the power-save
+        // clock is the face itself, so the player steps aside while dimmed and comes back on wake
+        static bool radioWas = false, radioHidden = false;
+        const bool radioOn = gRadio.active();
+        if (agent.powerSave()) {
+            if (gUi.top() == &gRadioUi) {
+                gUi.pop();
+                radioHidden = true;
+            }
+        } else if (radioOn && gUi.atRoot() && (!radioWas || radioHidden)) {
+            gUi.push(&gRadioUi);
+            radioHidden = false;
+        }
+        if (!radioOn) radioHidden = false;
+        radioWas = radioOn;
 
         if (now - lastBattery > 1000) {
             lastBattery = now;
@@ -458,7 +476,7 @@ static void handleConsoleLine(String line) {
 
     if (cmd == "help") {
         Serial.println("status | audio | tone [hz] [ms] | mic [sec] | vol <0-100> | i2c | regs | reg <r> [v]");
-        Serial.println("tool <name> [json] | say <u|a|s> <text> | expr <emotion> | sleep | powersave | wake | screenshot | radio [<url> [name]|stop]");
+        Serial.println("tool <name> [json] | say <u|a|s> <text> | expr <emotion> | sleep | powersave | wake | screenshot | radio [<n>|<url> [name]|stop]");
         Serial.println("ask <text> (type to the assistant) | mute (toggle mic) | retry | new (fresh session) | memclear <facts|history>");
         Serial.println("rec [sec] (record what the mic sends to Gemini: RECINFO <json> + RECORD <rate> <bytes> + PCM + END)");
         Serial.println("ui tap x y | ui long x y | ui drag x0 y0 x1 y1 | ui open <menu|wifi|apikey|agent|user|profile|voice|info>");
@@ -468,6 +486,7 @@ static void handleConsoleLine(String line) {
         Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
         Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min> | searchretry");
         Serial.println("time <unix-epoch> (set clock offline) | reboot");
+        Serial.println("radio list: radiolist | radioadd name|url|genre | radioedit <n> name|url|genre | radiodel <n> | radiomove <from> <to> | radioreset | radio <n>");
     } else if (cmd == "config") {
         printConfig();
     } else if (cmd == "options") {
@@ -566,6 +585,8 @@ static void handleConsoleLine(String line) {
     } else if (cmd == "radio") {  // radio <url> [name] | radio stop | radio (status)
         if (rest == "stop") {
             gRadio.stop();
+        } else if (rest.length() && rest.toInt() > 0) {  // number in the station list
+            Serial.println(gStations.play((size_t)rest.toInt() - 1) ? "OK radio" : "ERR radio");
         } else if (rest.startsWith("http")) {
             const int s2 = rest.indexOf(" ");
             const String url = s2 < 0 ? rest : rest.substring(0, s2);
@@ -577,6 +598,37 @@ static void handleConsoleLine(String line) {
             Serial.printf("radio %s | %s | %s | %s %lu Hz | buffered %u ms | %s\n", gRadio.stateName(), rn, rt, gRadio.codec(),
                           (unsigned long)gRadio.sampleRate(), (unsigned)(audio.radioBuffered() / 24), gRadio.lastError());
         }
+    } else if (cmd.startsWith("radio")) {  // station list (ESP32-AI Studio radio tab); numbers are 1-based
+        const char* err = nullptr;
+        RadioStation st;
+        const int sp2 = rest.indexOf(' ');
+        if (cmd == "radioadd") {
+            err = RadioStations::parse(rest, st);
+            if (!err) err = gStations.add(st);
+        } else if (cmd == "radioedit") {
+            err = sp2 < 0 ? "radioedit <n> name|url|genre" : RadioStations::parse(rest.substring(sp2 + 1), st);
+            if (!err) err = gStations.update((size_t)(rest.toInt() - 1), st);
+        } else if (cmd == "radiodel") {
+            if (!gStations.remove((size_t)(rest.toInt() - 1))) err = "ไม่มีสถานีลำดับนี้";
+        } else if (cmd == "radiomove") {
+            if (sp2 < 0 || !gStations.move((size_t)(rest.toInt() - 1), (size_t)(rest.substring(sp2 + 1).toInt() - 1))) {
+                err = "radiomove <from> <to>";
+            }
+        } else if (cmd == "radioreset") {
+            gStations.resetDefaults();
+        } else if (cmd != "radiolist") {
+            err = "unknown radio command";
+        }
+        if (cmd != "radiolist") Serial.println(err ? String("ERR ") + err : String("OK"));
+        JsonDocument d;
+        gStations.toJson(d["stations"].to<JsonArray>());
+        char rn[64];
+        gRadio.info(rn, sizeof(rn), nullptr, 0);
+        d["playing"] = gRadio.active() ? gStations.indexOf(rn) + 1 : 0;
+        d["state"] = gRadio.stateName();
+        d["max"] = (int)RadioStations::kMax;
+        if (err) d["error"] = err;
+        printTagged("RADIOLIST", d);
     } else if (cmd == "powersave") {
         agent.requestPowerSave();  // sleep now + dim clock face (voice or a tap wakes it)
     } else if (cmd == "wake") {
@@ -699,7 +751,8 @@ void setup() {
         cal.rotation = cfg.calRot;
         gUi.setCalibration(cal);
     }
-    gFace.begin([]() { settingsui::openMenu(); });
+    gFace.begin([]() { settingsui::openMenu(); }, []() { gUi.push(&gRadioUi); });
+    gRadioUi.begin(&audio);
     gCard.begin();
     gUi.push(&gFace);
     if (!cfg.touchCal) settingsui::openCalibration();  // first boot: fix the touch axes
@@ -719,6 +772,7 @@ void setup() {
     // also imports ai-setup.txt from the card root. Before agent.begin(), which reads the settings.
     gSettings.attachSecretStore(storage.kind() == StorageKind::SdCard ? "/sdcard" : nullptr);
     if (!audio.begin(&i2c)) gFace.setSystemText("ระบบเสียงผิดพลาด (ES8311 / I2S) ดู Serial log", 0);
+    gStations.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // radio_stations.json
     gRadio.begin(&audio);  // Internet radio task (idle until play_radio)
     agent.begin(&audio, &gFace, &storage);
 

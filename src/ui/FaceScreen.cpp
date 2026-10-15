@@ -38,8 +38,9 @@ constexpr float kEyesYSubtitle = 90.0f;
 
 }  // namespace
 
-void FaceScreen::begin(std::function<void()> openMenu) {
+void FaceScreen::begin(std::function<void()> openMenu, std::function<void()> openRadio) {
     _openMenu = openMenu;
+    _openRadio = openRadio;
     _lock = xSemaphoreCreateMutex();
     _eyes.begin(ui::W, ui::H);
 }
@@ -110,11 +111,14 @@ void FaceScreen::setExpression(Emotion e, uint32_t holdMs) {
 void FaceScreen::onTouch(const TouchEvent& e) {
     const bool gear = e.startX >= 266 && e.startY <= 56;
     const bool mic = e.startX <= 64 && e.startY <= 60;
+    const bool radioBar = e.startY >= 204 && _radioShown;
     if (e.type == TouchEvent::Tap) {
         if (gear) {
             if (_openMenu) _openMenu();
         } else if (mic) {
             if (gUi.host()) gUi.host()->uiToggleMic();
+        } else if (radioBar && _openRadio) {
+            _openRadio();  // the "now playing" line under the eyes opens the radio player
         } else if (gUi.host()) {
             gUi.host()->uiTap();
         }
@@ -320,6 +324,7 @@ void FaceScreen::drawRadioIcon(LGFX_Sprite& c, int cx, int cy, uint16_t color) {
 
 void FaceScreen::draw(LGFX_Sprite& c) {
     if (_powerSave) {
+        _radioShown = false;
         drawClock(c);
         return;
     }
@@ -337,6 +342,7 @@ void FaceScreen::draw(LGFX_Sprite& c) {
     }
     drawStatus(c, status);
 
+    _radioShown = status.radio[0] && !_subtitleVisible;
     if (status.radio[0] && !_subtitleVisible) {  // Internet radio: what is playing, under the eyes
         drawRadioIcon(c, 22, 222, ui::ACCENT);
         gUi.drawFitted(c, status.radio, 40, 222, ui::W - 48, gUi.thai20(), ui::DIM, textdatum_t::middle_left);

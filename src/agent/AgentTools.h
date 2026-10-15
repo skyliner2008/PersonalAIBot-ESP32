@@ -69,6 +69,8 @@ public:
     virtual void requestSleep() = 0;                // after the current reply
     virtual void requestMicMute() = 0;              // mic off after the current reply (only the screen turns it on)
     virtual bool stopRadio() = 0;                   // true if the Internet radio was on
+    /** Play from the station list: number, name or genre ("" = last station). nullptr = ok, else why not. */
+    virtual const char* playRadio(const char* station, JsonObject result) = 0;
     virtual bool applyAssistantChange(const AssistantChange& change, JsonObject result) = 0;
     virtual void describeAssistant(JsonObject out) = 0;
 };
@@ -142,4 +144,5 @@ private:
     bool muteMicrophone(JsonObjectConst a, JsonObject r, const char*& e);
     bool restScreen(JsonObjectConst a, JsonObject r, const char*& e);
     bool stopRadio(JsonObjectConst a, JsonObject r, const char*& e);
+    bool playRadio(JsonObjectConst a, JsonObject r, const char*& e);
 };

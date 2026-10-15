@@ -157,7 +157,7 @@ src/
 │   ├── TouchFT6336.h        # ทัชผ่าน I2cBus
 │   ├── LGFX_ES3C28P.hpp     # จอ ILI9341V (ไม่มี touch driver)
 │   └── fonts/ThaiFont26/20  # TH Sarabun New VLW (gen_thai_font.py)
-├── ui/                      # Eyes, FaceScreen, UiManager, ListScreen, KeyboardScreen, SettingsScreens
+├── ui/                      # Eyes, FaceScreen, CardScreen, RadioScreen, UiManager, ListScreen, KeyboardScreen, SettingsScreens
 ├── memory/                  # ความจำระยะยาว standalone — ดู [[08-Long-Term-Memory-GraphRAG]]
 ├── system/                  # I2cBus, Storage (SD/LittleFS)
 └── util/                    # UTF-8, Base64, TextWrap (ตัดบรรทัดไทย), TimeFmt, JsonFrame, PSRAM allocators

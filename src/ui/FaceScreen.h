@@ -26,7 +26,7 @@
 
 class FaceScreen : public Screen {
 public:
-    void begin(std::function<void()> openMenu);
+    void begin(std::function<void()> openMenu, std::function<void()> openRadio = nullptr);
 
     // ---- Thread-safe (called from the agent task) ----
     void setState(AvatarState s);
@@ -51,7 +51,7 @@ public:
 
 private:
     Eyes _eyes;
-    std::function<void()> _openMenu;
+    std::function<void()> _openMenu, _openRadio;
     SemaphoreHandle_t _lock = nullptr;
 
     volatile AvatarState _state = AVATAR_BOOT;
@@ -80,6 +80,7 @@ private:
     Line _lines[2];
     int _lineCount = 0;
     bool _subtitleVisible = false;
+    volatile bool _radioShown = false;  // "now playing" line drawn (tap on it opens the radio player)
 
     void layout();
     void drawStatus(LGFX_Sprite& c, const UiStatus& s);

@@ -12,6 +12,7 @@
 
 #include "../app/AppConfig.h"
 #include "../audio/RadioPlayer.h"
+#include "../audio/RadioStations.h"
 #include "../ui/FaceScreen.h"
 #include "../ui/UiManager.h"
 #include "../util/JsonAlloc.h"
@@ -592,6 +593,13 @@ void AgentController::buildSystemPrompt(PsString& p) {
          "ความไวไมค์ / ตั้งเวลาพัก / ตั้งเวลาโหมดนาฬิกา = configure_device, พักหน้าจอ / โหมดนาฬิกาเดี๋ยวนี้ = rest_screen, วิทยุ = play_radio / stop_radio (เปิดแล้วพูดชื่อสถานีสั้นๆ แล้วเงียบ เพลงที่เล่นอยู่ดูได้จาก get_device_status), ปิดไมค์ = mute_microphone "
          "(เปิดไมค์ด้วยเสียงไม่ได้ บอกผู้ใช้ให้แตะปุ่มไมค์บนจอ)\n"
          "ข้อความที่ขึ้นต้นด้วย [แจ้งเตือนจากระบบ] หรือ [แจ้งเตือนราคาจากระบบ] มาจากอุปกรณ์ ให้แจ้งผู้ใช้ทันทีสั้นๆ\n";
+    if (gStations.count()) {  // play_radio picks from this list (number, name or genre)
+        String list;
+        gStations.describe(list);
+        p += "สถานีวิทยุในรายการ: ";
+        p += list.c_str();
+        p += "\n";
+    }
 
     const uint32_t now = nowEpoch();
     char buf[160];
@@ -1043,7 +1051,6 @@ void AgentController::handleWebResults() {
             continue;
         }
         const bool ok = result["error"].isNull();
-        if (ok && !strcmp(r.name, "play_radio")) startRadio(result["result"]);
         Serial.printf("[Tool] %s -> %s (%.1f s)\n", r.name, ok ? "ok" : (const char*)(result["error"] | "error"),
                       r.elapsedMs / 1000.0f);
         if (r.tag == kConsoleTag) {
@@ -1776,22 +1783,19 @@ bool AgentController::stopRadio() {
     return was;
 }
 
-void AgentController::startRadio(JsonObjectConst st) {
-    const char* url = st["url"] | "";
-    const char* name = st["station"] | "";
-    Serial.printf("[Radio] play request: name %u bytes, url %u bytes\n", (unsigned)strlen(name), (unsigned)strlen(url));
-    if (strncmp(url, "http", 4) != 0 || !gRadio.play(url, name)) return;
-    const SettingsData s = gSettings.get();
-    if (strcmp(s.radioUrl, url) != 0 || strcmp(s.radioName, name) != 0) {  // "เปิดวิทยุ" resumes it
-        gSettings.update([&](SettingsData& d) {
-            strncpy(d.radioUrl, url, sizeof(d.radioUrl) - 1);
-            d.radioUrl[sizeof(d.radioUrl) - 1] = '\0';
-            strncpy(d.radioName, name, sizeof(d.radioName) - 1);
-            d.radioName[sizeof(d.radioName) - 1] = '\0';
-        });
-    }
+// play_radio: from the curated station list (number, name or genre; "" = last station)
+const char* AgentController::playRadio(const char* station, JsonObject r) {
+    if (!gStations.count()) return "ยังไม่มีสถานีในรายการ (เพิ่มได้ที่ ESP32-AI Studio แท็บวิทยุ)";
+    const int i = (station && *station) ? gStations.find(station) : gStations.lastIndex();
+    if (i < 0) return "ไม่มีสถานีนี้ในรายการ ให้เลือกจากรายชื่อสถานีในคำสั่งของคุณ";
+    RadioStation s;
+    if (!gStations.get((size_t)i, s) || !gStations.play((size_t)i)) return "เปิดสถานีไม่ได้";
+    r["station"] = (const char*)s.name;
+    r["number"] = i + 1;
+    r["genre"] = (const char*)s.genre;
+    r["note"] = "กำลังเปิด บอกชื่อสถานีสั้นๆ แล้วเงียบ (วิทยุดังขึ้นเมื่อคุณพูดจบ)";
     noteActivity();
-    Serial.printf("[Radio] Starting %s\n", name);
+    return nullptr;
 }
 
 void AgentController::handleRadio(uint32_t now, bool busy) {

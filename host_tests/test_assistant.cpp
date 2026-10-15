@@ -186,6 +186,14 @@ public:
     void requestMicMute() override { micMuteRequested = true; }
     bool radioOn = true;
     bool stopRadio() override { const bool was = radioOn; radioOn = false; return was; }
+    std::string radioAsked;
+    const char* playRadio(const char* station, JsonObject r) override {
+        radioAsked = station;
+        if (!strcmp(station, "ไม่มี")) return "ไม่มีสถานีนี้ในรายการ";
+        radioOn = true;
+        r["station"] = "COOL Fahrenheit 93";
+        return nullptr;
+    }
     void fillStatus(JsonObject out) override { out["battery_percent"] = 80; }
     bool setExpression(const char* e) override { return expression = e, true; }
     void requestSleep() override { sleepRequested = true; }
@@ -393,6 +401,12 @@ TEST(tools_assistant_and_device) {
     CHECK(!callTool(rig.tools, "configure_device", "{}", r));
     CHECK(callTool(rig.tools, "mute_microphone", "{}", r));
     CHECK(rig.dev.micMuteRequested);
+    CHECK(callTool(rig.tools, "play_radio", "{\"station\":\"คูล 93\"}", r));  // local tool: station list on the device
+    CHECK(rig.dev.radioAsked == "คูล 93");
+    CHECK(strcmp(r["result"]["station"] | "", "COOL Fahrenheit 93") == 0);
+    CHECK(!callTool(rig.tools, "play_radio", "{\"station\":\"ไม่มี\"}", r));
+    CHECK(callTool(rig.tools, "play_radio", "{}", r));  // empty = last station
+    CHECK(rig.dev.radioAsked.empty());
     CHECK(callTool(rig.tools, "stop_radio", "{}", r));
     CHECK(r["result"]["was_playing"] | false);
     CHECK(!rig.dev.radioOn);

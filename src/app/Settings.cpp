@@ -188,7 +188,6 @@ void Settings::load() {
     if (d.dimBrightness < 1 || d.dimBrightness > 60) d.dimBrightness = 8;
     d.micGain = p.getUChar("mgain", d.micGain);
     d.micMuted = p.getBool("muted", d.micMuted);
-    if (p.isKey("radiourl")) p.getString("radiourl", d.radioUrl, sizeof(d.radioUrl));
     if (p.isKey("radioname")) p.getString("radioname", d.radioName, sizeof(d.radioName));
     if (p.isKey("mt5url")) p.getString("mt5url", d.mt5Url, sizeof(d.mt5Url));  // isKey: no NOT_FOUND log
     readSecret(p, "mt5tok", "mt5tok_e", d.mt5Token, sizeof(d.mt5Token), _plainFound);
@@ -325,7 +324,6 @@ void Settings::save(const SettingsData& d) {
     p.putUChar("dimbri", d.dimBrightness);
     p.putUChar("mgain", d.micGain);
     p.putBool("muted", d.micMuted);
-    p.putString("radiourl", d.radioUrl);
     p.putString("radioname", d.radioName);
     p.putString("mt5url", d.mt5Url);
     p.putBool("mt5trade", d.mt5Trade);

@@ -44,8 +44,7 @@ struct SettingsData {
     bool financeTools = true;      // declare the market / finance tools (they cost tokens every turn)
     uint8_t micGain = 5;           // ES8311 ADC scale step 0-7 (x6 dB); 5 = 30 dB, chosen by the user (normal voice at ~40 cm)
     bool micMuted = false;         // mic off survives reboots: only the screen button (or Studio) turns it back on
-    char radioUrl[200] = "";       // last Internet radio station ("เปิดวิทยุ" resumes it)
-    char radioName[64] = "";
+    char radioName[64] = "";       // last Internet radio station (name in the station list)
     uint8_t rotation = 1;          // 1 or 3 (landscape, flipped)
     bool lcdInvert = true;         // IPS ILI9341V shows inverted colours unless INVON is sent
     bool consolidate = true;       // background memory consolidation with Flash Lite

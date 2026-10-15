@@ -9,7 +9,7 @@
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
-[![Firmware](https://img.shields.io/badge/firmware-v3.2.1-3ddc84)](src/app/AppConfig.h)
+[![Firmware](https://img.shields.io/badge/firmware-v3.3.0-3ddc84)](src/app/AppConfig.h)
 [![Tests](https://img.shields.io/badge/host%20tests-1%2C446%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -35,7 +35,7 @@ Everything runs on the board itself: **no server, no Raspberry Pi, no vector dat
 | 🧑‍💼 **Personalities** | 8 ready-made profiles, 30 voices, 7 personalities, male/female Thai politeness (ค่ะ / ครับ). Change them by touch or just by asking. |
 | 👀 **Expressive face** | Cozmo-style eyes with 14 emotions, Thai subtitles, on-screen mic button, dark theme. After a while asleep it turns into a **dim clock** (power save) and wakes up — full brightness — as soon as it hears you. |
 | 📊 **Live data cards** | Weather + PM2.5, Thai fuel prices, stocks / gold / crypto / FX, technical analysis, market scanner, economic calendar, news, Wikipedia — drawn as graphics while the AI talks. |
-| 📻 **Internet radio** | "Play Cool 93" — thousands of stations via Radio Browser (MP3/AAC, Helix decoder). It plays while the assistant sleeps; tap or speak up to talk, and the radio dips to 12 % until you are done. [wiki/12](wiki/12-Internet-Radio.md) |
+| 📻 **Internet radio** | A radio-app screen with 16 tested Thai stations: swipe and tap a station, ± volume, and tap the middle of the screen to talk to the assistant as usual. Say "play the luk thung station" or "station 4" and the assistant picks from your list. Edit the list (add, edit, delete, reorder, test URL) in ESP32-AI Studio. MP3/AAC via the Helix decoder; the radio dips to 12 % while you talk. [wiki/12](wiki/12-Internet-Radio.md) |
 | ⏰ **Personal assistant** | Timers, reminders (daily / weekdays / weekly), to-do list, notes, price alerts that speak up, calculator, unit & world-time conversion. |
 | 📈 **MetaTrader 5** *(optional)* | Read your MT5 account through [mt5-core-server](#-metatrader-5-optional); voice trading is **off by default** and needs a spoken two-step confirmation. |
 | 🔁 **Self-healing** | Automatic model fallback, quota-aware back-off, Google Search auto-disable on quota, session resumption, Wi-Fi reconnect. |
@@ -225,6 +225,7 @@ Works with the same **mt5-core-server** bridge as the PersonalAIBot Android app.
 | 🖥️ Screen | Live mirror of the LCD — click to tap, drag to swipe, right-click to long-press |
 | 📊 Status | Session, models & cool-downs, tokens/min graph, RAM, storage, battery |
 | 🔧 Firmware | Build, build + upload, host unit tests |
+| 📻 Radio | Station list: play / stop, add, edit, delete, reorder, reset to defaults, test a stream URL from the PC |
 
 Copy/paste works with both Thai and English keyboard layouts. Docs → [wiki/10-PC-Studio-App.md](wiki/10-PC-Studio-App.md)
 
@@ -300,7 +301,7 @@ Pull requests and issues are welcome.
 ## 🙏 Credits
 
 - [Google Gemini Live API](https://ai.google.dev/gemini-api/docs/live) · [LovyanGFX](https://github.com/lovyan03/LovyanGFX) · [ArduinoJson](https://arduinojson.org/) · [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel)
-- Thai font: **TH Sarabun New** (SIPA, Thai national font) · MP3/AAC decoding: **RealNetworks Helix** (RPSL, `lib/helix-*`) · stations: [Radio Browser](https://www.radio-browser.info)
+- Thai font: **TH Sarabun New** (SIPA, Thai national font) · MP3/AAC decoding: **RealNetworks Helix** (RPSL, `lib/helix-*`) · default station list checked with the help of [Radio Browser](https://www.radio-browser.info)
 - Data: [Open-Meteo](https://open-meteo.com/) · [Bangchak](https://www.bangchak.co.th/) · [TradingView](https://www.tradingview.com/) · [Wikipedia](https://www.wikipedia.org/) · [ForexFactory](https://www.forexfactory.com/) · [alternative.me](https://alternative.me/crypto/fear-and-greed-index/) · [ipwho.is](https://ipwho.is/) · Google News
 - Tools and finance features ported from the **PersonalAIBot** Android app
 
