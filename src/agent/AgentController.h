@@ -243,6 +243,8 @@ private:
     bool _gateAllowed = false;
     bool _vadOpen = false;
     uint8_t _onset = 0, _wakeVotes = 0;
+    float _radioRef = 0.0f, _coupling = 0.0f;  // radio echo estimate for waking by voice over music
+    uint32_t _radioSettleUntil = 0;
     float _noise = 0.002f;
     float _threshold = AGENT_VAD_MIN_LEVEL;
     bool _wakeBuffering = false;

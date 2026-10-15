@@ -162,8 +162,8 @@ static void uiTask(void*) {
                 gCard.activate();
                 gUi.push(&gCard);
             }
-        } else if (gUi.top() == &gCard && gCard.expired(now)) {
-            gUi.pop();
+        } else if (gUi.top() == &gCard && (gCard.expired(now) || agent.powerSave())) {
+            gUi.pop();  // power save: the clock face must not stay hidden under a card
         }
 
         if (now - lastBattery > 1000) {

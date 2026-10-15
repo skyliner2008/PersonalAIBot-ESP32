@@ -72,6 +72,8 @@ public:
     /** 1.0 = full, ~0.12 = ducked under the assistant; ramps smoothly (~200 ms). */
     void setRadioGain(float g) { _radioTarget = g; }
     bool radioSounding() const { return _radioOn; }
+    /** RMS (0-1) of the radio as sent to the speaker, after the duck gain: the echo reference. */
+    float radioOutLevel() const { return _radioLevel; }
 
     // ---- Capture (16 kHz, 16-bit mono PCM) ----
     void setCaptureEnabled(bool on);
@@ -108,6 +110,7 @@ private:
     volatile float _radioTarget = 1.0f;
     float _radioGain = 1.0f;
     volatile bool _radioOn = false;
+    volatile float _radioLevel = 0.0f;
     Downsampler24to16 _resampler;
 
     bool _i2sReady = false;

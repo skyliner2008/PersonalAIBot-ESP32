@@ -1253,8 +1253,14 @@ void runRadio(JsonObjectConst a, JsonDocument& out, CardData& card) {
     copyStr(card.title, sizeof(card.title), "วิทยุออนไลน์");
     copyStr(card.big, sizeof(card.big), r["station"] | "");
     char body[200];
-    snprintf(body, sizeof(body), "%s %d kbps • %s • กำลังเชื่อมต่อ... แตะจอหรือพูดดังๆ เพื่อสั่งงาน",
-             (const char*)(r["codec"] | ""), (int)(r["bitrate_kbps"] | 0), (const char*)(r["tags"] | ""));
+    if (r["codec"].isNull()) {
+        snprintf(body, sizeof(body), "สถานีล่าสุด • แตะจอหรือพูดดังๆ เพื่อสั่งงาน");
+    } else {
+        String tags = String((const char*)(r["tags"] | "")).substring(0, 40);
+        tags.replace(",", ", ");
+        snprintf(body, sizeof(body), "%s %d kbps • %s • แตะจอหรือพูดดังๆ เพื่อสั่งงาน", (const char*)(r["codec"] | ""),
+                 (int)(r["bitrate_kbps"] | 0), tags.c_str());
+    }
     copyStr(card.body, sizeof(card.body), body);
 }
 

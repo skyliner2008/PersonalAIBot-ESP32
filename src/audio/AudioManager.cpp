@@ -208,11 +208,14 @@ void AudioManager::outLoop() {
         // radio gain ramps toward the target within the chunk (no clicks when ducking)
         const float target = _radioTarget;
         const float step = (target - _radioGain) / (float)(n ? n : 1) * 0.25f;  // ~80 ms to settle
+        float radioEnergy = 0.0f;
         for (size_t i = 0; i < n; i++) {
             int32_t v = chunk[i];
             if (i < nr) {
                 _radioGain += step;
-                v += (int32_t)(radio[i] * _radioGain);
+                const float r = radio[i] * _radioGain;
+                radioEnergy += r * r;
+                v += (int32_t)r;
             }
             if (v > 32767) v = 32767;
             if (v < -32768) v = -32768;
@@ -220,6 +223,7 @@ void AudioManager::outLoop() {
             stereo[2 * i + 1] = (int16_t)v;
         }
         if (!nr) _radioGain = target;
+        _radioLevel = nr ? sqrtf(radioEnergy / (float)nr) / 32768.0f : 0.0f;
         size_t written = 0;
         i2s_write(kPort, stereo, n * 4, &written, portMAX_DELAY);  // paced by the DMA
         if (nv) _lastPlayMs = millis();  // "speaker busy" = the assistant, not the radio

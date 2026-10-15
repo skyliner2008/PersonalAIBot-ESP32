@@ -18,6 +18,7 @@ This page documents common issues encountered during development and their solut
 |---|-------|----------|--------|
 | T027 | [[#T027 สลับโมเดลวนไปมาไม่หยุด - ทุกโมเดลติด quota]] | AI | ✅ Fixed (หยุดพัก + ไม่นับซ้ำ) |
 | T028 | [[#T028 "You exceeded your current quota" ทั้งที่ยังไม่ถึงลิมิต - โควตา Google Search]] | AI | ✅ Fixed (ปิด Search อัตโนมัติ) — verified |
+| T043 | [[#T043 บอร์ดรีบูต task_wdt IDLE0 ขณะเปิดวิทยุ + เรียก tool ออนไลน์]] | Tasks/CPU | ✅ Fixed (webTools/textModel → core 1) |
 | T042 | [[#T042 รหัส Wi-Fi และ API key เก็บเป็นข้อความธรรมดาในแฟลช]] | Security | ✅ Fixed (AES-256-GCM ผูกกับชิป + ล้างสำเนาเก่า) |
 | T041 | [[#T041 TLS ล้มเหลว -0x7F00 เมื่อเปิดหลายการเชื่อมต่อ - RAM ภายในไม่พอ]] | Network/Memory | ✅ Fixed (buffer TLS ไป PSRAM) |
 | T040 | [[#T040 พอร์ต tools จาก PersonalAIBot - field TradingView และข้อมูลที่ผ่านไปแล้ว]] | Tools | ✅ Fixed |
@@ -107,6 +108,16 @@ This page documents common issues encountered during development and their solut
 **ยืนยัน 2026-10-15:** ผู้ใช้เทียบบอร์ดกับ PC app — ตอน `invert = 0` บอร์ดเป็น **พื้นขาว + ตาน้ำเงิน** ส่วนภาพ framebuffer ใน app เป็น
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
+
+## T043: บอร์ดรีบูต task_wdt IDLE0 ขณะเปิดวิทยุ + เรียก tool ออนไลน์
+
+**วันที่:** 2026-10-15 · log: `E task_wdt: ... - IDLE0 (CPU 0) ... CPU 0: webTools ... Aborting.` → `rst:0xc (RTC_SW_CPU_RST)`
+
+**สาเหตุ:** Arduino-ESP32 เปิด `CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0` (5 วิ) แต่ไม่เฝ้า CPU1 — core 0 มี audioOut/audioIn (prio 6), radio (4), webTools (2), textModel (1), LED, Wi-Fi
+ตอนวิทยุเติมบัฟเฟอร์ ตัวถอดรหัสทำงานรวดไม่รอ และ webTools ทำ TLS handshake (คณิตศาสตร์หนัก บัฟเฟอร์ TLS อยู่ PSRAM ช้าลง) + แยก JSON ใหญ่ — idle task ของ core 0 ไม่ได้รันนานเกิน 5 วิ
+
+**แก้:** `RadioPlayer` เรียก `vTaskDelay(1)` หลังถอดรหัสทุกเฟรม และย้าย `webTools` + `textModel` ไป **core 1** (prio 2/1 ต่ำกว่า agent 4, ui 3 จึงใช้เวลาว่างของ core 1) — core 0 เหลือเสียง วิทยุ Wi-Fi
+ทดสอบ: วิทยุ + search_knowledge ×2 + market_overview + get_weather ซ้อนกัน 2 นาที ไม่รีบูต · รายละเอียด [[12-Internet-Radio#ทดสอบบนบอร์ด (2026-10-15)]]
 
 ## T042: รหัส Wi-Fi และ API key เก็บเป็นข้อความธรรมดาในแฟลช
 

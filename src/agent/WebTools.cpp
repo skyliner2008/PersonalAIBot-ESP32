@@ -497,7 +497,9 @@ bool WebTools::begin(const char* storageDir) {
     _jobs = xQueueCreate(kQueueDepth, sizeof(Job));
     _results = xQueueCreate(kQueueDepth, sizeof(Result));
     if (!_jobs || !_results) return false;
-    return xTaskCreatePinnedToCore(taskEntry, "webTools", 12288, this, 2, nullptr, 0) == pdPASS;
+    // core 1: TLS handshakes + big JSON are CPU-heavy bursts; core 0 keeps audio + radio + Wi-Fi
+    // (the idle task of core 0 is watchdog-checked: a long burst there next to the radio resets the board)
+    return xTaskCreatePinnedToCore(taskEntry, "webTools", 12288, this, 2, nullptr, 1) == pdPASS;
 }
 
 bool WebTools::submit(const char* id, const char* name, const char* argsJson, uint32_t tag) {
@@ -576,7 +578,9 @@ void WebTools::loop() {
         else if (!strcmp(j.name, "play_radio")) runRadio(a, out, card);
         else setError(out, "unknown tool");
         if (out.isNull() || out.size() == 0) setError(out, "no data");
-        if (card.kind != CardData::None && out["error"].isNull()) gCard.show(card, 30000);
+        if (card.kind != CardData::None && out["error"].isNull()) {
+            gCard.show(card, !strcmp(j.name, "play_radio") ? 8000 : 30000);  // radio: a glance, then the face
+        }
 
         Result r{};
         copyStr(r.id, sizeof(r.id), j.id);

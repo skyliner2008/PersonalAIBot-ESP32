@@ -255,40 +255,94 @@ bool RadioPlayer::session(uint32_t gen) {
 
     RadioResampler rs;
     uint32_t rate = 0;
+    int lockRate = 0, lockCh = 0, mismatch = 0;  // format of the stream once established
     size_t fill = 0;           // bytes in `in`
     int untilMeta = metaint;   // audio bytes before the next ICY metadata block
     uint32_t lastData = millis();
     bool played = false;
     char meta[256 * 16 + 1];
 
+    // ---- HTTP body reader: Transfer-Encoding: chunked is common on CDN-hosted streams ----
+    String te = http.header("transfer-encoding");
+    te.toLowerCase();
+    const bool chunked = te.indexOf("chunked") >= 0;
+    long chunkLeft = 0;
+    bool bodyEnded = false;
+    auto rawByte = [&](uint32_t ms) -> int {  // one byte, waiting up to `ms`
+        const uint32_t t0 = millis();
+        for (;;) {
+            const int c = stream->read();
+            if (c >= 0) return c;
+            if (!stream->connected() || millis() - t0 > ms || !_want || gen != _gen) return -1;
+            vTaskDelay(pdMS_TO_TICKS(2));
+        }
+    };
+    // up to n payload bytes that are already here (0 = none yet, -1 = stream over)
+    auto body = [&](uint8_t* d, int n) -> int {
+        if (!chunked) {
+            const int r = stream->read(d, n);
+            return r < 0 ? 0 : r;
+        }
+        if (chunkLeft == 0) {  // "<hex size>\r\n" (the CRLF after the previous chunk is an empty line)
+            if (stream->available() <= 0) return 0;
+            char line[20];
+            int len = 0;
+            for (int guard = 0; guard < 4; guard++) {
+                len = 0;
+                for (;;) {
+                    const int c = rawByte(3000);
+                    if (c < 0) return -1;
+                    if (c == '\n') break;
+                    if (c != '\r' && len < (int)sizeof(line) - 1) line[len++] = (char)c;
+                }
+                if (len) break;
+            }
+            line[len] = '\0';
+            chunkLeft = strtol(line, nullptr, 16);
+            if (chunkLeft <= 0) {
+                bodyEnded = true;
+                return -1;
+            }
+        }
+        const int r = stream->read(d, n < chunkLeft ? n : (int)chunkLeft);
+        if (r <= 0) return 0;
+        chunkLeft -= r;
+        return r;
+    };
+    auto bodyFull = [&](uint8_t* d, int n, uint32_t ms) -> int {  // exactly n bytes (metadata)
+        int got = 0;
+        const uint32_t t0 = millis();
+        while (got < n && millis() - t0 < ms && _want && gen == _gen) {
+            const int r = body(d + got, n - got);
+            if (r < 0) break;
+            if (r == 0) vTaskDelay(pdMS_TO_TICKS(5));
+            got += r > 0 ? r : 0;
+        }
+        return got;
+    };
+
     while (_want && gen == _gen) {
-        // ---- network -> input buffer (ICY metadata stripped out) ----
+        // ---- network -> input buffer (chunk framing and ICY metadata stripped out) ----
         int avail = stream->available();
         if (avail > 0 && fill < kInBuf) {
             int want = (int)(kInBuf - fill);
             if (want > avail) want = avail;
             if (metaint && want > untilMeta) want = untilMeta;
-            const int got = stream->read(in + fill, want);
+            const int got = body(in + fill, want);
+            if (got < 0) {
+                setError(bodyEnded ? "stream ended" : "stream broken");
+                break;
+            }
             if (got > 0) {
                 fill += got;
                 lastData = millis();
                 if (metaint) {
                     untilMeta -= got;
                     if (untilMeta == 0) {  // 1 length byte (x16) + StreamTitle='...';
-                        int len = -1;
-                        for (int t = 0; t < 200 && len < 0; t++) {
-                            len = stream->read();
-                            if (len < 0) vTaskDelay(pdMS_TO_TICKS(10));
-                        }
-                        len = len < 0 ? 0 : len * 16;
-                        int m = 0;
-                        const uint32_t t0 = millis();
-                        while (m < len && millis() - t0 < 3000) {
-                            const int r = stream->read((uint8_t*)meta + m, len - m);
-                            if (r > 0) m += r;
-                            else vTaskDelay(pdMS_TO_TICKS(5));
-                        }
-                        meta[m] = '\0';
+                        uint8_t lb = 0;
+                        const int len = bodyFull(&lb, 1, 3000) == 1 ? lb * 16 : 0;
+                        const int m = len ? bodyFull((uint8_t*)meta, len, 3000) : 0;
+                        meta[m > 0 ? m : 0] = '\0';
                         const char* s = strstr(meta, "StreamTitle='");
                         if (s) {
                             s += 13;
@@ -354,6 +408,18 @@ bool RadioPlayer::session(uint32_t gen) {
             progressed = true;
             if (err != 0 || samps <= 0 || nChans < 1 || nChans > 2) continue;
 
+            // a false sync in damaged data decodes as a "frame" with another rate/channel count:
+            // keep the established format unless the new one persists
+            if (!lockRate) {
+                lockRate = sr;
+                lockCh = nChans;
+            } else if (sr != lockRate || nChans != lockCh) {
+                if (++mismatch < 8) continue;
+                lockRate = sr;
+                lockCh = nChans;
+            }
+            mismatch = 0;
+
             if ((uint32_t)sr != rate) {
                 rate = (uint32_t)sr;
                 _sampleRate = rate;
@@ -369,6 +435,9 @@ bool RadioPlayer::session(uint32_t gen) {
                 played = true;
                 _state = State::Playing;
             }
+            // while the buffer fills faster than real time, decoding never waits: give the core
+            // back every frame (the idle task must run, or the task watchdog resets the board)
+            vTaskDelay(1);
         }
         if (!progressed && stream->available() <= 0) vTaskDelay(pdMS_TO_TICKS(10));
     }

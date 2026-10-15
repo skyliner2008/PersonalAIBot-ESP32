@@ -1233,10 +1233,23 @@ void AgentController::handleAudioInput() {
         if (_sleeping) {  // only listen for a wake-up
             _preroll.push(chunk, kChunk);
             _preroll.trimTo(kWakeBufferSamples * 3 / 4);
-            // radio on: the speaker leaks into the mic - only a voice clearly louder than the radio,
-            // held twice as long, wakes the assistant (a tap always works)
+            // Radio on: the speaker leaks into the mic. The board knows what it plays, so it learns
+            // how much of the radio reaches the mic (coupling = mic level / radio level on music-only
+            // chunks) and wakes only on sound clearly above that expected leak, held twice as long.
+            // A tap always works.
             const bool radioOn = _audio->radioSounding();
-            const bool loud = radioOn ? level > _threshold * RADIO_WAKE_FACTOR : voice;
+            bool loud = voice;
+            if (radioOn) {
+                const float ref = _audio->radioOutLevel();
+                _radioRef += (ref - _radioRef) * 0.3f;  // smooth: the acoustic path lags a few chunks
+                const bool settling = (int32_t)(now - _radioSettleUntil) < 0;
+                const float expected = _coupling * _radioRef;
+                loud = !settling && _coupling > 0 && level > _threshold && level > expected * RADIO_WAKE_FACTOR;
+                if (!loud && _radioRef > 0.003f) {
+                    const float ratio = level / _radioRef;
+                    _coupling = _coupling <= 0 ? ratio : _coupling + (ratio - _coupling) * (settling ? 0.2f : 0.03f);
+                }
+            }
             _wakeVotes = loud ? _wakeVotes + 1 : 0;
             if (_wakeVotes >= (radioOn ? AGENT_WAKE_CHUNKS * 2 : AGENT_WAKE_CHUNKS)) wake(true);
             recordChunk(chunk, kChunk, voice, false);
@@ -1369,6 +1382,7 @@ void AgentController::enterSleep() {
     _preroll.clear();
     if (_gemini.started()) _gemini.stop();  // no session = no tokens
     _sleepSince = millis();
+    _radioSettleUntil = _sleepSince + 2500;  // radio ramps back to full: relearn its echo before listening
     _face->setHint("พักแล้ว แตะหรือพูดเพื่อปลุก", 2500);
     Serial.println("[Agent] Sleeping");
     if (_powerSaveAfterSleep) {
@@ -1882,6 +1896,8 @@ void AgentController::fillDiagnostics(JsonObject out) {
         out["radio_rate"] = gRadio.sampleRate();
     }
     if (gRadio.lastError()[0]) out["radio_error"] = gRadio.lastError();
+    out["radio_echo_coupling"] = _coupling;  // mic level / radio level, learned while asleep
+    out["radio_out_level"] = _audio->radioOutLevel();
     out["auth_error"] = _fatalError;
     out["error_text"] = _errorText;
     out["hold_s"] = _holdUntil > sec ? _holdUntil - sec : 0;

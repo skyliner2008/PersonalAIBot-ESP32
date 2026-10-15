@@ -447,13 +447,13 @@ void CardScreen::drawText(LGFX_Sprite& c) {
     if (_cur.big[0]) {
         bool ascii = true;
         for (const char* p = _cur.big; *p; p++) ascii &= (unsigned char)*p < 0x80;
-        if (ascii) {
-            c.setFont(&fonts::FreeSansBold18pt7b);
+        c.setFont(&fonts::FreeSansBold18pt7b);
+        if (ascii && c.textWidth(_cur.big) <= ui::W - 16) {
             c.setTextDatum(textdatum_t::top_left);
             c.setTextColor(ui::TEXT);
             c.drawString(_cur.big, 8, y + 4);
             y += 50;
-        } else {
+        } else {  // Thai, or too long for the big font (station names): smaller, with "..."
             gUi.drawFitted(c, _cur.big, 8, y + 16, ui::W - 16, gUi.thai26(), ui::TEXT);
             y += 36;
         }
