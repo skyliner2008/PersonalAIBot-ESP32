@@ -9,7 +9,7 @@
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
-[![Firmware](https://img.shields.io/badge/firmware-v3.2.0-3ddc84)](src/app/AppConfig.h)
+[![Firmware](https://img.shields.io/badge/firmware-v3.2.1-3ddc84)](src/app/AppConfig.h)
 [![Tests](https://img.shields.io/badge/host%20tests-1%2C421%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -77,7 +77,7 @@
    (ถ้าหาบอร์ดไม่เจอ: กด **BOOT** ค้าง → แตะ **RESET** → ปล่อย BOOT แล้วกด Connect ใหม่)
 3. ช่อง Flash Address ใส่ **`0x0`** → เลือกไฟล์ `.bin` → **Program** เสร็จแล้วกด **RESET** ที่บอร์ด
 
-ใช้ command line ก็ได้: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.2.0-factory.bin`
+ใช้ command line ก็ได้: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.2.1-factory.bin`
 
 > ไฟล์ factory เริ่มที่ `0x0` จึง**ล้างค่าตั้งค่าเดิมในบอร์ด**ไปด้วย (ติดตั้งใหม่สะอาด)
 
@@ -284,7 +284,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 - **Fork & build:** `pio run` build ได้จาก clone ใหม่โดยไม่ต้องมี `secrets.h` — ค่าตั้งค่าอยู่ใน NVS (`src/app/Settings.*`) key ของคุณจึงไม่เข้าไปอยู่ในซอร์สโค้ด
 - **เพิ่ม tool:** ประกาศใน `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`) tool ที่ใช้เน็ตใส่ใน `src/agent/WebToolsExtra.cpp` และวาด `CardData` (ดู [wiki/11](wiki/11-Data-Tools-and-Cards.md))
 - **ทดสอบไม่ต้องมีบอร์ด:** `host_tests\run_tests.bat` — บนบอร์ดเรียก tool ทุกตัวได้จากแท็บ 🧰 ใน Studio หรือ serial (`tool <name> {json}`)
-- **ออก Release อัตโนมัติ:** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` — GitHub Actions ([`.github/workflows/firmware.yml`](.github/workflows/firmware.yml)) จะ build เฟิร์มแวร์ รัน host test และสร้าง Release `v<เวอร์ชัน>` พร้อมแนบ `PersonalAIBot-ESP32-v<เวอร์ชัน>-factory.bin` + `.sha256` ให้เอง push ครั้งอื่นๆ แค่ build ตรวจ (เก็บไฟล์ไว้ใน artifact) ถ้าอยากอัปไฟล์เวอร์ชันเดิมซ้ำ: *Actions → Firmware → Run workflow*
+- **ออก Release อัตโนมัติ:** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` — GitHub Actions ([`.github/workflows/firmware.yml`](.github/workflows/firmware.yml)) จะ build เฟิร์มแวร์ รัน host test และสร้าง Release `v<เวอร์ชัน>` พร้อมแนบ `PersonalAIBot-ESP32-v<เวอร์ชัน>-factory.bin` + `.sha256` ให้เอง push ครั้งอื่นๆ แค่ build ตรวจ (เก็บไฟล์ไว้ใน artifact) — Release ของ repo นี้เป็นแบบ **immutable** เผยแพร่แล้วแก้ไฟล์หรือใช้ชื่อ tag ซ้ำไม่ได้ ทุกครั้งที่ออก Release ต้องใช้เลขเวอร์ชันใหม่
 - **สร้างไฟล์ในเครื่อง:** `python tools/make_release.py` (สคริปต์เดียวกับที่ GitHub ใช้) — ไม่ยอมทำงานถ้า `include/secrets.h` มีค่าจริง และสแกนไฟล์หาสิ่งที่หน้าตาเหมือน API key
 - **เอกสาร:** โฟลเดอร์ `wiki/` เป็น Obsidian vault — ปัญหาที่แก้ได้ช่วยบันทึกใน [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md)
 

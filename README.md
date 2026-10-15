@@ -9,7 +9,7 @@
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
-[![Firmware](https://img.shields.io/badge/firmware-v3.2.0-3ddc84)](src/app/AppConfig.h)
+[![Firmware](https://img.shields.io/badge/firmware-v3.2.1-3ddc84)](src/app/AppConfig.h)
 [![Tests](https://img.shields.io/badge/host%20tests-1%2C421%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -78,7 +78,7 @@ Pinout, board photos and connector guide → [wiki/01-Hardware-ES3C28P-Pinout.md
    (if it is not found: hold **BOOT**, tap **RESET**, release BOOT, then connect again).
 3. Flash address **`0x0`** → choose the `.bin` file → **Program**. When it finishes, press **RESET**.
 
-Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.2.0-factory.bin`
+Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.2.1-factory.bin`
 
 > The factory image starts at `0x0`, so it also **clears saved settings** on that board (a clean install).
 
@@ -283,7 +283,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 - **Fork & build:** `pio run` builds from a clean clone — no `secrets.h` needed. Settings live in NVS (`src/app/Settings.*`), so your own keys never touch the source tree.
 - **Add a tool:** declare it in `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`); network tools go in `src/agent/WebToolsExtra.cpp` and draw a `CardData` (see [wiki/11](wiki/11-Data-Tools-and-Cards.md)).
 - **Test without a board:** `host_tests\run_tests.bat`; on a board, every tool can be called from the Studio's 🧰 tab or the serial console (`tool <name> {json}`).
-- **Releases are automatic:** bump `FIRMWARE_VERSION` in `src/app/AppConfig.h`, commit, `git push` — GitHub Actions ([`.github/workflows/firmware.yml`](.github/workflows/firmware.yml)) builds the firmware, runs the host tests and publishes Release `v<version>` with `PersonalAIBot-ESP32-v<version>-factory.bin` + `.sha256`. Every other push / pull request just builds (the image is kept as a workflow artifact). *Actions → Firmware → Run workflow* re-uploads the current version.
+- **Releases are automatic:** bump `FIRMWARE_VERSION` in `src/app/AppConfig.h`, commit, `git push` — GitHub Actions ([`.github/workflows/firmware.yml`](.github/workflows/firmware.yml)) builds the firmware, runs the host tests and publishes Release `v<version>` with `PersonalAIBot-ESP32-v<version>-factory.bin` + `.sha256`. Every other push / pull request just builds (the image is kept as a workflow artifact). Releases here are **immutable** — a published version can never get new files or reuse its tag, so every release needs a new version number.
 - **Local release image:** `python tools/make_release.py` (same script the workflow uses) — refuses to run while `include/secrets.h` holds real values and scans the image for API-key-like strings.
 - **Docs:** the `wiki/` folder is an Obsidian vault; please add problems you solve to [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md).
 

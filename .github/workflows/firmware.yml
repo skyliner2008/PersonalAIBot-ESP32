@@ -2,7 +2,7 @@
 # version that has no "v<version>" tag yet, publish a GitHub Release with the factory image attached.
 #
 #   Release a new version:  bump FIRMWARE_VERSION -> commit -> git push        (that's all)
-#   Re-upload the current one: Actions -> Firmware -> Run workflow
+#   (Releases are immutable here: a published version cannot get new files, so bump the version instead.)
 name: Firmware
 
 on:
@@ -69,28 +69,34 @@ jobs:
           name: PersonalAIBot-ESP32-v${{ steps.ver.outputs.version }}
           path: dist/*
 
+      # This repository uses immutable releases: assets can only be attached while the release is a
+      # draft, and a tag that belonged to a published release can never be reused. So: draft -> upload
+      # -> publish, and only for versions without a tag (bump FIRMWARE_VERSION for every release).
       - name: Publish GitHub Release
-        if: github.event_name != 'pull_request' && (steps.ver.outputs.released == 'false' || github.event_name == 'workflow_dispatch')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.ver.outputs.version }}
-          name: PersonalAIBot-ESP32 v${{ steps.ver.outputs.version }}
-          target_commitish: ${{ github.sha }}
-          files: dist/*
-          generate_release_notes: true
-          body: |
-            ## Flash it / แฟลชลงบอร์ด
-            1. Download **PersonalAIBot-ESP32-v${{ steps.ver.outputs.version }}-factory.bin** below. / ดาวน์โหลดไฟล์ด้านล่าง
-            2. Open https://espressif.github.io/esptool-js/ in Chrome or Edge → **Connect** (not found? hold BOOT, tap RESET, release BOOT).
-               เปิดเว็บด้วย Chrome/Edge → Connect (หาไม่เจอ: กด BOOT ค้าง แตะ RESET แล้วปล่อย BOOT)
-            3. Flash address **0x0** → choose the file → **Program** → press RESET.
-            4. Enter your own Wi-Fi + Gemini API key on the device — or put `ai-setup.txt` on the SD card ([template](https://github.com/${{ github.repository }}/blob/main/tools/sd_card/ai-setup.txt)).
-               ใส่ Wi-Fi + Gemini API key ของคุณบนบอร์ด หรือวาง `ai-setup.txt` ไว้ในการ์ด SD
-
-            > The factory image starts at 0x0 and resets saved settings. To update and keep them, build from source (`pio run -t upload`).
-            > ไฟล์ factory ล้างค่าตั้งค่าเดิม ถ้าต้องการอัปเดตโดยเก็บค่าเดิมให้ build จากซอร์ส
-            >
-            > No passwords or API keys are included in this image. / ไฟล์นี้ไม่มีรหัสหรือ API key ใดๆ
+        if: github.event_name != 'pull_request' && steps.ver.outputs.released == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.ver.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            echo "## Flash it / แฟลชลงบอร์ด"
+            echo "1. Download **PersonalAIBot-ESP32-v${VER}-factory.bin** below. / ดาวน์โหลดไฟล์ด้านล่าง"
+            echo "2. Open https://espressif.github.io/esptool-js/ in Chrome or Edge → **Connect** (not found? hold BOOT, tap RESET, release BOOT)."
+            echo "   เปิดเว็บด้วย Chrome/Edge → Connect (หาไม่เจอ: กด BOOT ค้าง แตะ RESET แล้วปล่อย BOOT)"
+            echo "3. Flash address **0x0** → choose the file → **Program** → press RESET."
+            echo "4. Enter your own Wi-Fi + Gemini API key on the device — or put \`ai-setup.txt\` on the SD card ([template](https://github.com/${REPO}/blob/main/tools/sd_card/ai-setup.txt))."
+            echo "   ใส่ Wi-Fi + Gemini API key ของคุณบนบอร์ด หรือวาง \`ai-setup.txt\` ไว้ในการ์ด SD"
+            echo
+            echo "> The factory image starts at 0x0 and resets saved settings. To update and keep them, build from source (\`pio run -t upload\`)."
+            echo "> ไฟล์ factory ล้างค่าตั้งค่าเดิม ถ้าต้องการอัปเดตโดยเก็บค่าเดิมให้ build จากซอร์ส"
+            echo ">"
+            echo "> No passwords or API keys are included in this image. / ไฟล์นี้ไม่มีรหัสหรือ API key ใดๆ"
+          } > release-notes.md
+          gh release create "v${VER}" --repo "$REPO" --target "$GITHUB_SHA" --draft \
+            --title "PersonalAIBot-ESP32 v${VER}" --notes-file release-notes.md --generate-notes
+          gh release upload "v${VER}" dist/* --repo "$REPO"
+          gh release edit "v${VER}" --repo "$REPO" --draft=false --latest
 
   host-tests:
     runs-on: ubuntu-latest
