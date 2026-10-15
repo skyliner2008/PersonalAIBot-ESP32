@@ -1779,7 +1779,8 @@ bool AgentController::stopRadio() {
 void AgentController::startRadio(JsonObjectConst st) {
     const char* url = st["url"] | "";
     const char* name = st["station"] | "";
-    if (!gRadio.play(url, name)) return;
+    Serial.printf("[Radio] play request: name %u bytes, url %u bytes\n", (unsigned)strlen(name), (unsigned)strlen(url));
+    if (strncmp(url, "http", 4) != 0 || !gRadio.play(url, name)) return;
     const SettingsData s = gSettings.get();
     if (strcmp(s.radioUrl, url) != 0 || strcmp(s.radioName, name) != 0) {  // "เปิดวิทยุ" resumes it
         gSettings.update([&](SettingsData& d) {

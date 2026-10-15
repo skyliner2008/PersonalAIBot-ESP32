@@ -1191,25 +1191,63 @@ void runMt5Trade(JsonObjectConst a, JsonDocument& out, CardData& card) {
 // ============================================================ Internet radio (radio-browser.info)
 
 namespace {
-// MP3 / AAC only (the decoders on the board), working streams, most popular first
-bool radioSearch(const String& query, const char* field, const char* country, JsonDocument& found) {
-    String url = String("https://de1.api.radio-browser.info/json/stations/search?") + field + "=" +
-                 urlEncode(query.c_str()) + "&hidebroken=true&order=clickcount&reverse=true&limit=12";
-    if (country && *country) url += String("&countrycode=") + country;
+// Radio Browser runs several identical mirrors; remember the one that answered last
+const char* const kRadioHosts[] = {"de1", "de2", "fi1", "nl1"};
+uint8_t gRadioHost = 0;
+enum class RadioFind { Found, None, NetError };
+
+// Thai words the model may pass straight through -> Radio Browser names / tags
+const char* radioAlias(const String& q) {
+    static const struct { const char* th; const char* en; } kMap[] = {
+        {"ลูกทุ่ง", "luk thung"}, {"เพลงลูกทุ่ง", "luk thung"}, {"หมอลำ", "mor lam"}, {"ข่าว", "news"},
+        {"เพลงสากล", "pop"},     {"สากล", "pop"},           {"แจ๊ส", "jazz"},     {"คลาสสิก", "classical"},
+        {"ร็อก", "rock"},         {"เพลงไทย", "thai"},        {"เพลงฮิต", "hits"},  {"คูล", "cool"},
+        {"คูลฟาเรนไฮต์", "cool"}, {"กีฬา", "sports"},         {"ธรรมะ", "dhamma"},  {"เพลงเพราะ", "easy listening"},
+    };
+    for (const auto& m : kMap) {
+        if (q == m.th) return m.en;
+    }
+    return nullptr;
+}
+
+// MP3 / AAC only (the decoders on the board), working streams, most popular first.
+// `path` = "search?name=..." style query (without the host).
+RadioFind radioQuery(const String& path, JsonDocument& found) {
     String body;
-    if (httpGet(url, body) != 200) return false;
+    int code = -1;
+    for (uint8_t i = 0; i < 2 && code != 200; i++) {  // at most one mirror switch: keep the tool call short
+        const uint8_t h = (gRadioHost + i) % (sizeof(kRadioHosts) / sizeof(kRadioHosts[0]));
+        code = httpGet(String("https://") + kRadioHosts[h] + ".api.radio-browser.info/json/stations/" + path, body, 6000);
+        if (code == 200) gRadioHost = h;
+    }
+    if (code != 200) return RadioFind::NetError;
     JsonDocument all(JsonPsramAllocator::instance());
-    if (deserializeJson(all, body)) return false;
+    if (deserializeJson(all, body)) return RadioFind::NetError;
     JsonArray keep = found.to<JsonArray>();
     for (JsonObjectConst s : all.as<JsonArrayConst>()) {
         String codec = s["codec"] | "";
         codec.toUpperCase();
         const int br = s["bitrate"] | 0;
         const char* u = s["url_resolved"] | "";
-        if (!*u || (codec != "MP3" && codec != "AAC" && codec != "AAC+") || br > 192) continue;
+        if (strncmp(u, "http", 4) != 0 || (codec != "MP3" && codec != "AAC" && codec != "AAC+") || br > 192) continue;
         keep.add(s);
     }
-    return keep.size() > 0;
+    return keep.size() > 0 ? RadioFind::Found : RadioFind::None;
+}
+
+RadioFind radioSearch(const String& query, const char* field, const char* country, JsonDocument& found) {
+    String path = String("search?") + field + "=" + urlEncode(query.c_str()) +
+                  "&hidebroken=true&order=clickcount&reverse=true&limit=12";
+    if (country && *country) path += String("&countrycode=") + country;
+    return radioQuery(path, found);
+}
+
+bool plausibleUrl(const char* u) {
+    if (strncmp(u, "http://", 7) != 0 && strncmp(u, "https://", 8) != 0) return false;
+    for (const unsigned char* p = (const unsigned char*)u; *p; p++) {
+        if (*p < 0x21 || *p > 0x7E) return false;  // stream URLs are plain ASCII
+    }
+    return true;
 }
 }  // namespace
 
@@ -1221,21 +1259,37 @@ void runRadio(JsonObjectConst a, JsonDocument& out, CardData& card) {
     if (country == "ANY" || country == "ALL") country = "";
     JsonObject r = out["result"].to<JsonObject>();
 
-    if (q.isEmpty()) {  // "เปิดวิทยุ" = the last station
+    String lastUrl, lastName;
+    if (q.isEmpty()) {
         const SettingsData s = gSettings.get();
-        if (!s.radioUrl[0]) {
-            setError(out, "ยังไม่เคยเปิดสถานีไหน ให้ระบุชื่อสถานีหรือแนวเพลง");
-            return;
-        }
-        r["station"] = s.radioName;
-        r["url"] = s.radioUrl;
+        lastUrl = String(s.radioUrl);
+        lastName = String(s.radioName);
+        Serial.printf("[Radio] last station: name %u bytes, url %u bytes, %s\n", (unsigned)lastName.length(),
+                      (unsigned)lastUrl.length(), plausibleUrl(lastUrl.c_str()) ? "ok" : "INVALID");
+    }
+    if (q.isEmpty() && plausibleUrl(lastUrl.c_str())) {  // "เปิดวิทยุ" = the last station
+        r["station"] = lastName.length() ? lastName : String("สถานีล่าสุด");
+        r["url"] = lastUrl;
         r["note"] = "เปิดสถานีล่าสุดแล้ว บอกผู้ใช้สั้นๆ";
     } else {
         JsonDocument found(JsonPsramAllocator::instance());
         const char* cc = country.c_str();
-        if (!radioSearch(q, "name", cc, found) && !radioSearch(q, "tag", cc, found) &&
-            !(*cc && radioSearch(q, "name", "", found)) && !(*cc && radioSearch(q, "tag", "", found))) {
-            setError(out, "ไม่พบสถานีที่เล่นได้ (ต้องเป็น MP3/AAC) ลองชื่ออื่นหรือแนวเพลงเป็นภาษาอังกฤษ");
+        RadioFind f;
+        if (q.isEmpty()) {  // never played anything: the most popular station of the country
+            f = radioQuery(String("bycountrycodeexact/") + (*cc ? cc : "TH") +
+                               "?hidebroken=true&order=clickcount&reverse=true&limit=12",
+                           found);
+        } else {
+            const char* alias = radioAlias(q);
+            const String term = alias ? String(alias) : q;
+            f = radioSearch(term, "name", cc, found);
+            if (f == RadioFind::None) f = radioSearch(term, "tag", cc, found);
+            if (f == RadioFind::None && *cc) f = radioSearch(term, "name", "", found);  // worldwide
+        }
+        if (f != RadioFind::Found) {
+            setError(out, f == RadioFind::NetError
+                              ? "ติดต่อฐานข้อมูลสถานีวิทยุ (Radio Browser) ไม่ได้ ลองใหม่อีกครั้ง"
+                              : "ไม่พบสถานีที่เล่นได้ (ต้องเป็น MP3/AAC) ลองชื่อสถานีหรือแนวเพลงเป็นภาษาอังกฤษ");
             return;
         }
         JsonObjectConst st = found[0];

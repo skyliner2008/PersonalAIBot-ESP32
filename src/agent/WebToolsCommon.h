@@ -45,17 +45,19 @@ inline String urlEncode(const char* s) {
  * GET (body == nullptr) or POST JSON. https:// is verified against WEB_ROOT_CA_PEM; http:// is
  * allowed for LAN services (the MT5 bridge). `bearer` adds "Authorization: Bearer ...".
  */
-inline int httpRequest(const String& url, String& response, const char* body = nullptr, const char* bearer = nullptr) {
+inline int httpRequest(const String& url, String& response, const char* body = nullptr, const char* bearer = nullptr,
+                       uint32_t timeoutMs = kHttpTimeoutMs) {
     if (WiFi.status() != WL_CONNECTED) return -10;
     const bool tlsOn = url.startsWith("https://");
     WiFiClientSecure tls;
     WiFiClient plain;
     if (tlsOn) {
         tls.setCACert(WEB_ROOT_CA_PEM);
-        tls.setTimeout(kHttpTimeoutMs / 1000);
+        tls.setTimeout((timeoutMs + 999) / 1000);
     }
     HTTPClient http;
-    http.setTimeout(kHttpTimeoutMs);
+    http.setTimeout(timeoutMs);
+    http.setConnectTimeout(timeoutMs);
     http.setUserAgent("Mozilla/5.0 (ESP32-AI personal assistant)");
     const bool ok = tlsOn ? http.begin(tls, url) : http.begin(plain, url);
     if (!ok) return -2;
@@ -72,7 +74,9 @@ inline int httpRequest(const String& url, String& response, const char* body = n
     return code;
 }
 
-inline int httpGet(const String& url, String& body) { return httpRequest(url, body); }
+inline int httpGet(const String& url, String& body, uint32_t timeoutMs = kHttpTimeoutMs) {
+    return httpRequest(url, body, nullptr, nullptr, timeoutMs);
+}
 
 inline void copyStr(char* dst, size_t n, const char* src) {  // never splits a UTF-8 character
     if (!src) src = "";
