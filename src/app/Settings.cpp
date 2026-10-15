@@ -148,6 +148,7 @@ bool Settings::applyProfile(SettingsData& d, const char* profileId) {
 
 bool Settings::begin() {
     _lock = xSemaphoreCreateMutex();
+    _saveLock = xSemaphoreCreateMutex();
     load();
     if (_plainFound || driverKeepsWifiCopy()) {
         migrate();
@@ -356,14 +357,21 @@ SettingsData Settings::get() const {
 }
 
 void Settings::update(const std::function<void(SettingsData&)>& fn) {
-    SettingsData copy;
     {
         Guard g(_lock);
         fn(_data);
-        copy = _data;
         _version = _version + 1;
     }
-    save(copy);  // NVS write outside the lock (can take a few ms)
+    // NVS / SD write outside the data lock (can take a few ms), one writer at a time, and with the
+    // values current at the writer's turn: two tasks saving at once (UI volume + agent station) could
+    // otherwise let the older snapshot land last and come back after a reboot
+    Guard s(_saveLock);
+    SettingsData copy;
+    {
+        Guard g(_lock);
+        copy = _data;
+    }
+    save(copy);
 }
 
 // ============================================================

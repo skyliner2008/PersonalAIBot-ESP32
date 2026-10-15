@@ -759,6 +759,18 @@ void runNotes(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, CardData
     jsonfile::load(path.c_str(), db);
     if (!db["notes"].is<JsonArray>()) db["notes"].to<JsonArray>();
     JsonArray notes = db["notes"];
+    // titles cut by bytes before v3.4.2 could end in half a Thai character: invalid UTF-8 in the
+    // toolResponse lets the server drop the session - repair them once
+    bool repaired = false;
+    for (JsonObject n : notes) {
+        const char* t = n["title"] | "";
+        const size_t len = strlen(t), ok = utf8::completeLength(t, len);
+        if (ok < len) {
+            n["title"] = String(t).substring(0, ok);
+            repaired = true;
+        }
+    }
+    if (repaired) jsonfile::save(path.c_str(), db);
     String action = a["action"] | "list";
     const char* title = a["title"] | "";
     const char* content = a["content"] | "";
@@ -778,7 +790,8 @@ void runNotes(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, CardData
         while (notes.size() >= 100) notes.remove(0);
         JsonObject n = notes.add<JsonObject>();
         n["id"] = next;
-        n["title"] = *title ? title : String(content).substring(0, 40);
+        // no title: the start of the text, cut on a character boundary (Thai = 3 bytes a character)
+        n["title"] = *title ? String(title) : String(content).substring(0, utf8::clampToBoundary(content, strlen(content), 40));
         n["text"] = content;
         n["ts"] = nowEpoch();
         db["next"] = next + 1;

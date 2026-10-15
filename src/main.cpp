@@ -35,6 +35,7 @@
 #include "ui/RadioScreen.h"
 #include "ui/SettingsScreens.h"
 #include "ui/UiManager.h"
+#include "util/Utf8.h"
 
 static LGFX_ES3C28P lcd;
 static I2cBus i2c;
@@ -403,9 +404,10 @@ static bool handleSet(const String& field, const String& value) {
     int invert = -1;
     const bool on = value == "1" || value == "on" || value == "true";
     gSettings.update([&](SettingsData& d) {
-        auto copy = [&](char* dst, size_t n) {
-            strncpy(dst, value.c_str(), n - 1);
-            dst[n - 1] = '\0';
+        auto copy = [&](char* dst, size_t n) {  // never half a Thai character (invalid UTF-8 in the prompt)
+            const size_t len = utf8::clampToBoundary(value.c_str(), value.length(), n - 1);
+            memcpy(dst, value.c_str(), len);
+            dst[len] = '\0';
         };
         auto markCustom = [&]() { strncpy(d.profile, "custom", sizeof(d.profile)); };
         if (field == "ssid") copy(d.wifiSsid, sizeof(d.wifiSsid));
@@ -668,8 +670,10 @@ static void handleConsoleLine(String line) {
         Serial.printf("clock set to %lu\n", (unsigned long)tv.tv_sec);
     } else if (cmd == "reboot") {
         agent.uiRestart();  // closes the Live session cleanly, then restarts
-        delay(4000);
-        ESP.restart();      // fallback if the agent task is stuck
+        // fallback if the agent task is stuck - after its own worst case (close handshake 3.5 s +
+        // memory flush 2 s + 0.2 s): 4 s cut it short, leaving a session open on the server
+        delay(8000);
+        ESP.restart();
     } else {
         Serial.println("unknown command - type help");
     }

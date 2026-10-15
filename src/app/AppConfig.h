@@ -10,7 +10,7 @@
 
 #pragma once
 
-#define FIRMWARE_VERSION        "3.4.1"
+#define FIRMWARE_VERSION        "3.4.2"
 
 // ============================================================
 // Prompt labels
@@ -34,7 +34,8 @@
 #define AUDIO_UPLOAD_RATE       16000   // Gemini Live input rate (mic is resampled 3:2)
 #define AUDIO_MIC_CHUNK_MS      40      // size of each realtimeInput audio message
 #define AUDIO_PLAYBACK_BUFFER   (1024 * 1024)   // PSRAM, ~21 s of 24 kHz speech
-#define AUDIO_CAPTURE_BUFFER    (64 * 1024)     // PSRAM, ~2 s of 16 kHz mic
+#define AUDIO_CAPTURE_BUFFER    (256 * 1024)    // PSRAM, ~8 s of 16 kHz mic: the agent loop can stall ~1.7 s
+                                                // while the Live TLS handshake runs (wake-up = when people talk)
 #define AUDIO_RADIO_BUFFER      (192 * 1024)    // PSRAM, ~4 s of 24 kHz mono radio (absorbs network jitter)
 #define AUDIO_RADIO_PREBUFFER_MS 1000           // radio starts sounding once this much is queued
 #define RADIO_DUCK_GAIN         0.12f           // radio level while the assistant listens / talks

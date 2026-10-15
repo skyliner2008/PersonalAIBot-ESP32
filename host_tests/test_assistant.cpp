@@ -840,3 +840,19 @@ TEST(data_dates) {
     CHECK_EQ(parseRfc822("Thu, 15 Oct 2026 19:14:28 +0700"), t);
     CHECK_EQ(parseRfc822("garbage"), 0u);
 }
+
+#include "util/Utf8.h"
+
+TEST(utf8_complete_length) {
+    const std::string th = "ซื้อนมพรุ่งนี้เช้า";  // 3 bytes per character
+    CHECK_EQ(utf8::completeLength(th.c_str(), th.size()), th.size());
+    CHECK_EQ(utf8::completeLength(th.c_str(), 40), (size_t)39);  // 13 characters + 1 stray byte
+    CHECK_EQ(utf8::completeLength(th.c_str(), 41), (size_t)39);
+    CHECK_EQ(utf8::completeLength(th.c_str(), 42), (size_t)42);
+    CHECK_EQ(utf8::completeLength("abc", 3), (size_t)3);
+    CHECK_EQ(utf8::completeLength("", 0), (size_t)0);
+    // what the notes tool now does for a title cut from the text
+    const size_t cut = utf8::clampToBoundary(th.c_str(), th.size(), 40);
+    CHECK_EQ(cut, (size_t)39);
+    CHECK_EQ(utf8::completeLength(th.c_str(), cut), cut);
+}

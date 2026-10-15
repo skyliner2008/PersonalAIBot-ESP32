@@ -1,0 +1,17 @@
+# Line endings: the repository stores LF; working copies use LF too (PlatformIO, MSVC, Python and
+# VS Code all read it), so commits on Windows no longer warn "LF will be replaced by CRLF".
+* text=auto eol=lf
+
+# Windows batch files need CRLF to run reliably in cmd.exe
+*.bat text eol=crlf
+
+# Binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.bin binary
+*.ttf binary
+*.otf binary
+*.wav binary
+*.7z binary
+*.zip binary

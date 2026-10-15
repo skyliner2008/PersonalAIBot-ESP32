@@ -93,6 +93,7 @@ public:
 private:
     SettingsData _data;
     mutable SemaphoreHandle_t _lock = nullptr;
+    SemaphoreHandle_t _saveLock = nullptr;  // serialises save() (NVS + SD + the _sealed* caches)
     volatile uint32_t _version = 1;
 
     // Secrets are stored sealed (SecretBox); remember what is on flash to avoid re-sealing unchanged values

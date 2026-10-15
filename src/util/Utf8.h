@@ -101,6 +101,19 @@ inline size_t alignForward(const char* s, size_t len, size_t from) {
     return from;
 }
 
+/**
+ * Length without a multi-byte sequence cut off at the end (text truncated by bytes elsewhere).
+ * Invalid UTF-8 in a WebSocket text frame lets the server close the session (RFC 6455: 1007).
+ */
+inline size_t completeLength(const char* s, size_t len) {
+    size_t lead = len;
+    while (lead > 0 && isContinuation((uint8_t)s[lead - 1])) lead--;
+    if (lead == 0) return len;  // only continuation bytes: nothing to anchor on
+    const uint8_t b = (uint8_t)s[lead - 1];
+    const size_t need = b < 0x80 ? 1 : (b & 0xE0) == 0xC0 ? 2 : (b & 0xF0) == 0xE0 ? 3 : (b & 0xF8) == 0xF0 ? 4 : 1;
+    return len - (lead - 1) >= need ? len : lead - 1;
+}
+
 /** Thai vowels/tone marks that are drawn above/below the previous character. */
 inline bool isThaiCombining(uint32_t cp) {
     return cp == 0x0E31 || (cp >= 0x0E34 && cp <= 0x0E3A) || (cp >= 0x0E47 && cp <= 0x0E4E);
