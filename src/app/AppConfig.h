@@ -10,7 +10,7 @@
 
 #pragma once
 
-#define FIRMWARE_VERSION        "3.4.0"
+#define FIRMWARE_VERSION        "3.4.1"
 
 // ============================================================
 // Prompt labels
@@ -40,6 +40,7 @@
 #define RADIO_DUCK_GAIN         0.12f           // radio level while the assistant listens / talks
 #define RADIO_RESUME_MS         6000            // idle this long with the radio on -> back to sleep, radio up
 #define RADIO_WAKE_FACTOR       3.0f            // while the radio plays, wake on sound this many times the expected radio echo
+#define RADIO_WAKE_MIN_LEVEL    0.02f           // ... and at least this loud (mic RMS; speech ~0.05-0.12, radio leak ~0.005-0.01)
 // Jitter buffer for the assistant's voice. Gemini streams 24 kHz PCM as base64 (~64 KB/s); the
 // framework's lwIP has a 5.7 KB TCP window, so over a phone hotspot (RTT ~100 ms) audio can arrive
 // SLOWER than it plays. The buffer starts at AUDIO_PREBUFFER_MS, doubles after a gap mid-reply,

@@ -205,10 +205,11 @@ void FaceScreen::drawGear(LGFX_Sprite& c, int cx, int cy, uint16_t color) {
     c.fillCircle(cx, cy, 3, ui::BG);
 }
 
-// Mic shortcut button (top-left): grey = on, blue = hearing you, red + slash = off
+// Mic shortcut button (top-left): green mic = on (also while asleep: voice wakes it), blue = hearing
+// you, red + slash = off (the grey "on" looked switched off to the user)
 void FaceScreen::drawMic(LGFX_Sprite& c, int cx, int cy, bool muted, bool hearing) {
     const uint16_t bg = muted ? ui::ERR : (hearing ? ui::ACCENT : ui::PANEL_HI);
-    const uint16_t fg = (muted || hearing) ? ui::TEXT : ui::DIM;
+    const uint16_t fg = (muted || hearing) ? ui::TEXT : ui::OK;
     c.fillSmoothCircle(cx, cy, 15, bg);
     c.fillSmoothRoundRect(cx - 4, cy - 10, 9, 13, 4, fg);  // capsule
     c.fillArc(cx, cy - 2, 6, 8, 0, 180, fg);               // holder

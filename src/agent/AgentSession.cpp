@@ -155,6 +155,22 @@ void AgentController::buildSystemPrompt(PsString& p) {
         gStations.describe(list);
         p += "สถานีวิทยุในรายการ: ";
         p += list.c_str();
+        RadioStation last;
+        const int li = gStations.lastIndex();
+        if (li >= 0 && gStations.get((size_t)li, last)) {  // "เปิดวิทยุ" alone = resume this one
+            p += " • สถานีล่าสุดที่ผู้ใช้ฟัง: ";
+            p += String(li + 1).c_str();
+            p += " ";
+            p += last.name;
+            p += " — ถ้าผู้ใช้สั่งเปิดวิทยุโดยไม่บอกสถานี ให้เรียก play_radio โดยไม่ใส่ station";
+        }
+        char playing[64] = "";
+        if (gRadio.active()) gRadio.info(playing, sizeof(playing), nullptr, 0);
+        if (playing[0]) {  // after a wake-up the user usually wants something else - not the radio again
+            p += " • ตอนนี้วิทยุกำลังเล่น: ";
+            p += playing;
+            p += " (เรียก play_radio เฉพาะเมื่อประโยคล่าสุดขอเปิดหรือเปลี่ยนสถานี อย่าพูดถึงวิทยุถ้าไม่ได้ถาม)";
+        }
         p += "\n";
     }
 
@@ -272,7 +288,10 @@ void AgentController::onSetupComplete() {
         snprintf(buf, sizeof(buf), "ใช้ %s แทนชั่วคราว", liveModelLabel(_activeModel));
         _face->setHint(buf, 3000);
     }
-    if (_wakeBuffering) sendPreroll();
+    if (_wakeBuffering && _wakeHeard) {  // a silent tap wake: the mic loop lets go of it
+        beginUtterance(millis(), 0.0f, false);  // fresh stats (they showed the previous sentence's)
+        sendPreroll();
+    }
 }
 
 void AgentController::onDisconnected(bool wasReady) {
@@ -657,7 +676,11 @@ void AgentController::onToolCall(JsonArrayConst calls) {
             response["scheduling"] = "SILENT";
         }
         if (strcmp(name, "set_expression") != 0) {
-            Serial.printf("[Tool] %s -> %s\n", name, ok ? "ok" : (response["error"] | "error"));
+            String args;  // what the model asked for (e.g. which radio station) - memory tools stay private
+            const bool privateArgs = !strncmp(name, "save_", 5) || !strcmp(name, "notes");
+            if (!privateArgs && call["args"].is<JsonObjectConst>() && call["args"].size()) serializeJson(call["args"], args);
+            Serial.printf("[Tool] %s %s-> %s\n", name, args.length() ? (args + " ").c_str() : "",
+                          ok ? "ok" : (response["error"] | "error"));
         }
         if (!ok) continue;
         if (!strcmp(name, "save_memory") || !strcmp(name, "save_relation")) {
@@ -677,7 +700,12 @@ void AgentController::onToolCall(JsonArrayConst calls) {
     } else if ((int32_t)(_toolBusyUntil - millis()) < 600) {
         _toolBusyUntil = millis() + 600;
     }
-    if (responses.size() && !_gemini.sendJson(resp)) Serial.println("[Tool] ERROR: failed to send toolResponse");
+    if (responses.size()) {
+        if (!_gemini.sendJson(resp)) Serial.println("[Tool] ERROR: failed to send toolResponse");
+        // the model answers after the toolResponse: a pending sleep (go_to_sleep, play_radio) must wait
+        // for that reply instead of closing the session in the gap before its first audio
+        else if (_sleepPending) _awaitingReply = true;
+    }
 }
 
 // Finished web-tool calls: answer the model (same session only) or print for the console / PC app

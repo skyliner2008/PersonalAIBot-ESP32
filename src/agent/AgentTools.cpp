@@ -239,7 +239,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     declare(d, b, "control_led", "Set the RGB LED ('auto' = status colors).", led, 1);
     declare(d, b, "go_to_sleep", "Stop listening and sleep after this reply (user said goodbye / good night).");
     static const Param radio[] = {
-        {"station", "STRING", "Number, name or genre from the station list. Empty = last station.", false, nullptr},
+        {"station", "STRING", "Number, name or genre the user asked for. Omit = the last station played.", false, nullptr},
     };
     declare(d, b, "play_radio",
             "Play a station from the radio list (in your instructions). Name it briefly, then stay quiet.", radio, 1);

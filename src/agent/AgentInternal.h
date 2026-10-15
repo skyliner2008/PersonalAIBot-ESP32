@@ -27,7 +27,7 @@ namespace agentdetail {
 
 inline constexpr size_t kChunk = AUDIO_UPLOAD_RATE * AUDIO_MIC_CHUNK_MS / 1000;  // 640 samples
 inline constexpr size_t kPrerollSamples = AUDIO_UPLOAD_RATE * AGENT_VAD_PREROLL_MS / 1000;
-inline constexpr size_t kWakeBufferSamples = AUDIO_UPLOAD_RATE * 2;  // 2 s spoken while the session connects
+inline constexpr size_t kWakeBufferSamples = AUDIO_UPLOAD_RATE * 6;  // 6 s spoken while the session connects (PSRAM; connecting takes 2-4 s)
 inline constexpr uint32_t kWifiRetryMinMs = 3000;   // back-off between Wi-Fi attempts: 3 s doubling to 60 s
 inline constexpr uint32_t kWifiRetryMaxMs = 60000;   // (routers block clients that retry every second)
 inline constexpr uint32_t kThinkingTimeoutMs = 12000;

@@ -108,7 +108,8 @@ void AgentController::checkNoReply(uint32_t now) {
 void AgentController::handleAudioInput() {
     const uint32_t now = millis();
     const bool speaking = _audio->isPlaying() || _audio->msSincePlayback() < AGENT_ECHO_TAIL_MS;
-    const bool allow = _configOk && !_muted && !(AGENT_HALF_DUPLEX && speaking);
+    // Power save (dim clock): the mic is off - only a tap wakes it (user's choice); asleep it stays on
+    const bool allow = _configOk && !_muted && !_powerSave && !(AGENT_HALF_DUPLEX && speaking);
     if (allow != _gateAllowed) {
         _audio->setCaptureEnabled(allow);
         _gateAllowed = allow;
@@ -116,8 +117,10 @@ void AgentController::handleAudioInput() {
             endUtterance(now);
             _onset = 0;
             if (!_wakeBuffering) _preroll.clear();
-        } else if (sinceMs(now, _lastAgentAudio) < 3000 && _gemini.isReady() && !_sleeping) {
-            _followUpUntil = now + AGENT_FOLLOWUP_MS;  // the assistant just finished: users answer right away
+        } else if (sinceMs(now, _lastAgentAudio) < 3000 && _gemini.isReady() && !_sleeping && !_sleepPending) {
+            // the assistant just finished: users answer right away (not when it is about to sleep -
+            // e.g. after play_radio, the follow-up window would stream the radio as "user speech")
+            _followUpUntil = now + AGENT_FOLLOWUP_MS;
         }
     }
     checkNoReply(now);
@@ -140,38 +143,66 @@ void AgentController::handleAudioInput() {
 
         if (_sleeping) {  // only listen for a wake-up
             _preroll.push(chunk, kChunk);
-            _preroll.trimTo(kWakeBufferSamples * 3 / 4);
+            _preroll.trimTo(AUDIO_UPLOAD_RATE * 3 / 2);  // 1.5 s before the wake-up (the start of the words)
             // Radio on: the speaker leaks into the mic. The board knows what it plays, so it learns
             // how much of the radio reaches the mic (coupling = mic level / radio level on music-only
             // chunks) and wakes only on sound clearly above that expected leak, held twice as long.
             // A tap always works.
             const bool radioOn = _audio->radioSounding();
+            // a station change starts a new stream (silence, then full level): relearn the echo first -
+            // a tap on the next station woke the assistant "by voice"
+            if (radioOn && !_radioWasSounding) _radioSettleUntil = now + 2500;
+            _radioWasSounding = radioOn;
+            // the volume is set in the codec, after radioOutLevel: a louder speaker leaks more than the
+            // learned coupling expects ("+" on the radio screen woke it "by voice") - relearn
+            const int vol = _audio->volume();
+            if (vol != _wakeVolume) {
+                if (_wakeVolume >= 0) _radioSettleUntil = now + 2500;
+                _wakeVolume = vol;
+            }
             bool loud = voice;
             if (radioOn) {
                 const float ref = _audio->radioOutLevel();
                 _radioRef += (ref - _radioRef) * 0.3f;  // smooth: the acoustic path lags a few chunks
                 const bool settling = (int32_t)(now - _radioSettleUntil) < 0;
                 const float expected = _coupling * _radioRef;
-                loud = !settling && _coupling > 0 && level > _threshold && level > expected * RADIO_WAKE_FACTOR;
+                // + an absolute floor: between songs the expected leak is tiny and the radio's own
+                // 0.005-0.008 got through (woke the assistant with no one talking); speech near the
+                // board measures 0.05-0.12
+                loud = !settling && _coupling > 0 && level > _threshold && level > expected * RADIO_WAKE_FACTOR &&
+                       level > RADIO_WAKE_MIN_LEVEL;
                 if (!loud && _radioRef > 0.003f) {
                     const float ratio = level / _radioRef;
                     _coupling = _coupling <= 0 ? ratio : _coupling + (ratio - _coupling) * (settling ? 0.2f : 0.03f);
                 }
             }
             _wakeVotes = loud ? _wakeVotes + 1 : 0;
-            if (_wakeVotes >= (radioOn ? AGENT_WAKE_CHUNKS * 2 : AGENT_WAKE_CHUNKS)) wake(true);
+            if (_wakeVotes >= (radioOn ? AGENT_WAKE_CHUNKS * 2 : AGENT_WAKE_CHUNKS)) {
+                if (radioOn) {  // why it woke over the radio (tune RADIO_WAKE_* from real logs)
+                    Serial.printf("[Mic] ปลุกด้วยเสียงขณะวิทยุเล่น: ระดับ %.3f, คาดว่าเสียงวิทยุรั่ว %.3f (x%.1f), เกณฑ์ %.3f\n",
+                                  level, _coupling * _radioRef, _coupling * _radioRef > 0 ? level / (_coupling * _radioRef) : 0.0f,
+                                  _threshold);
+                }
+                wake(true);
+            }
             recordChunk(chunk, kChunk, voice, false);
             continue;
         }
         if (!_gemini.isReady()) {  // connecting: keep what the user is saying
             _preroll.push(chunk, kChunk);
             _preroll.trimTo(_wakeBuffering ? kWakeBufferSamples : kPrerollSamples);
+            if (voice) _wakeHeard = true;
             recordChunk(chunk, kChunk, voice, false);
             continue;
         }
         if (_wakeBuffering) {
-            beginUtterance(now, level, false);
-            sendPreroll();
+            if (_wakeHeard) {
+                beginUtterance(now, level, false);
+                sendPreroll();
+            } else {  // tapped awake and nothing said yet: the normal onset decides
+                _wakeBuffering = false;
+                _preroll.trimTo(kPrerollSamples);
+            }
         }
 
 #if AGENT_LOCAL_VAD

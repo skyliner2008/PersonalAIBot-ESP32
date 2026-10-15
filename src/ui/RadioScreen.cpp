@@ -23,7 +23,11 @@ constexpr int kChipW = 100, kChipGap = 6;
 constexpr int kCtrlY = 180, kCtrlH = 54;     // prev / - / volume / + / next
 
 // hit ids
-enum Hit { kNone = -1, kBack = 1000, kStopPlay, kPanel, kPrev, kMinus, kPlus, kNext };
+enum Hit { kNone = -1, kBack = 1000, kStopPlay, kClose, kPanel, kPrev, kMinus, kPlus, kNext };
+
+// header, right side: [pause/play] [power "ปิด"]
+constexpr int kCloseW = 62, kPauseW = 44, kHdrBtnGap = 4;
+constexpr int kCloseX = ui::W - kCloseW - 4, kPauseX = kCloseX - kHdrBtnGap - kPauseW;
 
 void drawTriangle(LGFX_Sprite& c, int x, int y, int s, bool right, uint16_t col) {
     if (right) c.fillTriangle(x, y - s, x, y + s, x + s, y, col);
@@ -69,7 +73,8 @@ int RadioScreen::chipAt(int x) const {
 int RadioScreen::hitTest(int x, int y) const {
     if (y < kHeaderH) {
         if (x < 48) return kBack;
-        if (x > ui::W - 52) return kStopPlay;
+        if (x >= kCloseX - kHdrBtnGap / 2) return kClose;
+        if (x >= kPauseX - kHdrBtnGap) return kStopPlay;
         return kNone;
     }
     if (y >= kPanelY && y < kPanelY + kPanelH) return kPanel;
@@ -128,9 +133,12 @@ void RadioScreen::onTouch(const TouchEvent& e) {
             const int hit = hitTest(e.x, e.y);
             if (hit == kBack) {
                 gUi.pop();
-            } else if (hit == kStopPlay) {
+            } else if (hit == kStopPlay) {  // pause / resume: stays on this screen
                 if (gRadio.active()) gRadio.stop();
                 else playIndex(gStations.lastIndex());
+            } else if (hit == kClose) {  // radio off and back to the face
+                if (gRadio.active()) gRadio.stop();
+                gUi.pop();
             } else if (hit == kPanel) {
                 if (gUi.host()) gUi.host()->uiTap();  // the assistant, exactly like tapping the face
             } else if (hit == kPrev || hit == kNext) {
@@ -190,7 +198,7 @@ void RadioScreen::draw(LGFX_Sprite& c) {
     c.fillRect(0, 0, ui::W, kHeaderH, ui::PANEL);
     c.drawWideLine(22, 8, 13, 15, 2.5f, ui::TEXT);
     c.drawWideLine(13, 15, 22, 22, 2.5f, ui::TEXT);
-    gUi.drawFitted(c, "วิทยุออนไลน์", 44, 15, 150, gUi.thai20(), ui::TEXT);
+    gUi.drawFitted(c, "วิทยุออนไลน์", 44, 15, 108, gUi.thai20(), ui::TEXT);
     const time_t t = time(nullptr);
     if (t > 1700000000) {
         struct tm lt;
@@ -200,12 +208,24 @@ void RadioScreen::draw(LGFX_Sprite& c) {
         c.setFont(&fonts::Font2);
         c.setTextColor(ui::DIM);
         c.setTextDatum(textdatum_t::middle_right);
-        c.drawString(hm, ui::W - 60, 15);
+        c.drawString(hm, kPauseX - 6, 15);
     }
-    const uint16_t spBg = _pressed == kStopPlay ? ui::PANEL_HI : ui::BG;
-    c.fillRoundRect(ui::W - 48, 3, 44, 24, 6, spBg);
-    if (active) c.fillRect(ui::W - 32, 9, 12, 12, ui::ERR);         // stop
-    else drawTriangle(c, ui::W - 32, 15, 7, true, ui::OK);           // play
+    // pause / play (stays here)
+    c.fillRoundRect(kPauseX, 3, kPauseW, 24, 6, _pressed == kStopPlay ? ui::PANEL_HI : ui::BG);
+    c.drawRoundRect(kPauseX, 3, kPauseW, 24, 6, ui::LINE);
+    const int pcx = kPauseX + kPauseW / 2;
+    if (active) {  // pause bars
+        c.fillRect(pcx - 6, 9, 4, 12, ui::TEXT);
+        c.fillRect(pcx + 2, 9, 4, 12, ui::TEXT);
+    } else {
+        drawTriangle(c, pcx - 4, 15, 7, true, ui::OK);
+    }
+    // power "ปิด": radio off + back to the face
+    c.fillRoundRect(kCloseX, 3, kCloseW, 24, 6, _pressed == kClose ? ui::PANEL_HI : ui::ERR);
+    const int ix = kCloseX + 13, iy = 15;  // power icon: open ring + bar
+    c.fillArc(ix, iy, 7, 5, 300, 600, ui::TEXT);  // gap at the top (270 deg)
+    c.fillRect(ix - 1, iy - 9, 3, 9, ui::TEXT);
+    gUi.drawFitted(c, "ปิด", kCloseX + 40, 15, 30, gUi.thai20(), ui::TEXT, textdatum_t::middle_center);
 
     // ---- now playing (tap = assistant) ----
     c.fillRoundRect(6, kPanelY, ui::W - 12, kPanelH, 10, _pressed == kPanel ? ui::PANEL_HI : ui::PANEL);

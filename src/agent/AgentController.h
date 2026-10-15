@@ -256,6 +256,10 @@ private:
     float _noise = 0.002f;
     float _threshold = AGENT_VAD_MIN_LEVEL;
     bool _wakeBuffering = false;
+    bool _wakeHeard = false;          // voice in the wake buffer (a tap wake with silence sends nothing)
+    bool _radioWasSounding = false;   // asleep: the radio (re)started -> relearn its echo before waking
+    int _wakeVolume = -1;             // speaker volume the radio echo was learned at
+    bool _freshAfterRadio = false;    // play_radio: next wake starts a new session (no replay of it)
     PcmRing _preroll;
     float _agcGain = 1.0f;
     uint32_t _followUpUntil = 0;  // after a reply: stream without waiting for an onset

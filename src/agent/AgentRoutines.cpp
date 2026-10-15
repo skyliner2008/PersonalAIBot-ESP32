@@ -20,6 +20,10 @@ void AgentController::enterSleep() {
     _wakeVotes = 0;
     _preroll.clear();
     if (_gemini.started()) _gemini.stop();  // no session = no tokens
+    if (_freshAfterRadio) {  // see playRadio(): the next session starts without the "play the radio" turn
+        _freshAfterRadio = false;
+        _resumeHandle = "";
+    }
     _sleepSince = millis();
     _radioSettleUntil = _sleepSince + 2500;  // radio ramps back to full: relearn its echo before listening
     _face->setHint("พักแล้ว แตะหรือพูดเพื่อปลุก", 2500);
@@ -51,7 +55,11 @@ void AgentController::wake(bool byVoice) {
     if (!_sleeping) return;
     leavePowerSave();
     _sleeping = false;
-    _wakeBuffering = byVoice;  // replay what was said once the session is ready
+    // Keep what is said while the session connects (2-4 s) and replay it once ready - also after a
+    // tap: users start talking right away and lost their first words. After a tap only what comes
+    // next counts, and it is sent only if there was voice in it.
+    _wakeBuffering = true;
+    _wakeHeard = byVoice;
     if (!byVoice) _preroll.clear();
     noteActivity();
     _face->setHint("ตื่นแล้ว", 1200);

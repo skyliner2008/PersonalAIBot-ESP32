@@ -179,15 +179,36 @@ bool AgentController::stopRadio() {
 // play_radio: from the curated station list (number, name or genre; "" = last station)
 const char* AgentController::playRadio(const char* station, JsonObject r) {
     if (!gStations.count()) return "ยังไม่มีสถานีในรายการ (เพิ่มได้ที่ ESP32-AI Studio แท็บวิทยุ)";
-    const int i = (station && *station) ? gStations.find(station) : gStations.lastIndex();
+    // "เปิดวิทยุ" without a station = the last one played. Models tend to fill the argument anyway
+    // ("วิทยุ", "ล่าสุด", "last"): such words mean "no station".
+    static const char* const kGeneric[] = {"วิทยุ", "radio", "ล่าสุด", "สถานีล่าสุด", "สถานีเดิม", "เดิม", "last",
+                                           "previous", "default", "ค่าเริ่มต้น"};
+    String q = station ? station : "";
+    q.trim();
+    q.toLowerCase();
+    for (const char* g : kGeneric) {
+        if (q == g) q = "";
+    }
+    const int i = q.length() ? gStations.find(q.c_str()) : gStations.lastIndex();
     if (i < 0) return "ไม่มีสถานีนี้ในรายการ ให้เลือกจากรายชื่อสถานีในคำสั่งของคุณ";
     RadioStation s;
+    char playing[64] = "";
+    if (gRadio.active()) gRadio.info(playing, sizeof(playing), nullptr, 0);
+    if (playing[0] && gStations.get((size_t)i, s) && !strcmp(playing, s.name)) {
+        // the model re-called it while answering something else ("ราคาทอง" got "เปิด 93.5 ให้แล้ว..."),
+        // and a friendly "already playing" note was ignored: refuse it as an error, no restart
+        return "ไม่ได้ทำอะไร: สถานีนี้เล่นอยู่แล้วและผู้ใช้ไม่ได้ขอเปิดวิทยุ ห้ามพูดว่าเปิดวิทยุ ตอบเฉพาะเรื่องที่ผู้ใช้ถาม";
+    }
     if (!gStations.get((size_t)i, s) || !gStations.play((size_t)i)) return "เปิดสถานีไม่ได้";
     r["station"] = (const char*)s.name;
     r["number"] = i + 1;
     r["genre"] = (const char*)s.genre;
-    r["note"] = "กำลังเปิด บอกชื่อสถานีสั้นๆ แล้วเงียบ (วิทยุดังขึ้นเมื่อคุณพูดจบ)";
+    r["note"] = "กำลังเปิด บอกชื่อสถานีสั้นๆ แล้วเงียบ (คุณจะพักฟังวิทยุทันทีที่พูดจบ ผู้ใช้เรียกได้ด้วยเสียงหรือแตะจอ)";
     noteActivity();
+    // Sleep right after the confirmation: the radio plays at full level and the mic only listens for
+    // a wake-up (echo-aware). Awake, the follow-up window streamed the DJ to the model as the user.
+    requestSleep();
+    _freshAfterRadio = true;  // next wake: a fresh session (a resumed one replayed "เปิดวิทยุ" on unclear audio)
     return nullptr;
 }
 
@@ -209,6 +230,11 @@ void AgentController::handleRadio(uint32_t now, bool busy) {
             }
         }
         return;
+    }
+    if (!_radioWasOn && !_sleeping && !busy && !_vadOpen && !_awaitingReply) {
+        // started from the screen / console while awake and idle: listen to the radio now (asleep
+        // the mic only waits for a wake-up; awake it would stream the radio as "user speech")
+        requestSleep();
     }
     _radioWasOn = true;
     _audio->setRadioGain(_sleeping ? 1.0f : RADIO_DUCK_GAIN);
