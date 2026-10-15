@@ -17,14 +17,14 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 
 | ชุด | จำนวน | เปิดเมื่อ |
 |---|---|---|
-| core (ความจำ, เวลา, งาน, ผู้ช่วย, เครื่อง) | 22 | เสมอ |
+| core (ความจำ, เวลา, งาน, ผู้ช่วย, เครื่อง) | 23 | เสมอ |
 | live data (อากาศ, น้ำมัน, ราคา, แลกเงิน, ข่าว) | 5 | เสมอ |
 | utilities ที่พอร์ตจาก PersonalAIBot | 6 | เสมอ |
 | **finance pack** | 6 | `set finance 1` (ค่าเริ่มต้น เปิด) |
 | **MT5** `mt5_account` | 1 | ตั้ง `mt5url` แล้ว |
 | **MT5** `mt5_trade` | 1 | ตั้ง `mt5url` **และ** `set mt5trade 1` (ค่าเริ่มต้น ปิด) |
 
-ค่าเริ่มต้น = **39 tools** (~14.6 KB JSON ต่อ setup; core 22 รวม `configure_device`, `mute_microphone`) + Google Search (ถ้าใช้ได้) — ทดสอบใน host test `tool_declarations_per_model`
+ค่าเริ่มต้น = **40 tools** (~14.7 KB JSON ต่อ setup; core 23 รวม `configure_device`, `rest_screen`, `mute_microphone`) + Google Search (ถ้าใช้ได้) — ทดสอบใน host test `tool_declarations_per_model`
 
 ## 1) Live data (ชุดแรก)
 

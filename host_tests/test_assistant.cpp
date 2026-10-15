@@ -250,7 +250,7 @@ TEST(tool_declarations_per_model) {
     size_t count;
     bool search;
     const size_t bytes = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)39);  // 22 core (incl. configure_device, mute_microphone) + 5 live data + 6 utilities + 6 finance (MT5 off)
+    CHECK_EQ(count, (size_t)40);  // 23 core (incl. configure_device, rest_screen, mute_microphone) + 5 live data + 6 utilities + 6 finance (MT5 off)
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
@@ -271,13 +271,13 @@ TEST(tool_declarations_per_model) {
     // optional packs: finance off -> 31; MT5 read-only -> +1; trading only when enabled -> +1
     rig.tools.setPacks(false, false, false);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)33);
+    CHECK_EQ(count, (size_t)34);
     rig.tools.setPacks(true, true, false);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)40);
+    CHECK_EQ(count, (size_t)41);
     rig.tools.setPacks(true, true, true);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)41);
+    CHECK_EQ(count, (size_t)42);
     rig.tools.setPacks(true, false, false);
 
     behaviors(ToolBehavior::NonBlocking, false, expr, recall, count, search);
@@ -386,7 +386,7 @@ TEST(tools_assistant_and_device) {
     CHECK_EQ(rig.dev.mic, 6);
     CHECK_EQ(rig.dev.clockMin, 10);
     CHECK_EQ(rig.dev.dim, 60);
-    CHECK(callTool(rig.tools, "configure_device", "{\"power_save_now\":true}", r));
+    CHECK(callTool(rig.tools, "rest_screen", "{}", r));  // "พักหน้าจอ"
     CHECK(rig.dev.powerSaveNow);
     CHECK(!callTool(rig.tools, "configure_device", "{}", r));
     CHECK(callTool(rig.tools, "mute_microphone", "{}", r));

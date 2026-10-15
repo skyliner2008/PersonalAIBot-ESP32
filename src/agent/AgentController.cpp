@@ -250,6 +250,7 @@ void AgentController::applySettings(bool initial) {
 
     if (initial) {
         _activeModel = n.model;
+        _muted = n.micMuted;  // restored mute state (voice can only turn it off)
         _gemini.configure(n.apiKey);
         _text.setApiKey(n.apiKey);
         if (!_configOk) {
@@ -587,7 +588,7 @@ void AgentController::buildSystemPrompt(PsString& p) {
                            : "ตอนนี้ Google Search ใช้ไม่ได้ เรื่องอื่นที่ต้องค้นเว็บให้บอกตรงๆ ว่ายังค้นไม่ได้ ";
     p += "เปลี่ยนเสียง/นิสัย/ชื่อด้วย configure_assistant ถ้าผู้ใช้บอกลาหรือราตรีสวัสดิ์ให้เรียก go_to_sleep\n"
          "ควบคุมเครื่อง: เสียงดัง/เบา = set_volume (change +/-), จอสว่าง/มืด = set_brightness (change +/-), "
-         "ความไวไมค์ / เวลาพัก / โหมดนาฬิกาประหยัดไฟ = configure_device, ปิดไมค์ = mute_microphone "
+         "ความไวไมค์ / ตั้งเวลาพัก / ตั้งเวลาโหมดนาฬิกา = configure_device, พักหน้าจอ / โหมดนาฬิกาเดี๋ยวนี้ = rest_screen, ปิดไมค์ = mute_microphone "
          "(เปิดไมค์ด้วยเสียงไม่ได้ บอกผู้ใช้ให้แตะปุ่มไมค์บนจอ)\n"
          "ข้อความที่ขึ้นต้นด้วย [แจ้งเตือนจากระบบ] หรือ [แจ้งเตือนราคาจากระบบ] มาจากอุปกรณ์ ให้แจ้งผู้ใช้ทันทีสั้นๆ\n";
 
@@ -887,6 +888,8 @@ void AgentController::retryNow() {
 
 void AgentController::toggleMic() {
     _muted = !_muted;
+    const bool muted = _muted;
+    gSettings.update([muted](SettingsData& d) { d.micMuted = muted; });  // remembered across reboots
     _face->setHint(_muted ? "ปิดไมค์แล้ว" : "เปิดไมค์แล้ว", 1500);
     _audio->playTone(_muted ? 440 : 880, 80, 3000);
     Serial.printf("[Agent] Mic %s\n", _muted ? "off" : "on");

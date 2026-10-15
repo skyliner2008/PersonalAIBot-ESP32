@@ -4,7 +4,7 @@
 
 ### A Thai-speaking, real-time voice AI assistant on an ESP32-S3 touch screen
 
-**Gemini Live voice** · **on-device long-term memory** · **41 tools with on-screen cards** · **PC companion app**
+**Gemini Live voice** · **on-device long-term memory** · **42 tools with on-screen cards** · **PC companion app**
 
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
@@ -132,7 +132,7 @@ On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio 
 | Tap while asleep / paused | Wake up / reconnect immediately |
 | Long-press the screen 1.5 s | Fresh conversation (long-term memory stays) |
 | Silent for 3 min → asleep (closed eyes); 5 more min → **dim clock** | Speak or tap to wake: full brightness + eyes open (times: ⚙ menu / Studio / by voice) |
-| "turn it down a bit", "brighter", "mute the mic" | Volume / brightness up-down, mic off by voice — turning the mic **on** is only possible with the 🎤 button |
+| "turn it down a bit", "brighter", "rest the screen", "mute the mic" | Volume / brightness up-down, dim clock right away, mic off by voice — turning the mic **on** is only possible with the 🎤 button (the mute survives reboots) |
 | Tap a data card | Close it (cards also close after ~30 s) |
 
 **Things to try** *(Thai shown, English works too)*
@@ -154,13 +154,13 @@ On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio 
 The model calls these by itself. Data tools run in a background task and draw a card while the AI keeps talking.
 
 <details>
-<summary><b>All 41 tools</b> (39 by default; the 2 MT5 tools appear when an MT5 server is configured)</summary>
+<summary><b>All 42 tools</b> (40 by default; the 2 MT5 tools appear when an MT5 server is configured)</summary>
 
 | Group | Tools |
 |---|---|
 | **Memory** | `save_memory` · `save_relation` · `recall_memory` · `forget_memory` · `recall_conversation` |
 | **Time & tasks** | `set_timer` · `set_reminder` · `list_reminders` · `cancel_reminder` · `add_task` · `list_tasks` · `update_task` |
-| **Assistant & device** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (level or +/- change) · `configure_device` (mic, sleep, clock mode) · `mute_microphone` · `control_led` · `go_to_sleep` |
+| **Assistant & device** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (level or +/- change) · `configure_device` (mic, sleep, clock mode) · `rest_screen` (clock now) · `mute_microphone` · `control_led` · `go_to_sleep` |
 | **Live data** 🖼️ | `get_weather` (Open-Meteo + PM2.5, IP location by default) · `get_oil_price` (Bangchak) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
 | **Utilities** 🖼️ | `calculate` · `convert_units` (incl. Thai ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (DST-aware) · `get_location` · `search_knowledge` (Wikipedia th/en) · `notes` |
 | **Finance pack** 🖼️ | `market_overview` (+ crypto Fear & Greed) · `market_analysis` (RSI, MACD, EMA, ADX, multi-timeframe, P/E, dividend) · `market_scan` (gainers / losers / volume / RSI, TH-US-crypto) · `economic_calendar` (ForexFactory, Thai time) · `position_size` · `price_alert` |

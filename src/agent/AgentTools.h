@@ -139,4 +139,5 @@ private:
     bool controlLed(JsonObjectConst a, JsonObject r, const char*& e);
     bool goToSleep(JsonObjectConst a, JsonObject r, const char*& e);
     bool muteMicrophone(JsonObjectConst a, JsonObject r, const char*& e);
+    bool restScreen(JsonObjectConst a, JsonObject r, const char*& e);
 };

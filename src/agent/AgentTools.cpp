@@ -108,6 +108,7 @@ const AgentTools::Entry AgentTools::kHandlers[] = {
     {"control_led", &AgentTools::controlLed},
     {"go_to_sleep", &AgentTools::goToSleep},
     {"mute_microphone", &AgentTools::muteMicrophone},
+    {"rest_screen", &AgentTools::restScreen},
     {nullptr, nullptr},
 };
 
@@ -227,10 +228,12 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
         {"sleep_minutes", "INTEGER", "Silence before you sleep, 0 = never.", false, nullptr},
         {"clock_minutes", "INTEGER", "Asleep this long -> clock face + dim screen, 0 = never.", false, nullptr},
         {"dim_brightness", "INTEGER", "Screen brightness % in clock mode, 1-60.", false, nullptr},
-        {"power_save_now", "BOOLEAN", "Sleep after this reply and show the dim clock right away.", false, nullptr},
     };
     declare(d, b, "configure_device",
-            "Device settings: mic sensitivity, auto-sleep time, clock/power-save mode (time + dimmed screen).", dev, 6);
+            "Device settings: mic sensitivity, auto-sleep time, clock/power-save mode timing and dim level.", dev, 5);
+    declare(d, b, "rest_screen",
+            "Rest the screen now (พักหน้าจอ / screen saver / clock mode): after this reply show the dim clock and "
+            "sleep until the user speaks or taps.");
     static const Param led[] = {{"color", "STRING", nullptr, true, kLedColors}};
     declare(d, b, "control_led", "Set the RGB LED ('auto' = status colors).", led, 1);
     declare(d, b, "go_to_sleep", "Stop listening and sleep after this reply (user said goodbye / good night).");
@@ -719,7 +722,6 @@ bool AgentTools::configureDevice(JsonObjectConst a, JsonObject r, const char*& e
     if (!a["sleep_minutes"].isNull()) c.sleepMinutes = clampInt(a["sleep_minutes"] | 3, 0, 120);
     if (!a["clock_minutes"].isNull()) c.clockMinutes = clampInt(a["clock_minutes"] | 5, 0, 120);
     if (!a["dim_brightness"].isNull()) c.dimBrightness = clampInt(a["dim_brightness"] | 8, 1, 60);
-    c.powerSaveNow = a["power_save_now"] | false;
     if (!c.any()) return (e = "nothing to change"), false;
     _device.configureDevice(c, r);
     return true;
@@ -732,6 +734,14 @@ bool AgentTools::controlLed(JsonObjectConst a, JsonObject r, const char*& e) {
     if (!known) return (e = "unsupported color"), false;
     if (!_device.setLedColor(color)) return (e = "LED not available"), false;
     r["color"] = color;
+    return true;
+}
+
+bool AgentTools::restScreen(JsonObjectConst, JsonObject r, const char*&) {
+    DeviceChange c;
+    c.powerSaveNow = true;
+    _device.configureDevice(c, r);
+    r["status"] = "after this reply: dim clock face (screen rest); speaking or a tap wakes you with full brightness";
     return true;
 }
 
