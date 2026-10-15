@@ -18,6 +18,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+#include "../app/AppConfig.h"
 #include "../system/I2cBus.h"
 #include "ES8311.h"
 #include "Resampler.h"
@@ -58,6 +59,14 @@ public:
     uint32_t msSincePlayback() const { return millis() - _lastPlayMs; }
     float playbackLevel() const { return _playLevel; }
     size_t playbackDropped() const { return _droppedBytes; }
+    /** Mid-reply gaps: the voice ran dry and resumed (network / agent task late). */
+    uint32_t voiceUnderruns() const { return _underruns; }
+    uint32_t lastGapMs() const { return _lastGapMs; }
+    /** Current jitter buffer (grows after a gap, shrinks back after clean replies). */
+    uint32_t prebufferMs() const { return _prebufMs; }
+    /** Longest pause of the output loop between DMA writes while sounding (> ~60 ms = DMA ran dry). */
+    uint32_t maxOutGapMs() const { return _maxOutGapMs; }
+    void resetAudioStats() { _maxOutGapMs = 0; }
 
     // ---- Internet radio: a second mono 24 kHz source mixed under the assistant's voice ----
     size_t writeRadio(const int16_t* pcm, size_t samples) {
@@ -103,6 +112,8 @@ public:
     void playTone(uint16_t freqHz, uint16_t ms, int16_t amplitude = 6000);
 
 private:
+    void endVoiceTurn();
+
     ES8311 _codec;
     RingBuffer _playback;
     RingBuffer _capture;
@@ -125,6 +136,12 @@ private:
     volatile bool _micRight = false;
     volatile uint32_t _inBlocks = 0;
     volatile size_t _droppedBytes = 0;
+    volatile uint32_t _underruns = 0, _lastGapMs = 0, _maxOutGapMs = 0;
+    volatile uint32_t _prebufMs = AUDIO_PREBUFFER_MS;
+    bool _starved = false;        // voice ran dry before the end-of-turn flag
+    bool _gapThisTurn = false;
+    uint8_t _cleanTurns = 0;
+    uint32_t _starvedAt = 0;
     int _volume = 70;
 
     bool initI2S();

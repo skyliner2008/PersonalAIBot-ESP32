@@ -108,6 +108,9 @@ public:
     bool isReady() const { return _state == GeminiState::Ready; }
     GeminiState state() const { return _state; }
     uint32_t droppedMessages() const { return _dropped; }
+    /** Longest single frame read / write on the I/O task since the last call (diag). */
+    uint32_t takeSlowReadMs() { const uint32_t v = _slowReadMs; _slowReadMs = 0; return v; }
+    uint32_t takeSlowWriteMs() { const uint32_t v = _slowWriteMs; _slowWriteMs = 0; return v; }
     uint32_t audioBytesReceived() const { return _audioBytes; }
 
 private:
@@ -144,6 +147,7 @@ private:
     volatile bool _linkUp = false;      // WebSocket open (written by the I/O task)
     volatile GeminiState _state = GeminiState::Idle;
     volatile uint32_t _dropped = 0;
+    volatile uint32_t _slowReadMs = 0, _slowWriteMs = 0;
     uint32_t _audioBytes = 0;
     uint32_t _setupAt = 0;
     static constexpr uint32_t kSetupTimeoutMs = 15000;
@@ -173,6 +177,10 @@ private:
     void dropOutbox();
     bool flushOutbox();
     int readFrame(char* buf, size_t cap);  // 1 ok, 0 closed by the server, -1 error
+    // Own frame reader on the TLS transport: IDF 4.4's ws transport reads the header with single
+    // reads, so a header split across TLS records desynchronises the stream (audio read as a close)
+    int readExact(void* dst, size_t n, int timeoutMs);  // n, or -1 (error / timed out mid-frame)
+    int readOneFrame(char* buf, size_t cap, bool& fin, char* ctrl, int& ctrlLen, bool keepData);
     bool writeFrame(uint8_t opcode, char* data, int len, int timeoutMs);
     void pushMessage(MsgKind kind, const char* data, size_t len, int code);
     bool appendRx(const char* data, size_t len);

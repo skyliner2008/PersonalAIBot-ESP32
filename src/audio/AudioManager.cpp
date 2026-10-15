@@ -172,24 +172,51 @@ void AudioManager::outLoop() {
     static int16_t chunk[kOutChunkSamples];
     static int16_t radio[kOutChunkSamples];
     static int16_t stereo[kOutChunkSamples * 2];
-    const size_t prebufferBytes = (size_t)AUDIO_I2S_RATE * 2 * AUDIO_PREBUFFER_MS / 1000;
     const size_t radioPrebufferBytes = (size_t)AUDIO_I2S_RATE * 2 * AUDIO_RADIO_PREBUFFER_MS / 1000;
 
     for (;;) {
-        // ---- assistant voice: prebuffered turns (unchanged behaviour) ----
+        // ---- assistant voice: adaptive jitter buffer ----
         const size_t avail = _playback.available();
-        if (!_playing && (avail >= prebufferBytes || (avail > 0 && _flush))) _playing = true;
+        const size_t prebufferBytes = (size_t)AUDIO_I2S_RATE * 2 * _prebufMs / 1000;
+        if (!_playing && avail == 0 && _flush) {
+            // the end-of-turn flag came after the last sample had already played: clear it, or the
+            // next reply would start with no buffer at all and stutter
+            _starved = false;
+            endVoiceTurn();
+        }
+        if (!_playing && (avail >= prebufferBytes || (avail > 0 && _flush))) {
+            _playing = true;
+            // more speech soon after running dry mid-reply = a real gap: buffer more from now on
+            // (seconds later it was a new reply after one that ended without the flag)
+            if (_starved && millis() - _starvedAt < 3000) {
+                _underruns = _underruns + 1;
+                _lastGapMs = millis() - _starvedAt;
+                _gapThisTurn = true;
+                _cleanTurns = 0;
+                if (_prebufMs < AUDIO_PREBUFFER_MAX_MS) {
+                    _prebufMs = _prebufMs * 2 > AUDIO_PREBUFFER_MAX_MS ? AUDIO_PREBUFFER_MAX_MS : _prebufMs * 2;
+                }
+            }
+            _starved = false;
+        }
         if (_playing && avail == 0) {  // turn finished (or network underrun)
             _playing = false;
-            _flush = false;
+            if (_flush) {
+                endVoiceTurn();
+            } else {
+                _starved = true;  // a gap - unless the end-of-turn flag follows (then it was the end)
+                _starvedAt = millis();
+            }
         }
         // ---- radio: sounds once a second is queued, stops when the stream runs dry ----
         const size_t ravail = _radio.available();
         if (!_radioOn && ravail >= radioPrebufferBytes) _radioOn = true;
         if (_radioOn && ravail == 0) _radioOn = false;
 
+        static uint32_t lastWrite = 0;
         if (!_playing && !_radioOn) {
             _playLevel *= 0.85f;
+            lastWrite = 0;
             vTaskDelay(pdMS_TO_TICKS(5));
             continue;
         }
@@ -225,7 +252,10 @@ void AudioManager::outLoop() {
         if (!nr) _radioGain = target;
         _radioLevel = nr ? sqrtf(radioEnergy / (float)nr) / 32768.0f : 0.0f;
         size_t written = 0;
+        const uint32_t t = millis();
+        if (lastWrite && t - lastWrite > _maxOutGapMs) _maxOutGapMs = t - lastWrite;  // loop held up?
         i2s_write(kPort, stereo, n * 4, &written, portMAX_DELAY);  // paced by the DMA
+        lastWrite = millis();
         if (nv) _lastPlayMs = millis();  // "speaker busy" = the assistant, not the radio
     }
 }
@@ -276,9 +306,22 @@ size_t AudioManager::writePlayback(const uint8_t* pcm, size_t bytes) {
     return n;
 }
 
+// Reply finished: after 5 replies in a row without a gap, ease the jitter buffer back toward the base
+// (slowly - shrinking fast on a jittery link only brings the gaps back)
+void AudioManager::endVoiceTurn() {
+    _flush = false;
+    if (!_gapThisTurn && _prebufMs > AUDIO_PREBUFFER_MS && ++_cleanTurns >= 5) {
+        _cleanTurns = 0;
+        const uint32_t next = _prebufMs - AUDIO_PREBUFFER_STEP_MS;
+        _prebufMs = next < AUDIO_PREBUFFER_MS ? AUDIO_PREBUFFER_MS : next;
+    }
+    _gapThisTurn = false;
+}
+
 void AudioManager::clearPlayback() {
     _playback.clear();
     _flush = false;
+    _starved = false;  // interrupted on purpose: not a gap
     i2s_zero_dma_buffer(kPort);
 }
 

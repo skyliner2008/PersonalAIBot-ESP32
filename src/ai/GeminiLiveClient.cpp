@@ -178,13 +178,16 @@ void GeminiLiveClient::closeLink(bool handshake, bool notify) {
         char body[2] = {(char)0x03, (char)0xE8};  // 1000 normal closure (writable: masked in place)
         if (writeFrame(WS_TRANSPORT_OPCODES_CLOSE, body, 2, 1000)) {
             static char scratch[512];
+            char ctrl[128];
+            int ctrlLen = 0;
+            bool fin = false;
             const uint32_t until = millis() + kCloseWaitMs;
             while ((int32_t)(until - millis()) > 0) {
-                const int pr = esp_transport_poll_read(_wst, 100);
+                const int pr = esp_transport_poll_read(_ssl, 100);
                 if (pr < 0) break;
                 if (pr == 0) continue;
-                const int r = esp_transport_read(_wst, scratch, sizeof(scratch), 500);
-                if (r < 0 || esp_transport_ws_get_read_opcode(_wst) == WS_TRANSPORT_OPCODES_CLOSE) break;
+                const int op = readOneFrame(scratch, sizeof(scratch), fin, ctrl, ctrlLen, false);  // skip data
+                if (op < 0 || op == WS_TRANSPORT_OPCODES_CLOSE) break;
             }
         }
     }
@@ -219,7 +222,9 @@ bool GeminiLiveClient::flushOutbox() {
             psramFree(m.data);
             continue;
         }
+        const uint32_t t0 = millis();
         const bool ok = writeFrame(m.opcode, m.data, (int)m.len, kWriteTimeoutMs);
+        if (millis() - t0 > _slowWriteMs) _slowWriteMs = millis() - t0;  // diag: uplink stalls
         const uint32_t len = m.len;
         psramFree(m.data);
         if (!ok) {
@@ -234,37 +239,93 @@ bool GeminiLiveClient::flushOutbox() {
     return true;
 }
 
+int GeminiLiveClient::readExact(void* dst, size_t n, int timeoutMs) {
+    char* p = (char*)dst;
+    size_t got = 0;
+    const uint32_t t0 = millis();
+    while (got < n) {
+        const int left = timeoutMs - (int)(millis() - t0);
+        if (left <= 0) return -1;  // a frame cut off mid-way cannot be resynchronised
+        const int r = esp_transport_read(_ssl, p + got, (int)(n - got), left);
+        if (r < 0) return -1;
+        got += (size_t)r;  // TLS hands out at most one record at a time: loop until all n bytes
+    }
+    return (int)n;
+}
+
+// One whole frame (RFC 6455 5.2). Data payload is appended to _rx (or skipped), control payload
+// (<= 125 bytes) goes to ctrl. Returns the opcode, or -1 when the link is broken.
+int GeminiLiveClient::readOneFrame(char* buf, size_t cap, bool& fin, char* ctrl, int& ctrlLen, bool keepData) {
+    uint8_t h[8];
+    if (readExact(h, 2, kReadTimeoutMs) < 0) return -1;
+    fin = (h[0] & 0x80) != 0;
+    const int op = h[0] & 0x0F;
+    const bool masked = (h[1] & 0x80) != 0;  // servers do not mask, but follow the header anyway
+    uint64_t len = h[1] & 0x7F;
+    if (len == 126) {
+        if (readExact(h, 2, kReadTimeoutMs) < 0) return -1;
+        len = ((uint64_t)h[0] << 8) | h[1];
+    } else if (len == 127) {
+        if (readExact(h, 8, kReadTimeoutMs) < 0) return -1;
+        len = 0;
+        for (int i = 0; i < 8; i++) len = (len << 8) | h[i];
+    }
+    uint8_t mask[4] = {0, 0, 0, 0};
+    if (masked && readExact(mask, 4, kReadTimeoutMs) < 0) return -1;
+    if ((op & 0x08) && len > 125) {  // a control frame this big means the stream is out of sync
+        Serial.printf("[Gemini] bad frame header (op %d, %llu bytes)\n", op, (unsigned long long)len);
+        return -1;
+    }
+    if (len > kMaxMessageBytes) {
+        Serial.printf("[Gemini] frame too large (%llu bytes)\n", (unsigned long long)len);
+        return -1;
+    }
+    const bool data = op == WS_TRANSPORT_OPCODES_TEXT || op == WS_TRANSPORT_OPCODES_BINARY ||
+                      op == WS_TRANSPORT_OPCODES_CONT;
+    if (data && op != WS_TRANSPORT_OPCODES_CONT) _rxLen = 0;  // a new message starts
+    ctrlLen = 0;
+    bool overflow = false;
+    size_t done = 0;
+    while (done < len) {
+        const size_t n = (len - done) < cap ? (size_t)(len - done) : cap;
+        if (readExact(buf, n, kReadTimeoutMs) < 0) return -1;
+        if (masked) {
+            for (size_t i = 0; i < n; i++) buf[i] ^= mask[(done + i) & 3];
+        }
+        if (!data) {
+            memcpy(ctrl + ctrlLen, buf, n);
+            ctrlLen += (int)n;
+        } else if (keepData && !overflow && !appendRx(buf, n)) {
+            overflow = true;  // keep reading the payload so the stream stays in sync
+        }
+        done += n;
+    }
+    if (overflow) {
+        Serial.println("[Gemini] message too large, dropped");
+        _rxLen = 0;
+        _dropped = _dropped + 1;
+    }
+    return op;
+}
+
 int GeminiLiveClient::readFrame(char* buf, size_t cap) {
-    int offset = 0, payloadLen = 0;
-    ws_transport_opcodes_t op = WS_TRANSPORT_OPCODES_NONE;
+    bool fin = false;
     char control[128];
     int controlLen = 0;
-    do {
-        const int r = esp_transport_read(_wst, buf, (int)cap, kReadTimeoutMs);
-        if (r < 0) return -1;
-        payloadLen = esp_transport_ws_get_read_payload_len(_wst);
-        op = esp_transport_ws_get_read_opcode(_wst);
-        if (r == 0 && op == WS_TRANSPORT_OPCODES_NONE) return 1;  // header not complete yet
-        if (op == WS_TRANSPORT_OPCODES_TEXT || op == WS_TRANSPORT_OPCODES_BINARY || op == WS_TRANSPORT_OPCODES_CONT) {
-            if (offset == 0 && op != WS_TRANSPORT_OPCODES_CONT) _rxLen = 0;  // a new message starts
-            if (r > 0 && !appendRx(buf, (size_t)r)) {
-                Serial.println("[Gemini] message too large, dropped");
-                _rxLen = 0;
-                _dropped = _dropped + 1;
-            }
-        } else if (r > 0 && controlLen + r <= (int)sizeof(control)) {
-            memcpy(control + controlLen, buf, r);
-            controlLen += r;
-        }
-        offset += r;
-    } while (offset < payloadLen);
+    const int op = readOneFrame(buf, cap, fin, control, controlLen, true);
+    if (op < 0) return -1;
 
     switch (op) {
         case WS_TRANSPORT_OPCODES_TEXT:
         case WS_TRANSPORT_OPCODES_BINARY:
         case WS_TRANSPORT_OPCODES_CONT:
-            if (jsonframe::isCompleteObject(_rx, _rxLen)) {
-                pushMessage(MsgKind::Data, _rx, _rxLen, 0);
+            if (fin && _rxLen) {  // message complete (it may span several frames)
+                if (jsonframe::isCompleteObject(_rx, _rxLen)) {
+                    pushMessage(MsgKind::Data, _rx, _rxLen, 0);
+                } else {
+                    Serial.printf("[Gemini] incomplete JSON message (%u bytes) dropped\n", (unsigned)_rxLen);
+                    _dropped = _dropped + 1;
+                }
                 _rxLen = 0;
             }
             return 1;
@@ -318,7 +379,7 @@ void GeminiLiveClient::ioLoop() {
 
         if (!flushOutbox()) continue;
 
-        const int pr = esp_transport_poll_read(_wst, 20);
+        const int pr = esp_transport_poll_read(_ssl, 20);  // frames are read straight from TLS (readOneFrame)
         if (pr < 0) {
             char why[48];
             snprintf(why, sizeof(why), "Network error (errno %d)", esp_transport_get_errno(_wst));
@@ -326,7 +387,10 @@ void GeminiLiveClient::ioLoop() {
             continue;
         }
         if (pr > 0) {
+            const uint32_t t0 = millis();
             const int r = readFrame(rbuf, sizeof(rbuf));
+            const uint32_t took = millis() - t0;
+            if (took > _slowReadMs) _slowReadMs = took;  // diag: a frame trickling in holds up the sends
             if (r < 0) {
                 dropLink("Read error");
                 continue;

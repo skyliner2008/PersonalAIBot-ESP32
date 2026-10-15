@@ -233,6 +233,7 @@ private:
     bool _powerSaveAfterSleep = false;   // configure_device power_save_now
     volatile bool _mutePending = false;  // mute_microphone: after the current reply
     uint32_t _sleepSince = 0;
+    uint32_t _loopMaxMs = 0;  // longest agent-loop pass (diag; reset on read)
     bool _dropAudio = false;
     uint32_t _dropSince = 0;
     bool _awaitingReply = false;

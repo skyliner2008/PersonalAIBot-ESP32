@@ -19,7 +19,7 @@ status: implemented
 |---|---|
 | Model | เลือกในเมนู: `gemini-3.8-live` (ค่าเริ่มต้น) / `gemini-3.8-live-extended-thinking` / `gemini-3.1-flash-live-preview` — **สลับอัตโนมัติเมื่อใช้ไม่ได้** ([[09-Assistant-Profiles-and-Tools#5. Auto fallback ของโมเดล]]) |
 | Endpoint | `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=API_KEY` |
-| Transport | ESP-IDF `esp_transport_ws` + SSL บน task `geminiIO` ตัวเดียว (v3.1 — เดิม `esp_websocket_client` มี race จนแครช: T039) |
+| Transport | ESP-IDF `esp_transport_ws` (handshake + ส่ง) + SSL บน task `geminiIO` ตัวเดียว (v3.1 — เดิม `esp_websocket_client` มี race จนแครช: T039) · **อ่าน frame เอง** ตรงจาก TLS แบบวนจนครบทุกไบต์ (v3.3 — ตัวอ่านของ IDF 4.4 อ่าน header ขาดเมื่อ TLS record ตัดกลาง แล้วเหลื่อมไปอ่านเสียงเป็น close: T044) |
 | TLS | ตรวจใบรับรองกับ GTS Root R1/R3/R4 + GlobalSign ECC R4 (`src/ai/GoogleRootCA.h`) |
 | Input audio | PCM 16-bit mono **16 kHz** LE, Base64, chunk 40 ms (`audio/pcm;rate=16000`) |
 | Output audio | PCM 16-bit mono **24 kHz** LE, Base64 ใน `inlineData` |
@@ -42,7 +42,7 @@ status: implemented
 | `beginSSL()` ไม่ใส่ CA → ไลบรารีเรียก `setInsecure()` | ถูกดัก API key ได้ (MITM) | `cert_pem` = Google roots |
 | `WStype_BIN` แค่พิมพ์ log | ถ้า server ส่ง JSON เป็น binary frame จะไม่เคยเห็น `setupComplete` | text และ binary ใช้ parser เดียวกัน |
 
-การประกอบข้อความ (WebSocket task): ต่อ `data_ptr` ตาม `payload_offset/payload_len` → เมื่อจบ frame และ `jsonframe::isCompleteObject()` เป็นจริง → copy เข้า queue → agent task เรียก `poll()` แล้ว parse ด้วย ArduinoJson (allocator ใน PSRAM)
+การประกอบข้อความ (task `geminiIO`, v3.3): `readOneFrame()` อ่าน header/ความยาว/payload ครบด้วย `readExact()` → ต่อเข้า buffer ใน PSRAM → เมื่อ frame มี **FIN** (และ `jsonframe::isCompleteObject()` ยืนยัน) → copy เข้า queue → agent task เรียก `poll()` แล้ว parse ด้วย ArduinoJson (allocator ใน PSRAM)
 
 ---
 

@@ -298,21 +298,49 @@ void AgentController::loop() {
             _cfgVersion = gSettings.version();
             applySettings(false);
         }
+        // the assistant's voice reaches the speaker through this loop (_gemini.poll): a step that
+        // blocks for longer than the jitter buffer makes the reply stutter - time each one
+        const uint32_t loopStart = millis();
+        uint32_t mark = loopStart, slowMs = 0;
+        const char* slow = "";
+        auto lap = [&](const char* name) {
+            const uint32_t t = millis();
+            if (t - mark > slowMs) slowMs = t - mark, slow = name;
+            mark = t;
+        };
         handleCommands();
+        lap("commands");
         handleAsks();
+        lap("asks");
         handleWebResults();
+        lap("webResults");
         handleToolRequests();
+        lap("tools");
         handleConnectivity();
+        lap("connectivity");
         _gemini.poll(30);
+        lap("gemini");
         handleAudioInput();
+        lap("audioIn");
         deliverAnnouncements();
+        lap("announce");
         // sampled after the handlers above, which stamp _lastActivity/_lastVoice with millis():
         // an older `now` made `now - _lastActivity` wrap around and put the agent to sleep
         const uint32_t now = millis();
         handleScheduler(now);
+        lap("scheduler");
         handleSleepAndRestarts(now);
+        lap("sleep");
         handleConsolidation(now);
+        lap("consolidation");
         updateState(now);
+        lap("state");
+        const uint32_t took = millis() - loopStart;
+        if (took > _loopMaxMs) _loopMaxMs = took;
+        if (took > 150) {
+            Serial.printf("[Agent] loop held %lu ms (slowest: %s %lu ms)\n", (unsigned long)took, slow,
+                          (unsigned long)slowMs);
+        }
         if (now >= _nextStatus) {
             _nextStatus = now + 250;
             publishStatus();
@@ -1903,6 +1931,17 @@ void AgentController::fillDiagnostics(JsonObject out) {
     if (gRadio.lastError()[0]) out["radio_error"] = gRadio.lastError();
     out["radio_echo_coupling"] = _coupling;  // mic level / radio level, learned while asleep
     out["radio_out_level"] = _audio->radioOutLevel();
+    // reply stutter: gaps mid-reply, adaptive jitter buffer, output-loop and agent-loop hold-ups
+    out["voice_underruns"] = _audio->voiceUnderruns();
+    out["voice_last_gap_ms"] = _audio->lastGapMs();
+    out["voice_prebuffer_ms"] = _audio->prebufferMs();
+    out["audio_out_gap_max_ms"] = _audio->maxOutGapMs();
+    out["agent_loop_max_ms"] = _loopMaxMs;
+    out["gemini_dropped"] = _gemini.droppedMessages();
+    out["ws_read_max_ms"] = _gemini.takeSlowReadMs();
+    out["ws_write_max_ms"] = _gemini.takeSlowWriteMs();
+    _audio->resetAudioStats();
+    _loopMaxMs = 0;
     out["auth_error"] = _fatalError;
     out["error_text"] = _errorText;
     out["hold_s"] = _holdUntil > sec ? _holdUntil - sec : 0;

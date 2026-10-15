@@ -18,6 +18,7 @@ This page documents common issues encountered during development and their solut
 |---|-------|----------|--------|
 | T027 | [[#T027 สลับโมเดลวนไปมาไม่หยุด - ทุกโมเดลติด quota]] | AI | ✅ Fixed (หยุดพัก + ไม่นับซ้ำ) |
 | T028 | [[#T028 "You exceeded your current quota" ทั้งที่ยังไม่ถึงลิมิต - โควตา Google Search]] | AI | ✅ Fixed (ปิด Search อัตโนมัติ) — verified |
+| T044 | [[#T044 เสียง AI ตอบกลับกระตุก - jitter buffer เล็ก + WebSocket อ่าน header ผิดจังหวะ]] | Audio/Network | ✅ Fixed (adaptive jitter buffer + ตัวอ่าน frame เอง) |
 | T043 | [[#T043 บอร์ดรีบูต task_wdt IDLE0 ขณะเปิดวิทยุ + เรียก tool ออนไลน์]] | Tasks/CPU | ✅ Fixed (webTools/textModel → core 1) |
 | T042 | [[#T042 รหัส Wi-Fi และ API key เก็บเป็นข้อความธรรมดาในแฟลช]] | Security | ✅ Fixed (AES-256-GCM ผูกกับชิป + ล้างสำเนาเก่า) |
 | T041 | [[#T041 TLS ล้มเหลว -0x7F00 เมื่อเปิดหลายการเชื่อมต่อ - RAM ภายในไม่พอ]] | Network/Memory | ✅ Fixed (buffer TLS ไป PSRAM) |
@@ -108,6 +109,27 @@ This page documents common issues encountered during development and their solut
 **ยืนยัน 2026-10-15:** ผู้ใช้เทียบบอร์ดกับ PC app — ตอน `invert = 0` บอร์ดเป็น **พื้นขาว + ตาน้ำเงิน** ส่วนภาพ framebuffer ใน app เป็น
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
+
+## T044: เสียง AI ตอบกลับกระตุก - jitter buffer เล็ก + WebSocket อ่าน header ผิดจังหวะ
+
+**วันที่:** 2026-10-15 · **อาการ (ผู้ใช้):** "เสียงที่ AI ตอบกลับมา บางครั้งมันกระตุก"
+**วัด:** เพิ่ม diag `voice_underruns`, `voice_last_gap_ms`, `voice_prebuffer_ms`, `audio_out_gap_max_ms`, `agent_loop_max_ms`, `ws_read_max_ms`, `ws_write_max_ms` + log `[Agent] loop held N ms (slowest: …)` แล้วให้ AI เล่านิทานยาวๆ ผ่าน `ask` (hotspot มือถือ, RSSI −63)
+
+| ผลวัด | ความหมาย |
+|---|---|
+| `audio_out_gap_max_ms` ≤ 6, `agent_loop_max_ms` ≤ 37 ระหว่างพูด | ลูปลำโพงและ agent task ไม่ได้ช้า |
+| `ws_read_max_ms` 300–860 ms | ข้อความเสียงจาก Gemini หนึ่งก้อน (~1 วิของเสียง) ใช้เวลามาถึงครึ่งวินาที — ข้อมูลมาเป็นก้อนๆ |
+| 3 gap ในเรื่องแรก (gap 30–108 ms) ที่ jitter buffer 120 ms | **สาเหตุ 1:** บัฟเฟอร์เล็กกว่าช่วงที่ข้อมูลขาด → เสียงหมดกลางประโยค → รอเติมใหม่ = กระตุก |
+| `Server closed (17527): ALwAVwBX…` กลางคำตอบ | **สาเหตุ 2:** `esp_transport_ws` ของ IDF 4.4.7 อ่าน header ของ frame (2 + 2/8 ไบต์) ด้วยการอ่านครั้งเดียว ไม่วนจนครบ — ถ้า TLS record ตัดกลาง header จะได้ความยาวผิด → อ่านเหลื่อมไปกลางข้อมูลเสียง base64 แล้วเจอ "opcode close" ปลอม → หลุดการเชื่อมต่อ เสียงขาดกลางคำตอบ |
+| `_flush` ค้างเมื่อ `generationComplete` มาหลังเสียงเล่นหมด | **สาเหตุ 3:** คำตอบถัดไปเริ่มเล่นทันทีโดยไม่มีบัฟเฟอร์เลย → ต้นประโยคกระตุก |
+
+**แก้:**
+1. **Adaptive jitter buffer** (`AudioManager`): เริ่ม 200 ms; เสียงหมดกลางคำตอบแล้วมีต่อภายใน 3 วิ = gap → บัฟเฟอร์ ×2 (สูงสุด 600 ms); ตอบครบ 5 ครั้งไม่มี gap → ลด 40 ms (ลดช้าๆ ไม่ให้วนกลับมา gap) · ค่าอยู่ใน RAM ตลอดการเปิดเครื่อง
+2. **ตัวอ่าน WebSocket frame เอง** (`GeminiLiveClient::readOneFrame` + `readExact`): อ่านตรงจาก TLS transport แบบวนจนครบทุกไบต์ (header, ความยาว 16/64 บิต, mask, payload), ใช้ FIN บอกว่าข้อความจบ, ถ้าข้อความใหญ่เกินก็ยังอ่านทิ้งให้ครบเพื่อไม่ให้เหลื่อม, control frame > 125 ไบต์ = สตรีมเพี้ยน → ต่อใหม่ — ส่วน handshake และการส่งยังใช้ `esp_transport_ws` เหมือนเดิม
+3. เคลียร์ `_flush` เมื่อเสียงหมดแล้ว + ไม่นับการขัดจังหวะ (`clearPlayback`) เป็น gap
+
+**ผล:** 5 คำตอบยาว: gap 1 ครั้ง (ข้อความหนึ่งมาช้า 0.86 วิ → บัฟเฟอร์ขยับเป็น 400 ms เอง) จากเดิม 3 ครั้งในเรื่องแรก · ไม่มี close ปลอมอีก · หน่วงก่อนเริ่มพูดเพิ่ม ~0.1 วิ (เน็ตดีจะเริ่มเร็วกว่านี้ได้ถ้าลด `AUDIO_PREBUFFER_MS`)
+**ข้อสังเกต:** ก้อนข้อมูลที่อ่านนาน (≤ 5 วิ ต่อ frame) ทำให้ I/O task ส่งเสียงไมค์ไม่ได้ช่วงนั้น — เห็น `gemini_dropped` 59 ครั้งหนึ่งหลังจบคำตอบ (เหมือนเดิมก่อนแก้ ยังไม่แก้)
 
 ## T043: บอร์ดรีบูต task_wdt IDLE0 ขณะเปิดวิทยุ + เรียก tool ออนไลน์
 
