@@ -1,0 +1,29 @@
+# ============================================================
+#  PersonalAIBot-ESP32 - first-time setup from the SD card
+#  ตั้งค่าครั้งแรกผ่านการ์ด SD
+# ============================================================
+#
+#  1. Fill in the values below and save this file as "ai-setup.txt"
+#     in the ROOT of the micro SD card (FAT32).
+#     กรอกค่าด้านล่าง แล้วบันทึกเป็น "ai-setup.txt" ไว้ที่ "หน้าแรก" ของการ์ด SD (FAT32)
+#
+#  2. Put the card in the board and power it on. The board reads this file,
+#     stores the values ENCRYPTED in agent/secrets.json and DELETES this file.
+#     ใส่การ์ดแล้วเปิดบอร์ด บอร์ดจะอ่านไฟล์นี้ เก็บค่าแบบเข้ารหัสใน agent/secrets.json แล้วลบไฟล์นี้ทิ้ง
+#
+#  - Wi-Fi must be 2.4 GHz.                      Wi-Fi ต้องเป็น 2.4 GHz
+#  - Free Gemini API key: https://aistudio.google.com/api-keys
+#  - Leave a line as it is (or delete it) to keep the current value.
+#    บรรทัดที่ไม่ได้แก้ (หรือลบทิ้ง) = ใช้ค่าเดิม
+#  - The encrypted file works only on the board that created it. For another
+#    board, put a new ai-setup.txt on the card.
+#    ไฟล์ที่เข้ารหัสแล้วใช้ได้กับบอร์ดที่สร้างเท่านั้น ถ้าย้ายการ์ดไปบอร์ดอื่นให้ใส่ ai-setup.txt ใหม่
+# ============================================================
+
+WIFI_SSID=<your Wi-Fi name>
+WIFI_PASSWORD=<your Wi-Fi password>
+GEMINI_API_KEY=<your Gemini API key>
+
+# Optional: MetaTrader 5 bridge (mt5-core-server)   ไม่บังคับ
+MT5_URL=<http://192.168.1.10:8000>
+MT5_TOKEN=<your MT5 token>
