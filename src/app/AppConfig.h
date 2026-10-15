@@ -10,7 +10,7 @@
 
 #pragma once
 
-#define FIRMWARE_VERSION        "3.3.0"
+#define FIRMWARE_VERSION        "3.4.0"
 
 // ============================================================
 // Prompt labels
@@ -68,6 +68,7 @@
 #define AGENT_VAD_ONSET_CHUNKS  2       // voiced 40-ms chunks in a row that open the stream
 #define AGENT_FOLLOWUP_MS       6000    // after a reply, stream the mic this long without waiting for onset
 #define AGENT_NO_REPLY_WARN_MS  8000    // log a warning if speech was sent but nothing came back
+#define AGENT_NO_REPLY_SEARCH_MS 25000  // ... when it heard us and may be running Google Search (server side, often 10-20 s)
 #define AGENT_WAKE_CHUNKS       4       // voiced 40-ms chunks needed to wake from sleep
 #define AGENT_SERVER_VAD_TUNING 1       // realtimeInputConfig.automaticActivityDetection in the setup
 

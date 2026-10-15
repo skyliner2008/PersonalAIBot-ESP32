@@ -2,8 +2,9 @@
 """
 Publish the factory firmware as a GitHub Release - manual path (GitHub Actions cannot run on this account).
 
-    python tools/publish_release.py            build (make_release.py) + publish v<FIRMWARE_VERSION>
+    python tools/publish_release.py            build (make_release.py) + host tests + publish v<FIRMWARE_VERSION>
     python tools/publish_release.py --dry-run  only check: version, files, tag free
+    python tools/publish_release.py --skip-tests   (only on a PC without a C++ compiler)
 
 The repository uses IMMUTABLE releases, so the order matters and is fixed here:
     1. create the release as a DRAFT        (assets can only be attached to drafts)
@@ -106,7 +107,12 @@ def main() -> None:
         return
 
     subprocess.run([sys.executable, str(ROOT / "tools" / "make_release.py")], cwd=ROOT, check=True)
-    files = [ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-factory.bin",
+    if "--skip-tests" not in sys.argv:  # after the build: the tests use its ArduinoJson copy
+        tests = (["cmd", "/c", str(ROOT / "host_tests" / "run_tests.bat")] if sys.platform == "win32"
+                 else ["bash", str(ROOT / "host_tests" / "run_tests.sh")])
+        if subprocess.run(tests, cwd=ROOT).returncode != 0:
+            sys.exit("Host unit tests failed: nothing was published (--skip-tests only if no compiler is installed).")
+    files =[ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-factory.bin",
              ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-factory.bin.sha256"]
     for f in files:
         if not f.exists():

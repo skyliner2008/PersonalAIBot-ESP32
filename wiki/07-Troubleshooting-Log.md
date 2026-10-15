@@ -110,6 +110,99 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T049: เลิกใช้ Google Search + ประเมิน DuckDuckGo + ข่าวตามหัวข้อได้ข่าวเก่า
+
+**วันที่:** 2026-10-15 · **ผู้ใช้:** "ไม่ต้องใช้ Search ของ google ตรวจสอบและเปลี่ยนไปใช้ duckduckgo ว่าใช้งานได้ฟรีหรือไม่"
+**ประเมิน DuckDuckGo (ทดสอบจาก PC):**
+| ช่องทาง | ผล |
+|---|---|
+| `api.duckduckgo.com` Instant Answer (ทางการ, ฟรี, ไม่ต้อง key) | ได้เฉพาะบทคัดย่อสารานุกรมภาษาอังกฤษ (Bangkok, Python) — คำถามไทย/ข่าว/ราคา = ว่าง · ซ้ำกับ `search_knowledge` (Wikipedia ไทย+อังกฤษ) |
+| `html.duckduckgo.com/html` (ไม่ใช่ API) | 2 ครั้งแรกได้ผล 10 รายการ จากนั้น**ทุกคำค้น HTTP 202 หน้าตรวจบอท ("anomaly")** |
+| `lite.duckduckgo.com` | หน้าตรวจบอทตั้งแต่ครั้งแรก |
+→ **ไม่มี API ค้นเว็บฟรีของ DuckDuckGo** และหน้า HTML กันโปรแกรมอัตโนมัติ — ไม่นำมาใช้ (ไม่หลบระบบตรวจบอท)
+
+**ทำแทน:** ปิด Google Search เป็นค่าเริ่มต้น (`googleSearch = false`, บอร์ดผู้ใช้ `set search 0`) · prompt สอน AI ว่าเรื่องล่าสุด (ผลกีฬา หวย เหตุการณ์ ราคาทองไทย) ให้ใช้ `get_news` ระบุ topic แล้วบอกวันที่ ข้อเท็จจริงใช้ `search_knowledge` หาไม่ได้ให้บอกตรงๆ ห้ามเดา
+**ข่าวเก่า:** ทดสอบ "ผลบอลแมนยูนัดล่าสุด" → AI เล่าแมตช์ ก.พ. / พ.ค. เพราะ Google News เรียงตามความเกี่ยวข้องย้อนหลังหลายเดือน
+- แก้ 1: topic ค้น `when:7d` ก่อน (ไม่เจอค่อยค้นทุกช่วง, `range` บอก AI)
+- แก้ 2 (ลองเรียงใหม่สุดจาก 40 ข่าว → ข่าว UCL ทั่วไปดันข่าวแมนยูตก): เอา **8 ข่าวที่เกี่ยวข้องสุด** แล้วเรียงใหม่สุดก่อน → "แมนยูเสมอสเปอร์ส 1-1 เมื่อ 11 ต.ค." · ทองคำแท่ง: 15 ต.ค. ขึ้นก่อน
+**ถ้าอนาคตต้องการค้นเว็บจริง:** API ที่มีโควตาฟรีแต่ต้องสมัคร key เช่น Brave Search API / Tavily — หรือผูก billing ให้ Google Search (ทั้งโปรเจกต์รวมการคุยด้วยเสียงจะคิดเงิน ~$1.4/ชม.)
+
+## T048: Google Search ขึ้น "quota เต็ม" ตลอด ตั้งแต่ 14 ต.ค. — key ไม่มีสิทธิ์ใช้ Search + การตรวจด้วย REST ผิด
+
+**วันที่:** 2026-10-15 · **ผู้ใช้:** "Search เอาไว้ทำอะไร ทำงานตอนไหน เพราะขึ้นว่า quota เต็มตลอดเวลา ตั้งแต่เมื่อวานจนปัจจุบัน"
+
+**Search ทำอะไร / ทำงานตอนไหน:** บอร์ดแค่ประกาศ `{"googleSearch":{}}` ใน setup ของ Live session — ตัวโมเดล**เลือกเอง**ระหว่างคุยว่าจะค้นเว็บเมื่อไหร่
+(คำถามที่ tools ในเครื่องไม่ครอบคลุม เช่น ผลบอล, ข่าวเชิงลึก, ราคาทองไทยเป็นบาท, ผลประกาศเศรษฐกิจ) แล้วค้นบนเซิร์ฟเวอร์ Google บอร์ดไม่ได้เรียกเอง
+**ทำไมเต็มตลอด:** เซิร์ฟเวอร์ปิด session ด้วย `1011 exceeded your current quota` **ภายใน 0.8 วิหลังส่ง setup** — ยังไม่ทันค้นอะไร = ไม่ใช่ "ใช้จนหมด"
+แต่โปรเจกต์ของ key **ไม่มีโควตา Search สำหรับ Live** (limit 0 หรือไม่ได้เปิด) ซึ่งตรงกับที่เห็นมาตั้งแต่ T028 ทุกโมเดล ทุกครั้ง
+- เอกสารราคา (2026-10): Live 3.8 / 3.1 Flash Live free tier = Search "Supported"; Flash-Lite / Flash (REST) free tier = **"Not available"**; paid = 5,000 ครั้ง/เดือนฟรีรวมทุก Gemini 3.x แล้ว $14/1,000
+- ตรวจลิมิตจริงของโปรเจกต์: https://ai.dev/rate-limit (ลิงก์ในข้อความ error) — ถ้า Search = 0 ต้องเปิด billing หรือปิด Search (`set search 0` / เมนู "ค้นหาเว็บ")
+
+**ข้อผิดพลาดใน T045 (แก้แล้ว):** การตรวจด้วย REST (Flash-Lite + googleSearch) ได้ 429 **เสมอ**สำหรับ key free tier เพราะ REST ไม่มี Search เลย
+→ สรุปว่า "โควตาหมด" ทุกครั้ง แม้ต้นเหตุจริงเป็น session ค้างหลังรีบูต · ข้อสรุปเดิมใน T028 ("REST 429 = grounding หมด") ก็ผิดด้วยเหตุผลเดียวกัน
+**แก้:** ตัด REST check ออก ให้ Live ตัดสินเอง (`search::Gate`): quota ตอนมี Search → ต่อใหม่ไม่มี Search →
+ใช้ได้ = Search ใช้ไม่ได้จริง (ปิด 6 → 12 → 24 → 48 ชม. ถ้าล้มติดกัน, NVS `rt`: `srchoff` + `srchn`) · quota เหมือนกัน = ไม่ใช่ Search · session ที่มี Search ใช้ได้ = ล้างตัวนับ
+Studio `apitest` อธิบายว่า 429 ของ Flash-Lite บน free tier ไม่ได้แปลว่า Search ของ Live ใช้ไม่ได้
+**ทดสอบบนบอร์ด:** `searchretry` → setup มี Search → 1011 ใน 0.8 วิ → ต่อใหม่ไม่มี Search → ready → `[Search] quota with Google Search, fine without it -> Search off for 6 h (1 in a row, kept across reboots)`
+
+**ผู้ใช้แย้ง (ภาพหน้าโมเดลใน AI Studio):** "ตัว live ทุกโมเดลรองรับ Search grounding" — ถูก: "Supported" = ความสามารถของโมเดล แต่ไม่ได้บอกโควตาของโปรเจกต์
+→ พิสูจน์เพิ่มด้วย `setupmode searchonly` (ใหม่: setup มีแค่ model + `googleSearch` = **140 ไบต์** ไม่มี prompt / tools / VAD):
+| โมเดล | ผล |
+|---|---|
+| gemini-3.1-flash-live-preview | 1011 quota ใน 0.5 วิ |
+| gemini-3.8-live | 1011 quota |
+| gemini-3.8-live-extended-thinking | 1011 quota |
+ส่วน setup เต็ม (prompt 6.8 KB + 42 tools) แต่ไม่มี Search → ready ทุกครั้ง ⇒ **โปรเจกต์ของ key นี้ถูกปฏิเสธ Search grounding ใน Live ทุกโมเดล** ไม่เกี่ยวกับ setup ของเรา
+สิ่งที่ผู้ใช้ทำได้: เปิด https://ai.dev/rate-limit (ล็อกอินบัญชีเดียวกับ key) ดูแถว Grounding with Google Search / Search · ตรวจว่าโปรเจกต์เป็น free หรือผูก billing ·
+ลองสร้าง key ใหม่ในโปรเจกต์อื่น แล้ว `setupmode searchonly` (ปุ่ม "ทดสอบ Search" ใน Studio) — ขึ้น `[Diag] SEARCH ONLY setup accepted` = ใช้ได้
+
+## T047: v3.4.0 ต่อ Gemini ไม่ได้ - TLS handshake -0x004E / -0x004C (keep-alive pointer ค้าง)
+
+**วันที่:** 2026-10-15 · ทดสอบบนบอร์ดหลังแฟลช v3.4.0: Wi-Fi ต่อได้ เวลา sync ได้ tools HTTPS (บางจาก, `apitest` ไป host เดียวกัน) ใช้ได้ แต่ Live WebSocket ล้มทุกครั้ง
+`esp-tls-mbedtls: mbedtls_ssl_handshake returned -0x004E` (NET_SEND_FAILED) / `-0x004C` (NET_RECV_FAILED), 1–8 วิหลังเริ่มเชื่อมต่อ
+**แยกสาเหตุ (bisect บนบอร์ด):** v3.3.0 ต่อได้บนเน็ตเดียวกัน · v3.4 + `keymode query` ยังล้ม (ไม่ใช่ header) · v3.3 + โค้ด agent/ai ของ v3.4 ต่อได้ → ต่างแค่ layout หน่วยความจำ (`SettingsData` เล็กลงหลังถอด MT5)
+**ต้นเหตุ:** `esp_transport_ssl_set_keep_alive(_ssl, &ka)` เก็บแค่ **pointer** (`esp_tls_cfg_t::keep_alive_cfg`) และอ่านใหม่ทุกครั้งที่ connect แต่ `ka` เป็นตัวแปร local ใน `GeminiLiveClient::begin()`
+→ ตอน connect อ่านค่าขยะจาก stack ที่ถูกใช้ซ้ำ → ตั้ง TCP keep-alive ผิด (idle/interval/count มั่ว) → socket ถูกตัดกลาง handshake · v3.3 รอดเพราะบังเอิญ stack ตรงนั้นยังเป็นค่าที่ใช้ได้
+**แก้:** ย้ายเป็นสมาชิก `GeminiLiveClient::_keepAlive` (อายุเท่า transport) — หลังแก้: setup complete ใน ~2.8 วิ ทุกครั้ง
+**บทเรียน:** API ของ ESP-IDF ที่รับ pointer ของ config (`*_set_keep_alive`, `cert_data`, ...) ต้องดูว่า copy หรือเก็บ pointer — `esp_transport_ws_set_config` copy เอง, `ssl_set_cert_data` เก็บ pointer (ใช้ค่าคงที่ใน flash จึงปลอดภัย)
+
+**ยืนยันบนบอร์ดพร้อมกัน:**
+- T045: รอบ bisect เจอ quota ตอนมี Search → REST check = 429 → บันทึกลง NVS · boot ถัดไป **ไม่ชน quota เลย** (`search_state: "quota"`, เหลือ ~5.9 ชม.)
+- T046: `get_oil_price` (มีผล 9 ต.ค. 05.00 น., 6 วันก่อน, `change_at_last_adjustment`), `get_weather` (`us_aqi_pm25` 81, PM2.5 26), `get_market_quote` (PTT `market_open:false`, `delayed_min:15`; ทอง/BTC/USDTHB เปิด), `get_news` (`published` + `age_hours`), `as_of` ครบทุกตัว
+- เวลาบน hotspot มือถือ: weather 18 วิ (3 TLS handshakes), quote 4 ตัว 11 วิ, news 8 วิ, oil 5 วิ
+
+## T046: tool น้ำมันบอกวันที่ไม่ตรงปัจจุบัน + ตรวจความถูกต้องของ tools ทั้งหมด + รอผล Search
+
+**วันที่:** 2026-10-15 · **ผู้ใช้:** "ตรวจสอบความถูกต้องของ tool ต่างๆทั้งหมด เช่น tool น้ำมัน วันที่ไม่ตรงปัจจุบัน" และ "ระวังที่รอผล Search"
+**วิธีตรวจ:** เรียก API จริงทุกตัวจาก PC (บอร์ดต่อ Wi-Fi ไม่ได้ตอนนั้น) แล้วเทียบกับโค้ดที่แปลงผล — รายละเอียดใน [[11-Data-Tools-and-Cards#ความถูกต้องของวันที่ / เวลาในผลลัพธ์ (ตรวจ 2026-10-15 กับ API จริง — T046)]]
+- **น้ำมัน (ต้นเหตุที่ผู้ใช้เห็น):** API บอก `OilRemark2` = "ราคามีผล ณ วันที่ 9 ต.ค. 69" และ `PriceYesterday` = ราคาก่อนปรับ → tool เดิมเรียกว่า "เมื่อวาน" และหัวการ์ด "วันนี้"
+- PM2.5 ใช้ AQI รวม (โอโซน) · ราคาหุ้นนอกเวลาไม่บอกว่าเป็นราคาปิด · ข่าวไม่มีวันที่ · ปฏิทินพังถ้านาฬิกายังไม่ซิงก์
+- ผ่าน (ไม่ต้องแก้): พยากรณ์อากาศ (timezone ไทย, วันแรก = วันนี้), geocoding, ipwho.is, ค่าเงิน, สแกนหุ้น, Wikipedia, Fear & Greed, เวลาโลก/เครื่องคิดเลข/แปลงหน่วย (host tests)
+
+**รอผล Google Search:** Search ทำงานบนเซิร์ฟเวอร์และไม่ส่งอะไรมาจนได้คำตอบ (มัก 10–20 วิ) แต่บอร์ดขึ้น "AI ไม่ตอบ ลองพูดอีกครั้ง" ที่ 8 วิ และเลิกแสดงหน้า "กำลังคิด" ที่ 12 วิ
+→ ผู้ใช้พูดซ้ำ = ตัดคำตอบที่กำลังมา · **แก้:** session ที่มี Search และได้ยินคำถามแล้ว (มี transcript) รอ 25 วิ (`AGENT_NO_REPLY_SEARCH_MS`) ทั้งข้อความเตือนและหน้ากำลังคิด
+· การตรวจโควตา Search (T045) ไม่ยิงซ้ำภายใน 10 นาทีหลังผล "ใช้ได้" (`kRecheckSec`) — กัน session ค้างที่ยังอยู่หลายนาทีทำให้ตรวจวน
+
+## T045: "โควตา Google Search หมด" ขึ้นทุกครั้งหลัง boot
+
+**วันที่:** 2026-10-15 · **อาการ (ผู้ใช้):** "มันมักขึ้น search ติดโควต้า ตอน boot ใหม่"
+**สาเหตุ (จากโค้ด — ตอนตรวจบอร์ดต่อ Wi-Fi ไม่ได้ จึงยังไม่ได้เก็บ log จริง):**
+1. การปิด Search 6 ชม. (T028) เก็บเป็น `millis()` ใน RAM → รีบูตแล้วหาย → session แรกหลัง boot เสนอ Search อีก → ถ้าโควตา grounding หมดจริงก็ชน + ขึ้นข้อความซ้ำ**ทุก boot**
+2. รีบูตแบบไม่มี close handshake (ถอดไฟ, ปุ่ม RESET, แฟลช, watchdog) ทิ้ง session เก่าค้างบนเซิร์ฟเวอร์ (T035) → Live ปิดด้วย `1011 ... exceeded your current quota` ข้อความเดียวกัน
+   → โค้ดเดิมเห็น quota ตอน setup มี Search ก็**โทษ Search ทันที** ทั้งที่ Search ไม่ได้หมด
+
+**แก้ (`src/agent/SearchGate.h`, host test `search_gate`):**
+- quota ตอน setup มี Search = **สงสัย** เท่านั้น: ต่อใหม่ทันทีโดยไม่มี Search (คุยได้เลยเหมือนเดิม) และไม่ขึ้นข้อความบนจอ
+- `TextModelClient::submitSearchCheck()` ยิง REST 2 ครั้งด้วย Flash-Lite: ping ธรรมดา → ping ที่มี `tools:[{googleSearch:{}}]` (แบบเดียวกับ `apitest`)
+  - **429** = โควตา grounding หมดจริง → ปิด Search 6 ชม. + ข้อความ "โควตา Google Search หมด" + **บันทึกเวลาสิ้นสุด (epoch) ใน NVS `rt`/`srchoff`** → รีบูตแล้วยังปิดอยู่ (ก่อน SNTP sync ถือว่ายังปิด)
+  - **200** = Search ใช้ได้ → error เมื่อกี้มาจากอย่างอื่น (เช่น session ค้าง) → เปิด Search ตั้งแต่ session ถัดไป
+  - ping ธรรมดาก็ล้ม / เน็ตล่ม = บอกไม่ได้ → ปิด Search ไว้ไม่เกิน 30 นาที
+- ยืนยันก่อน SNTP sync → บันทึกลง NVS เมื่อนาฬิกาพร้อม · หมดเวลา → ลบออกจาก NVS เอง · `searchretry` / `set search 1` / ปุ่มใน Studio = ล้างทั้งหมด
+- diag: `search_state` (`ok` / `checking` / `quota`), `search_off_s` · log `[Search] ...`
+
+**ตรวจบนบอร์ด:** หลังแฟลช ดู log ตอน boot: ถ้าขึ้น `[Search] Grounding works (REST 200)` แปลว่าเป็นกรณี session ค้าง (ข้อ 2)
+ถ้าขึ้น `Grounding quota used up (REST 429)` = โควตาหมดจริง → รีบูตอีกครั้งแล้วต้อง**ไม่**ขึ้นข้อความซ้ำ และ `diag` แสดง `search_state: "quota"`
+
 ## T044: เสียง AI ตอบกลับกระตุก - jitter buffer เล็ก + WebSocket อ่าน header ผิดจังหวะ
 
 **วันที่:** 2026-10-15 · **อาการ (ผู้ใช้):** "เสียงที่ AI ตอบกลับมา บางครั้งมันกระตุก"
@@ -178,6 +271,8 @@ PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ใ�
 - `ai-setup.txt` ที่รากการ์ด (`src/util/SetupFile.h`, host test `sd_setup_file`) → นำเข้า → เขียน 0 ทับ → ลบ; ข้ามเฉพาะค่าตัวอย่าง `<...>`
 - ไฟล์ของบอร์ดอื่น (ถอดรหัสไม่ได้) จะไม่ถูกเขียนทับจนกว่าบอร์ดนี้จะได้รับค่าใหม่ — ย้ายการ์ดกลับไปบอร์ดเดิมยังใช้ได้
 - ทดสอบบนบอร์ด: `config` → `secretsStore: "sd"`, `secretsMovedFromNvs` true ครั้งแรก/false ครั้งต่อไป, Wi-Fi + AI ทำงาน, key 53 ตัวครบ
+
+**v3.4:** ถอด MT5 ออก → ความลับเหลือ `pass_e` / `key_e`; คีย์เก่า `mt5url`, `mt5tok`, `mt5tok_e`, `mt5trade`, `mt5lot` ถูกลบตอน boot (`Settings::kLegacyKeys`; token แบบข้อความธรรมดา `mt5tok` → ล้าง NVS ทั้ง partition แบบเดียวกับ migrate) และ `secrets.json` ที่ยังมี `mt5tok_e` ถูกเขียนใหม่ 1 ครั้ง
 
 **ข้อจำกัด:** ไม่ใช่ flash encryption — คนที่มีทั้งบอร์ดและเฟิร์มแวร์นี้ยังคำนวณกุญแจได้ (MAC/eFuse อ่านได้เมื่อไม่ได้เปิด eFuse protection)
 Flash encryption ของจริงต้องเผา eFuse (ย้อนกลับไม่ได้) และใช้ ESP-IDF build เอง จึงไม่ทำบนบอร์ดทดลอง

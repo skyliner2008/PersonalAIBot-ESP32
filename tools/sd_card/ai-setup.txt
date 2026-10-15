@@ -23,7 +23,3 @@
 WIFI_SSID=<your Wi-Fi name>
 WIFI_PASSWORD=<your Wi-Fi password>
 GEMINI_API_KEY=<your Gemini API key>
-
-# Optional: MetaTrader 5 bridge (mt5-core-server)   ไม่บังคับ
-MT5_URL=<http://192.168.1.10:8000>
-MT5_TOKEN=<your MT5 token>

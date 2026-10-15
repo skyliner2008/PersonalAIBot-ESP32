@@ -1,5 +1,5 @@
 ---
-tags: [tools, weather, oil, tradingview, finance, news, graphics, cards, mt5, personalaibot]
+tags: [tools, weather, oil, tradingview, finance, news, graphics, cards, personalaibot]
 created: 2026-10-15
 updated: 2026-10-15
 status: implemented
@@ -13,6 +13,19 @@ status: implemented
 AI เรียก tool → บอร์ดดึงข้อมูลจริง (HTTPS) หรือคำนวณเอง → **แสดงการ์ดกราฟิกบนจอ** ~30 วิ (แตะเพื่อปิด) → AI **พูดสรุป** ให้ฟัง
 ใช้แทน Google Search ได้ในเรื่องเหล่านี้ (โควตา Search ของ key ปัจจุบันหมด — [[07-Troubleshooting-Log#T028 "You exceeded your current quota" ทั้งที่ยังไม่ถึงลิมิต - โควตา Google Search]])
 
+## ความถูกต้องของวันที่ / เวลาในผลลัพธ์ (ตรวจ 2026-10-15 กับ API จริง — T046)
+
+| ปัญหาที่พบ | แก้ |
+|---|---|
+| **น้ำมัน:** `PriceYesterday` ของบางจากคือ **ราคาก่อนปรับครั้งล่าสุด** (ปรับ 9 ต.ค. — วันที่ 15 ต.ค. ยังเป็นค่าเดิม) แต่ tool ส่งเป็น `vs_yesterday` + หัวการ์ด "วันนี้" → AI พูดว่า "ขึ้นจากเมื่อวาน 75 สตางค์" | อ่านวันที่มีผลจาก `OilRemark2` ("ราคามีผล ณ วันที่ 9 ต.ค. 69 เวลา 05.00 น.", สำรอง `OilPriceDate` + 1 วัน) → `price_effective_since`, `days_since_last_change`, `change_at_last_adjustment` + note บอก AI ว่าไม่ใช่เมื่อวาน · การ์ด "มีผล 9 ต.ค. 05.00 น. • ส่วนต่าง=ตอนปรับ" |
+| **PM2.5:** `us_aqi` = มลพิษที่แย่ที่สุด (เช่นโอโซนจากแบบจำลอง: 201 ขณะ PM2.5 = 25 µg/m³) | ใช้ `us_aqi_pm2_5` (= 81) ส่งเป็น `us_aqi_pm25` |
+| **ราคา TradingView:** หุ้นไทยนอกเวลา/วันหยุดเป็นราคาปิด แต่ AI ไม่รู้ | `current_session` → `market_open`, `last_bar_update_time` → `price_time`, `update_mode` → `delayed_min` (SET หน่วง 15 นาที) · `market_overview` ใส่ `market_open` ต่อรายการ |
+| **ข่าว:** ไม่มีวันที่ — ข่าวเก่าจากการค้นตามหัวข้อถูกเล่าเหมือนข่าววันนี้ | อ่าน `<pubDate>` → `published` (เวลาไทย) + `age_hours` |
+| **ปฏิทินเศรษฐกิจ:** นาฬิกายังไม่ซิงก์ = "วันนี้" เป็นปี 1970; มีแค่ชื่อวัน; ไม่มีค่า actual | ไม่ตอบจนกว่าจะซิงก์, เพิ่ม `date`, note ห้ามเดาผลของข่าวที่ประกาศแล้ว |
+| prompt มีวันที่ตอนเริ่ม session เท่านั้น (หรือไม่มีเลยถ้าเริ่มก่อน SNTP) | ทุก tool ข้อมูลสดใส่ **`as_of`** = วันเวลาไทยตอนดึงข้อมูล (ยกเว้น calculate / convert_units / position_size / notes) |
+
+ตัวแปลงวันที่อยู่ใน `src/util/DataDates.h` (host test `data_dates`)
+
 ## จำนวน tool ทั้งหมด
 
 | ชุด | จำนวน | เปิดเมื่อ |
@@ -21,8 +34,6 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 | live data (อากาศ, น้ำมัน, ราคา, แลกเงิน, ข่าว) | 5 | เสมอ |
 | utilities ที่พอร์ตจาก PersonalAIBot | 6 | เสมอ |
 | **finance pack** | 6 | `set finance 1` (ค่าเริ่มต้น เปิด) |
-| **MT5** `mt5_account` | 1 | ตั้ง `mt5url` แล้ว |
-| **MT5** `mt5_trade` | 1 | ตั้ง `mt5url` **และ** `set mt5trade 1` (ค่าเริ่มต้น ปิด) |
 
 ค่าเริ่มต้น = **42 tools** (~14.98 KB JSON ต่อ setup — ชนเพดาน 15 KB ใน host test แล้ว: tool ใหม่ต้องย่อคำอธิบายเก่า; core 25 รวม `configure_device`, `rest_screen`, `mute_microphone`, `play_radio`, `stop_radio`) + Google Search (ถ้าใช้ได้) — ทดสอบใน host test `tool_declarations_per_model`
 
@@ -30,11 +41,11 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 
 | Tool | ข้อมูล | แหล่ง (ไม่ต้องใช้ key) | การ์ด |
 |---|---|---|---|
-| `get_weather(location?, location_en?)` | อากาศตอนนี้, **PM2.5**, พยากรณ์ 5 วัน | Open-Meteo forecast / air-quality / geocoding | ไอคอนวาดเอง + 5 วัน · **ไม่ระบุที่ = ตำแหน่งจาก IP** |
-| `get_oil_price()` | น้ำมันขายปลีก 8 ชนิด วันนี้ / เมื่อวาน / พรุ่งนี้ | `oil-price.bangchak.co.th/ApiOilPrice2/th` | ตาราง + ▲▼ |
-| `get_market_quote(symbols)` | ราคา, ช่วงวันนี้, 1W/1M/3M/1Y, RSI, สัญญาณ | `scanner.tradingview.com/symbol` | 1 ตัว = กราฟ · 2–6 ตัว = ตาราง |
+| `get_weather(location?, location_en?)` | อากาศตอนนี้, **PM2.5** + `us_aqi_pm25` (AQI ของ PM2.5 เท่านั้น — v3.4), พยากรณ์ 5 วัน | Open-Meteo forecast / air-quality / geocoding | ไอคอนวาดเอง + 5 วัน · **ไม่ระบุที่ = ตำแหน่งจาก IP** |
+| `get_oil_price()` | น้ำมันขายปลีก 8 ชนิด: `price_now`, **`price_effective_since` + `days_since_last_change`**, `change_at_last_adjustment`, `tomorrow` (ถ้าประกาศแล้ว) | `oil-price.bangchak.co.th/ApiOilPrice2/th` | ตาราง + ▲▼ |
+| `get_market_quote(symbols)` | ราคา, ช่วงวันนี้, 1W/1M/3M/1Y, RSI, สัญญาณ + **`market_open` / `price_time` / `delayed_min`** | `scanner.tradingview.com/symbol` | 1 ตัว = กราฟ · 2–6 ตัว = ตาราง |
 | `convert_currency(amount, from, to)` | แปลงเงิน | TradingView `FX_IDC:` | ยอดเงิน + อัตรา |
-| `get_news(topic?)` | หัวข้อข่าว 8 ข่าว | Google News RSS (ไทย) | หัวข้อละ 2 บรรทัด |
+| `get_news(topic?)` | หัวข้อข่าว 8 ข่าว + **`published` / `age_hours`** · มี topic = ค้น **7 วันล่าสุด** (`when:7d`, ไม่เจอค่อยค้นทุกช่วง) เอา 8 ข่าวที่เกี่ยวข้องสุดแล้วเรียงใหม่สุดก่อน · ใช้แทนการค้นเว็บเมื่อปิด Google Search | Google News RSS (ไทย) | หัวข้อละ 2 บรรทัด |
 
 ![[images/card-weather.png]] ![[images/card-oil.png]]
 ![[images/card-gold.png]] ![[images/card-multi.png]]
@@ -58,7 +69,7 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 | `market_overview()` | SET, S&P 500, Nasdaq 100, ทองคำ, WTI, BTC, USD/THB + ดัชนีกลัว/โลภคริปโต | TradingView `POST /global/scan` (1 request ทุกตลาด) + `api.alternative.me/fng` |
 | `market_analysis(symbol, timeframe?, fundamentals?)` | RSI, MACD, Stoch, EMA20/50/200, ADX, BB, สัญญาณรวม (MA/oscillators) — `timeframe`: 15m/1h/4h/1d/1w หรือ **`multi`** (สัญญาณทุกกรอบเวลา) · `fundamentals`: P/E, P/BV, ปันผล, มูลค่าตลาด, EPS, sector | TradingView `/symbol` field suffix `|15`, `|60`, `|240`, `|1W` |
 | `market_scan(market, type, limit?)` | หุ้นไทย / หุ้นสหรัฐ / คริปโต (Binance USDT): ขึ้นแรง, ลงแรง, วอลุ่มพุ่ง, RSI ขายมากเกิน/ซื้อมากเกิน | TradingView `POST /{thailand|america|crypto}/scan` + filter (ตัด `.R`/`.F` ซ้ำ) |
-| `economic_calendar(range?, impact?)` | ข่าวเศรษฐกิจสำคัญ today/tomorrow/week **เวลาไทย** + forecast/previous — การ์ดแสดงเฉพาะที่ยังไม่ถึง | `nfs.faireconomy.media/ff_calendar_thisweek.json` (แคช 30 นาที เพราะจำกัดจำนวนครั้ง) |
+| `economic_calendar(range?, impact?)` | ข่าวเศรษฐกิจสำคัญ today/tomorrow/week **เวลาไทย** (`date` + `when_th`) + forecast/previous — การ์ดแสดงเฉพาะที่ยังไม่ถึง; ไม่มีค่า actual; นาฬิกายังไม่ซิงก์ = ไม่ตอบ | `nfs.faireconomy.media/ff_calendar_thisweek.json` (แคช 30 นาที เพราะจำกัดจำนวนครั้ง) |
 | `position_size(balance, entry, stop_loss, risk_percent?, symbol?, contract_size?)` | ขนาด lot ตามความเสี่ยง (XAU 100 oz, XAG 5000, FX 100k, หุ้น/คริปโต 1) | คำนวณบนบอร์ด |
 | `price_alert(action, symbol?, above?, below?, id?)` | ตั้งเตือนราคา (สูงสุด 10) — task webTools ตรวจ **ทุก 2 นาที** (batch เดียว) แล้ว AI **พูดแจ้งเตือน** + เสียงกริ่ง + ข้อความบนหน้าตา (ปลุกจากโหมดพักด้วย) | `<agentDir>/alerts.json` + `/global/scan` |
 
@@ -70,16 +81,11 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 ![[images/card-calc.png]] ![[images/card-worldtime.png]]
 ![[images/card-position.png]] ![[images/card-wiki.png]]
 
-### MT5 (mt5-core-server bridge — ระบบเดียวกับแอปมือถือ)
+### ไม่มีการเชื่อมต่อ MT5 / โบรกเกอร์ (ถอดออกใน v3.4)
 
-- ตั้งค่าใน PC Studio → ⚙️ ตั้งค่า → **การเงิน / MetaTrader 5** หรือ console `set mt5url http://<server>:<port>`, `set mt5token <token>` (`-` = ลบ)
-- API: `{url}/api/mt5/account|positions|orders|history` (GET), `/order|close|close_all|modify` (POST), `Authorization: Bearer <token>`; รองรับผลลัพธ์ห่อใน `data/result/items/positions/...` และ type 0/1 หรือ side/action แบบเดียวกับ `Mt5TerminalService.kt`
-- `mt5_account(view?)` — summary (balance, equity, กำไร/ขาดทุนลอย, free margin + สถานะเปิด) / positions / orders / history
-- `mt5_trade(action, symbol, volume, sl?, tp?, ticket?, confirm?)` — **ปิดเป็นค่าเริ่มต้น** และมีกันพลาด 3 ชั้น:
-  1. ต้องเปิด `mt5trade` เอง (PC Studio มีกล่องเตือนก่อนเปิด; นำเข้าไฟล์ตั้งค่าจะไม่เปิดให้)
-  2. `volume` ≤ `mt5maxlot` (ค่าเริ่มต้น 0.10)
-  3. เรียกครั้งแรก (ไม่มี `confirm`) = แสดงการ์ด "ยืนยันคำสั่ง MT5?" ให้ AI อ่านทวน → ต้องเรียกซ้ำด้วยคำสั่ง**เดียวกัน** + `confirm=true` ภายใน 2 นาที
-- token เก็บใน NVS แบบเข้ารหัส (เหมือน API key — [[07-Troubleshooting-Log#T042 รหัส Wi-Fi และ API key เก็บเป็นข้อความธรรมดาในแฟลช]]) และไม่ถูกพิมพ์ออก log (`config` แสดงแค่ `mt5tokenSet`)
+- ข้อมูลการเงินทั้งหมด**อ่านอย่างเดียว**จาก TradingView (`scanner.tradingview.com`) — ผู้ช่วยดูพอร์ตหรือส่งคำสั่งซื้อขายไม่ได้
+- `mt5_account` / `mt5_trade`, ค่า `mt5url` / `mt5token` / `mt5trade` / `mt5maxlot` และ `MT5_URL` / `MT5_TOKEN` ใน `ai-setup.txt` ถูกลบทั้งหมด
+- บอร์ดที่อัปเดตจากเวอร์ชันเก่า: boot แรกลบคีย์ `mt5url`, `mt5tok`, `mt5tok_e`, `mt5trade`, `mt5lot` ออกจาก NVS และเขียน `agent/secrets.json` ใหม่โดยไม่มี `mt5tok_e` (`Settings::kLegacyKeys`)
 
 ### สิ่งที่ **พอร์ตไม่ได้ / ไม่จำเป็น** จาก PersonalAIBot
 
@@ -104,7 +110,7 @@ task webTools (core 0, prio 2, 12 KB): HTTPS (WiFiClientSecure + WEB_ROOT_CA_PEM
 ```
 
 - การ์ดชนิด: `Weather`, `Oil`, `Quotes`, `News`, `Text` (ตัวเลขใหญ่ + ย่อหน้า), `Table` (ชื่อ + ค่าสี), `Analysis` (เกจ -1..+1 + ตาราง 8 แถว)
-- TLS ตรวจใบรับรองทุกโฮสต์: `WEB_ROOT_CA_PEM` = Google GTS R1/R3/R4 + GlobalSign ECC R4 + ISRG Root X1 + DigiCert Global Root G2 + Amazon Root CA 1 — ครอบคลุม Open-Meteo, บางจาก, TradingView, Wikipedia, ipwho.is, alternative.me, faireconomy (สร้างด้วย `python tools/gen_root_ca.py`); `http://` ใช้ได้เฉพาะ MT5 bridge ใน LAN
+- TLS ตรวจใบรับรองทุกโฮสต์: `WEB_ROOT_CA_PEM` = Google GTS R1/R3/R4 + GlobalSign ECC R4 + ISRG Root X1 + DigiCert Global Root G2 + Amazon Root CA 1 — ครอบคลุม Open-Meteo, บางจาก, TradingView, Wikipedia, ipwho.is, alternative.me, faireconomy (สร้างด้วย `python tools/gen_root_ca.py`); `http://` ถูกปฏิเสธเสมอ (`httpRequest` คืน -3) — ทุกแหล่งข้อมูลเป็น HTTPS
 - console / PC app: `tool <name> {json}` → `{"status":"fetching..."}` แล้วตามด้วยบรรทัด `TOOL <name> {...}` + การ์ดบนจอ
 
 ## เวลาที่ใช้ (วัดบนบอร์ด 2026-10-15)

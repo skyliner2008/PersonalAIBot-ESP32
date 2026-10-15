@@ -362,28 +362,6 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
         declare(d, b, "price_alert",
                 "Price alerts checked by the device every 2 minutes; it speaks up when one triggers.", alert, 5);
     }
-
-    // ---- MT5 pack (mt5-core-server bridge configured in settings) ----
-    if (_mt5) {
-        static const char* const kViews[] = {"summary", "positions", "orders", "history", nullptr};
-        static const Param acc[] = {{"view", "STRING", "Default summary (balance + open positions).", false, kViews}};
-        declare(d, b, "mt5_account", "Read the user's MetaTrader 5 account: balance, equity, open positions, orders, history.", acc, 1);
-        if (_mt5Trade) {
-            static const char* const kTradeActions[] = {"buy", "sell", "close", "close_all", "modify", nullptr};
-            static const Param tr[] = {
-                {"action", "STRING", nullptr, true, kTradeActions},
-                {"symbol", "STRING", "MT5 symbol, e.g. XAUUSD.", false, nullptr},
-                {"volume", "NUMBER", "Lots (buy/sell).", false, nullptr},
-                {"sl", "NUMBER", nullptr, false, nullptr},
-                {"tp", "NUMBER", nullptr, false, nullptr},
-                {"ticket", "STRING", "Position ticket (close / modify).", false, nullptr},
-                {"confirm", "BOOLEAN", "Only true after the user clearly confirmed the order you read back.", false, nullptr},
-            };
-            declare(d, b, "mt5_trade",
-                    "Send a MetaTrader 5 order. ALWAYS call first without confirm, read the order back, and call again "
-                    "with confirm=true only after the user explicitly says yes.", tr, 7);
-        }
-    }
 }
 
 // ============================================================

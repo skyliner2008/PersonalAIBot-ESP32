@@ -8,7 +8,7 @@ status: implemented
 # 🌐 Gemini Live API Protocol (as implemented in v2)
 
 > **Related:** [[00-Home-Dashboard]] | [[04-System-Architecture]] | [[08-Long-Term-Memory-GraphRAG]] | [[07-Troubleshooting-Log]]
-> **Code:** `src/ai/GeminiLiveClient.*` (transport + parsing) · `src/agent/AgentController.cpp` (setup + events) · `src/agent/AgentTools.cpp` (tools)
+> **Code:** `src/ai/GeminiLiveClient.*` (transport + parsing) · `src/agent/AgentSession.cpp` (setup + events) · `src/agent/AgentTools.cpp` (tools)
 > ตรวจสอบกับเอกสาร Gemini API ล่าสุด (ai.google.dev) เมื่อ 2026-10-14
 
 ---
@@ -18,7 +18,7 @@ status: implemented
 | รายการ | ค่า |
 |---|---|
 | Model | เลือกในเมนู: `gemini-3.8-live` (ค่าเริ่มต้น) / `gemini-3.8-live-extended-thinking` / `gemini-3.1-flash-live-preview` — **สลับอัตโนมัติเมื่อใช้ไม่ได้** ([[09-Assistant-Profiles-and-Tools#5. Auto fallback ของโมเดล]]) |
-| Endpoint | `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=API_KEY` |
+| Endpoint | `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent` + header `x-goog-api-key: API_KEY` (ค่าเริ่มต้นตั้งแต่ v3.4; `keymode query` = แบบ `?key=` ในเอกสาร) |
 | Transport | ESP-IDF `esp_transport_ws` (handshake + ส่ง) + SSL บน task `geminiIO` ตัวเดียว (v3.1 — เดิม `esp_websocket_client` มี race จนแครช: T039) · **อ่าน frame เอง** ตรงจาก TLS แบบวนจนครบทุกไบต์ (v3.3 — ตัวอ่านของ IDF 4.4 อ่าน header ขาดเมื่อ TLS record ตัดกลาง แล้วเหลื่อมไปอ่านเสียงเป็น close: T044) |
 | TLS | ตรวจใบรับรองกับ GTS Root R1/R3/R4 + GlobalSign ECC R4 (`src/ai/GoogleRootCA.h`) |
 | Input audio | PCM 16-bit mono **16 kHz** LE, Base64, chunk 40 ms (`audio/pcm;rate=16000`) |
@@ -152,7 +152,7 @@ sequenceDiagram
   เหมือนโควตาโมเดลหมดทุกประการ — ยืนยันด้วย `setupmode nosearch` (ต่อได้ทันที) → firmware ลองใหม่โดยไม่มี `googleSearch` เอง
   ([[07-Troubleshooting-Log#T028 "You exceeded your current quota" ทั้งที่ยังไม่ถึงลิมิต - โควตา Google Search]])
 - close reason ถูกจำกัด 123 ไบต์ (ข้อกำหนด WebSocket) จึงไม่เห็น `QuotaFailure` → ใช้ `apitest` (REST + header `x-goog-api-key`) ดูรายละเอียด
-- `?key=` (ตามเอกสาร) กับ header `x-goog-api-key` (แบบ SDK) ให้ผลเหมือนกันกับ auth key รูปแบบ `AQ.` — เลือกได้ด้วย `keymode` เพื่อวินิจฉัย
+- `?key=` (ตามเอกสาร) กับ header `x-goog-api-key` (แบบ SDK) ให้ผลเหมือนกันกับ auth key รูปแบบ `AQ.` — v3.4 ใช้ header เป็นค่าเริ่มต้น (key ไม่อยู่ใน URL/log ของ proxy) เลือกได้ด้วย `keymode` เพื่อวินิจฉัย (ไม่บันทึกถาวร)
 - ถ้าเซิร์ฟเวอร์รับ socket แต่ไม่ส่ง `setupComplete` ภายใน **15 วิ** → reconnect (นับเป็น transient)
 - **ปิด session ด้วย close handshake เสมอ** (ส่ง close frame 1000 แล้วรอ close ตอบ ≤1.5 วิ) — ตัดแค่ TCP ทำให้ session ค้างฝั่งเซิร์ฟเวอร์และกินโควตา (T035)
 - **task เดียวถือการเชื่อมต่อ** (`geminiIO`): task อื่นแค่เข้าคิวข้อความ — ส่งเสียงไม่ทันบน Wi-Fi อ่อนจึงไม่ทำให้ TLS session ถูกปิดจากสอง task พร้อมกัน (T039)

@@ -297,15 +297,11 @@ static void printConfig() {
     d["search"] = s.googleSearch;
     d["micgain"] = s.micGain;
     d["finance"] = s.financeTools;
-    d["mt5url"] = s.mt5Url;
-    d["mt5tokenSet"] = s.mt5Token[0] != '\0';  // the token itself is never printed
     d["secretsSealed"] = gSettings.secretsSealed();      // AES-GCM on flash (SecretBox)
     d["secretsMigratedAtBoot"] = gSettings.migratedAtBoot();
     d["secretsStore"] = gSettings.secretsStore();         // "sd" (agent/secrets.json) or "nvs"
     d["setupFileImported"] = gSettings.importedSetupFile();
     d["secretsMovedFromNvs"] = gSettings.movedFromNvs();
-    d["mt5trade"] = s.mt5Trade;
-    d["mt5maxlot"] = s.mt5MaxLot;
     d["touchCal"] = s.touchCal;
     printTagged("CONFIG", d);
 }
@@ -393,8 +389,7 @@ static bool handleSet(const String& field, const String& value) {
     static const char* const kFields[] = {"ssid", "pass", "key", "agent", "user", "voice", "profile",
                                           "personality", "gender", "eye", "model", "thinking", "textmodel",
                                           "volume", "brightness", "sleep", "clock", "dimlevel", "rotation", "invert", "consolidate",
-                                          "search", "micgain", "touch", "mt5url", "mt5token", "mt5trade",
-                                          "mt5maxlot", "finance"};
+                                          "search", "micgain", "touch", "finance"};
     bool known = false;
     for (const char* f : kFields) known |= field == f;
     if (!known) return false;
@@ -443,10 +438,6 @@ static bool handleSet(const String& field, const String& value) {
         else if (field == "consolidate") d.consolidate = on;
         else if (field == "search") d.googleSearch = on;
         else if (field == "micgain") d.micGain = (uint8_t)constrain(value.toInt(), 0, 7);
-        else if (field == "mt5url") value == "-" ? (void)(d.mt5Url[0] = 0) : copy(d.mt5Url, sizeof(d.mt5Url));
-        else if (field == "mt5token") value == "-" ? (void)(d.mt5Token[0] = 0) : copy(d.mt5Token, sizeof(d.mt5Token));
-        else if (field == "mt5trade") d.mt5Trade = on;
-        else if (field == "mt5maxlot") d.mt5MaxLot = constrain(value.toFloat(), 0.01f, 100.0f);
         else if (field == "finance") d.financeTools = on;
         else if (field == "touch") d.touchMap = (uint8_t)constrain(value.toInt(), 0, 7);
     });
@@ -482,9 +473,9 @@ static void handleConsoleLine(String line) {
         Serial.println("ui tap x y | ui long x y | ui drag x0 y0 x1 y1 | ui open <menu|wifi|apikey|agent|user|profile|voice|info>");
         Serial.println("ui type <text> | ui back | ui home");
         Serial.println("set <ssid|pass|key|agent|user|voice|profile|personality|gender|eye|model|thinking|textmodel|");
-        Serial.println("     volume|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|mt5url|mt5token|mt5trade|mt5maxlot> <value>  (mt5url/mt5token \"-\" = clear)");
+        Serial.println("     volume|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance> <value>");
         Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
-        Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min> | searchretry");
+        Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min|searchonly> | searchretry");
         Serial.println("time <unix-epoch> (set clock offline) | reboot");
         Serial.println("radio list: radiolist | radioadd name|url|genre | radioedit <n> name|url|genre | radiodel <n> | radiomove <from> <to> | radioreset | radio <n>");
     } else if (cmd == "config") {
@@ -513,7 +504,8 @@ static void handleConsoleLine(String line) {
         if (rest == "full") agent.setSetupMode(0);
         else if (rest == "nosearch") agent.setSetupMode(1);
         else if (rest == "min") agent.setSetupMode(2);
-        else Serial.println("setupmode <full|nosearch|min>  (diagnostic Live API setup; not saved)");
+        else if (rest == "searchonly") agent.setSetupMode(3);
+        else Serial.println("setupmode <full|nosearch|min|searchonly>  (diagnostic Live API setup; not saved)");
     } else if (cmd == "apitest") {
         agent.uiApiTest();  // reply: "APITEST <json>" a few seconds later
     } else if (cmd == "mute") {
@@ -768,7 +760,7 @@ void setup() {
     analogSetPinAttenuation(VBAT_ADC_PIN, ADC_11db);
 
     storage.begin();
-    // Wi-Fi password / API key / MT5 token: sealed on the SD card when there is one (else NVS);
+    // Wi-Fi password / API key: sealed on the SD card when there is one (else NVS);
     // also imports ai-setup.txt from the card root. Before agent.begin(), which reads the settings.
     gSettings.attachSecretStore(storage.kind() == StorageKind::SdCard ? "/sdcard" : nullptr);
     if (!audio.begin(&i2c)) gFace.setSystemText("ระบบเสียงผิดพลาด (ES8311 / I2S) ดู Serial log", 0);

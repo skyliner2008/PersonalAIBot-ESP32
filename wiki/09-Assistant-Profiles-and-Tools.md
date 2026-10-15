@@ -47,7 +47,7 @@ status: implemented
 ├── โมเดล AI            (3.8 Live / 3.8 Extended Thinking / 3.1 Flash Live) + ระดับการคิด
 ├── ระดับเสียง • ความสว่างจอ • พักเมื่อเงียบ (1/3/5/10/30 นาที/ไม่พัก)
 ├── จัดความจำอัตโนมัติ (Flash-Lite) เปิด/ปิด
-├── ค้นหาเว็บ (Google Search) เปิด/ปิด   (มีโควตาแยก — ดู T028)
+├── ค้นหาเว็บ (Google Search) เปิด/ปิด   (ค่าเริ่มต้นปิด — key free tier ใช้ไม่ได้ ดู T048/T049)
 ├── ความจำ → ล้างความจำระยะยาว / ล้างประวัติบทสนทนา (มียืนยัน)
 ├── ปรับการแตะหน้าจอ (calibrate) • หมุนจอ 180° • "พื้นจอเป็นสีขาว? แตะเพื่อสลับสี"
 ├── ทดสอบ API key       (ผลขึ้นบนหน้าตา)
@@ -70,10 +70,10 @@ status: implemented
 
 ---
 
-## 3. Tools ของผู้ช่วยส่วนตัว (42–44 ฟังก์ชัน + Google Search)
+## 3. Tools ของผู้ช่วยส่วนตัว (42 ฟังก์ชัน + Google Search ถ้าเปิด)
 
 > v3.1: +5 tools ข้อมูลสดพร้อมการ์ดกราฟิก — `get_weather`, `get_oil_price`, `get_market_quote`, `convert_currency`, `get_news` → [[11-Data-Tools-and-Cards]]
-> v3.2: +14 tools พอร์ตจาก PersonalAIBot — `calculate`, `convert_units`, `get_world_time`, `get_location`, `search_knowledge`, `notes` + finance pack (`market_overview`, `market_analysis`, `market_scan`, `economic_calendar`, `position_size`, `price_alert`) + MT5 (`mt5_account`, `mt5_trade` — เปิดเมื่อตั้งค่า) → [[11-Data-Tools-and-Cards#2) Tools ที่พอร์ตจาก PersonalAIBot (`composeApp`)]]
+> v3.2: +14 tools พอร์ตจาก PersonalAIBot — `calculate`, `convert_units`, `get_world_time`, `get_location`, `search_knowledge`, `notes` + finance pack (`market_overview`, `market_analysis`, `market_scan`, `economic_calendar`, `position_size`, `price_alert`) (MT5 `mt5_account`/`mt5_trade` เคยมีใน v3.2–v3.3 — ถอดออกใน v3.4) → [[11-Data-Tools-and-Cards#2) Tools ที่พอร์ตจาก PersonalAIBot (`composeApp`)]]
 
 | กลุ่ม | Tools |
 |---|---|
@@ -82,7 +82,7 @@ status: implemented
 | งาน (to-do) | `add_task` (priority 1-3, due), `list_tasks`, `update_task` (done/undone/delete/rename) |
 | ผู้ช่วย | `get_device_status`, `set_expression` (14 อารมณ์ของดวงตา), `configure_assistant`, `list_assistant_options` |
 | อุปกรณ์ | `set_volume` / `set_brightness` (`level` หรือ `change` +/- เช่น "ลดเสียงลงหน่อย" = -10), `configure_device` (ความไวไมค์ / mic_change, sleep_minutes, clock_minutes, dim_brightness), `rest_screen` ("พักหน้าจอ" = นาฬิกาหรี่แสงทันทีหลังตอบ), `play_radio` / `stop_radio` (วิทยุออนไลน์ → [[12-Internet-Radio]]), `mute_microphone` (ปิดได้อย่างเดียว — เปิดต้องกดปุ่ม 🎤 บนจอ; สถานะปิดไมค์จำข้ามการรีบูต `cfg/muted`), `control_led`, `go_to_sleep` |
-| ในตัว | **Google Search** (ข่าว อากาศ ข้อมูลล่าสุด) |
+| ในตัว | **Google Search** — ปิดเป็นค่าเริ่มต้น (ต้องมี key ที่มีสิทธิ์ Search); ถ้าปิด เรื่องล่าสุดใช้ `get_news(topic)` |
 
 - คำอธิบาย tools เป็นภาษาอังกฤษแบบสั้น (≈6 KB JSON ≈ 1.6k tokens) เพราะถูกนับทุก turn
 - **behavior ตามโมเดล:** 3.8 Live = `BLOCKING` (ยกเว้น `set_expression` = `NON_BLOCKING` + `scheduling: SILENT`), 3.8 Extended Thinking = `NON_BLOCKING` ทั้งหมด (BLOCKING = hard error), 3.1 Flash Live = ไม่ใส่ field
@@ -128,7 +128,11 @@ Live API **คิดโทเคนของบริบททั้งหมด
 close frame ──► classifyClose()
    Auth ─────────────► หยุด + "API key ใช้ไม่ได้" (แตะจอ = ลองใหม่)
    SessionExpired (1008 session not found/expired) ─► ทิ้ง resume handle แล้วเริ่ม session ใหม่ (โมเดลเดิม)   [T034]
-   Quota และ setup มี googleSearch ─► ลองโมเดลเดิมใหม่โดยไม่มี Search (ปิด Search 6 ชม.)   [T028]
+   Quota และ setup มี googleSearch ─► ลองโมเดลเดิมใหม่โดยไม่มี Search ทันที   [T028, T045, T048]
+        session ไม่มี Search ใช้ได้ ─► Search เป็นต้นเหตุ ─► ปิด 6 → 12 → 24 → 48 ชม. (ล้มติดกัน)
+                                     จำข้ามรีบูต (NVS "rt": srchoff, srchn) + "Google Search ใช้ไม่ได้ (โควตา)"
+        ไม่มี Search ก็ quota ─► ไม่ใช่ Search (session ค้างจากรีบูต / โควตาโมเดล) ─► Search ยังเปิด
+        session ที่มี Search ใช้ได้ ─► ล้างตัวนับ
    อื่นๆ ─► cool-down โมเดลนั้น ─► ยังมีโมเดลว่าง? ─ ใช่ ─► สลับ + "สลับไปใช้ …"
                                               └ ไม่ ─► หยุดพัก (hold) จนโมเดลแรกพ้น cool-down     [T027]
                                                        จอ: "โควตา API key หมดทุกโมเดล • ลองใหม่ HH:MM หรือแตะจอ"
@@ -168,7 +172,7 @@ ask <ข้อความ>   (พิมพ์คุยกับ AI)  | mute | r
 expr love | sleep | wake | time <unix-epoch> | reboot
 ui open menu|wifi|apikey|agent|user|profile|voice|info|calibrate | ui tap x y | ui type ข้อความ | screenshot
 PC app: config | options | tools | diag | wifiscan | apitest              → <TAG> <json> หนึ่งบรรทัด
-วินิจฉัย: keymode query|header | setupmode full|nosearch|min              (ไม่บันทึกถาวร)
+วินิจฉัย: keymode query|header | setupmode full|nosearch|min|searchonly   (ไม่บันทึกถาวร; searchonly = โมเดล + Search เท่านั้น → log [Diag])
 ```
 
 `config` ไม่พิมพ์ API key / รหัส Wi-Fi — มีแค่ `keySet`, `keyLen`, `keyHint` (3 ตัวแรก…4 ตัวท้าย) ไว้ตรวจว่าใส่ key ถูกตัว

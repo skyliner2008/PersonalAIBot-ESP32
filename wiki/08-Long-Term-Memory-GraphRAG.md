@@ -8,7 +8,7 @@ status: implemented
 # 🧠 Long-Term Memory แบบ Standalone (4-Layer + GraphRAG-lite)
 
 > **Related:** [[00-Home-Dashboard]] | [[04-System-Architecture]] | [[05-Gemini-Live-API-Protocol]] | [[07-Troubleshooting-Log]]
-> **Code:** `src/memory/` (MemoryStore, EpisodicLog, TextFeatures, AsyncFileSink) · `src/agent/AgentTools.*` · `src/agent/AgentController.*`
+> **Code:** `src/memory/` (MemoryStore, EpisodicLog, TextFeatures, AsyncFileSink) · `src/agent/AgentTools.*` · `src/agent/AgentController.*` + `AgentRoutines.cpp` (consolidation, episodic log)
 > **Tests:** `host_tests/test_main.cpp` (รันบน PC) + ทดสอบบนบอร์ดจริงผ่าน Serial console
 
 ---

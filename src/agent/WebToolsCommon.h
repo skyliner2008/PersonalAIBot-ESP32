@@ -17,7 +17,9 @@
 #include <vector>
 
 #include "../ai/GoogleRootCA.h"
+#include "../app/AppConfig.h"
 #include "../ui/CardScreen.h"
+#include "../util/DataDates.h"
 #include "../util/JsonAlloc.h"
 #include "../util/PsramAlloc.h"
 #include "../util/Utf8.h"
@@ -25,6 +27,19 @@
 namespace webtools {
 
 constexpr uint32_t kHttpTimeoutMs = 12000;
+
+/** Unix time, 0 while the clock is not synced. */
+inline uint32_t epochNow() {
+    const time_t t = time(nullptr);
+    return t >= (time_t)timefmt::kMinValidEpoch ? (uint32_t)t : 0;
+}
+
+/** "2026-10-15 21:40" Thai time ("" while the clock is not synced). */
+inline String thaiDateTime(uint32_t epoch) {
+    char buf[20];
+    if (!timefmt::formatDateTime(epoch, TIME_UTC_OFFSET_SEC, buf, sizeof(buf))) return String();
+    return String(buf);
+}
 
 inline String urlEncode(const char* s) {
     static const char kHex[] = "0123456789ABCDEF";
@@ -42,26 +57,21 @@ inline String urlEncode(const char* s) {
 }
 
 /**
- * GET (body == nullptr) or POST JSON. https:// is verified against WEB_ROOT_CA_PEM; http:// is
- * allowed for LAN services (the MT5 bridge). `bearer` adds "Authorization: Bearer ...".
+ * GET (body == nullptr) or POST JSON over https://, verified against WEB_ROOT_CA_PEM.
+ * Plain http:// is refused (-3): every data source used by the tools is HTTPS.
  */
-inline int httpRequest(const String& url, String& response, const char* body = nullptr, const char* bearer = nullptr,
+inline int httpRequest(const String& url, String& response, const char* body = nullptr,
                        uint32_t timeoutMs = kHttpTimeoutMs) {
     if (WiFi.status() != WL_CONNECTED) return -10;
-    const bool tlsOn = url.startsWith("https://");
+    if (!url.startsWith("https://")) return -3;
     WiFiClientSecure tls;
-    WiFiClient plain;
-    if (tlsOn) {
-        tls.setCACert(WEB_ROOT_CA_PEM);
-        tls.setTimeout((timeoutMs + 999) / 1000);
-    }
+    tls.setCACert(WEB_ROOT_CA_PEM);
+    tls.setTimeout((timeoutMs + 999) / 1000);
     HTTPClient http;
     http.setTimeout(timeoutMs);
     http.setConnectTimeout(timeoutMs);
     http.setUserAgent("Mozilla/5.0 (ESP32-AI personal assistant)");
-    const bool ok = tlsOn ? http.begin(tls, url) : http.begin(plain, url);
-    if (!ok) return -2;
-    if (bearer && *bearer) http.addHeader("Authorization", String("Bearer ") + bearer);
+    if (!http.begin(tls, url)) return -2;
     int code;
     if (body) {
         http.addHeader("Content-Type", "application/json");
@@ -75,7 +85,7 @@ inline int httpRequest(const String& url, String& response, const char* body = n
 }
 
 inline int httpGet(const String& url, String& body, uint32_t timeoutMs = kHttpTimeoutMs) {
-    return httpRequest(url, body, nullptr, nullptr, timeoutMs);
+    return httpRequest(url, body, nullptr, timeoutMs);
 }
 
 inline void copyStr(char* dst, size_t n, const char* src) {  // never splits a UTF-8 character
@@ -155,7 +165,5 @@ void runPriceAlert(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, Car
 /** Check stored alerts; fills `message` (Thai) and returns true when one fired (it is removed). */
 bool checkPriceAlerts(const ToolEnv& env, String& message);
 bool hasPriceAlerts(const ToolEnv& env);
-void runMt5Account(JsonObjectConst a, JsonDocument& out, CardData& card);
-void runMt5Trade(JsonObjectConst a, JsonDocument& out, CardData& card);
 
 }  // namespace webtools

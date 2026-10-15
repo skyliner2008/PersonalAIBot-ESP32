@@ -36,11 +36,6 @@ struct SettingsData {
     uint8_t sleepMinutes = 3;      // 0 = never
     uint8_t clockMinutes = 5;      // asleep this long -> power save: clock face + dimmed screen (0 = never)
     uint8_t dimBrightness = 8;     // screen brightness % while in power save
-    // MT5 bridge (mt5-core-server, same API as the PersonalAIBot app): read-only unless mt5Trade
-    char mt5Url[100] = "";         // e.g. http://192.168.1.50:8090  (/api/mt5 is appended)
-    char mt5Token[100] = "";       // Bearer token (never printed)
-    bool mt5Trade = false;         // allow voice orders (always confirmed first)
-    float mt5MaxLot = 0.10f;       // largest volume a voice order may use
     bool financeTools = true;      // declare the market / finance tools (they cost tokens every turn)
     uint8_t micGain = 5;           // ES8311 ADC scale step 0-7 (x6 dB); 5 = 30 dB, chosen by the user (normal voice at ~40 cm)
     bool micMuted = false;         // mic off survives reboots: only the screen button (or Studio) turns it back on
@@ -48,7 +43,8 @@ struct SettingsData {
     uint8_t rotation = 1;          // 1 or 3 (landscape, flipped)
     bool lcdInvert = true;         // IPS ILI9341V shows inverted colours unless INVON is sent
     bool consolidate = true;       // background memory consolidation with Flash Lite
-    bool googleSearch = true;      // offer the googleSearch tool to the live model (has its own quota)
+    bool googleSearch = false;     // offer googleSearch to the live model: needs a key with a Search allowance
+                                   // (free-tier projects have none - T048); off by default since v3.4
     uint8_t textModel = 0;         // 0 = gemini-3.5-flash-lite, 1 = gemini-3.1-flash-lite
     uint8_t touchMap = 0;          // touch axis correction (UiManager::setTouchTransform)
     bool touchCal = false;         // calibration below is valid
@@ -73,14 +69,14 @@ public:
 
     bool hasWifi() const;
     bool hasApiKey() const;
-    /** Wi-Fi password / API key / MT5 token are stored encrypted (no plain-text copy left in NVS). */
+    /** Wi-Fi password / API key are stored encrypted (no plain-text copy left in NVS). */
     bool secretsSealed() const { return _sealedValid && !_plainFound; }
     /** True on the boot that moved old plain-text secrets into encrypted storage (and wiped NVS). */
     bool migratedAtBoot() const { return _migrated; }
 
     /**
      * Call once the SD card is mounted (nullptr = no card -> secrets stay in NVS).
-     * With a card, the Wi-Fi password / API key / MT5 token live sealed in "<root>/agent/secrets.json"
+     * With a card, the Wi-Fi password / API key live sealed in "<root>/agent/secrets.json"
      * instead of NVS. A plain "<root>/ai-setup.txt" written on a PC is imported first, then wiped.
      */
     void attachSecretStore(const char* sdRoot);
@@ -102,8 +98,8 @@ private:
     // Secrets are stored sealed (SecretBox); remember what is on flash to avoid re-sealing unchanged values
     char _sealedPass[sizeof(SettingsData::wifiPass)] = "";
     char _sealedKey[sizeof(SettingsData::apiKey)] = "";
-    char _sealedTok[sizeof(SettingsData::mt5Token)] = "";
     bool _sealedValid = false;
+    bool _legacyFound = false;  // keys of the removed MT5 bridge still on flash / the SD card -> rewrite once
     bool _plainFound = false;  // pre-v3.2 plain-text secrets seen in NVS -> migrate()
     bool _migrated = false;
     bool _nvsHasSecrets = false;  // sealed secrets found in NVS by load()

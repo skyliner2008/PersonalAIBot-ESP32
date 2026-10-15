@@ -4,13 +4,13 @@
 
 ### A Thai-speaking, real-time voice AI assistant on an ESP32-S3 touch screen
 
-**Gemini Live voice** · **on-device long-term memory** · **44 tools with on-screen cards** · **PC companion app**
+**Gemini Live voice** · **on-device long-term memory** · **42 tools with on-screen cards** · **PC companion app**
 
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
-[![Firmware](https://img.shields.io/badge/firmware-v3.3.0-3ddc84)](src/app/AppConfig.h)
-[![Tests](https://img.shields.io/badge/host%20tests-1%2C446%20checks%20passing-3ddc84)](host_tests/)
+[![Firmware](https://img.shields.io/badge/firmware-v3.4.0-3ddc84)](src/app/AppConfig.h)
+[![Tests](https://img.shields.io/badge/host%20tests-1%2C547%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -37,8 +37,7 @@ Everything runs on the board itself: **no server, no Raspberry Pi, no vector dat
 | 📊 **Live data cards** | Weather + PM2.5, Thai fuel prices, stocks / gold / crypto / FX, technical analysis, market scanner, economic calendar, news, Wikipedia — drawn as graphics while the AI talks. |
 | 📻 **Internet radio** | A radio-app screen with 16 tested Thai stations: swipe and tap a station, ± volume, and tap the middle of the screen to talk to the assistant as usual. Say "play the luk thung station" or "station 4" and the assistant picks from your list. Edit the list (add, edit, delete, reorder, test URL) in ESP32-AI Studio. MP3/AAC via the Helix decoder; the radio dips to 12 % while you talk. [wiki/12](wiki/12-Internet-Radio.md) |
 | ⏰ **Personal assistant** | Timers, reminders (daily / weekdays / weekly), to-do list, notes, price alerts that speak up, calculator, unit & world-time conversion. |
-| 📈 **MetaTrader 5** *(optional)* | Read your MT5 account through [mt5-core-server](#-metatrader-5-optional); voice trading is **off by default** and needs a spoken two-step confirmation. |
-| 🔁 **Self-healing** | Automatic model fallback, quota-aware back-off, Google Search auto-disable on quota, session resumption, Wi-Fi reconnect. |
+| 🔁 **Self-healing** | Automatic model fallback, quota-aware back-off, Google Search pause on quota (if enabled), session resumption, Wi-Fi reconnect. |
 | 🖥️ **ESP32-AI Studio** | Dark-mode PC app: all settings, live debug log, chat, remote screen with touch, mic recorder, tool runner, build & flash. |
 
 ## 🖼️ Screenshots
@@ -79,7 +78,7 @@ Pinout, board photos and connector guide → [wiki/01-Hardware-ES3C28P-Pinout.md
    (if it is not found: hold **BOOT**, tap **RESET**, release BOOT, then connect again).
 3. Flash address **`0x0`** → choose the `.bin` file → **Program**. When it finishes, press **RESET**.
 
-Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.2.1-factory.bin`
+Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.4.0-factory.bin`
 
 > The factory image starts at `0x0`, so it also **clears saved settings** on that board (a clean install).
 
@@ -155,7 +154,7 @@ On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio 
 The model calls these by itself. Data tools run in a background task and draw a card while the AI keeps talking.
 
 <details>
-<summary><b>All 44 tools</b> (42 by default; the 2 MT5 tools appear when an MT5 server is configured)</summary>
+<summary><b>All 42 tools</b> (36 without the optional finance pack)</summary>
 
 | Group | Tools |
 |---|---|
@@ -165,11 +164,11 @@ The model calls these by itself. Data tools run in a background task and draw a 
 | **Live data** 🖼️ | `get_weather` (Open-Meteo + PM2.5, IP location by default) · `get_oil_price` (Bangchak) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
 | **Utilities** 🖼️ | `calculate` · `convert_units` (incl. Thai ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (DST-aware) · `get_location` · `search_knowledge` (Wikipedia th/en) · `notes` |
 | **Finance pack** 🖼️ | `market_overview` (+ crypto Fear & Greed) · `market_analysis` (RSI, MACD, EMA, ADX, multi-timeframe, P/E, dividend) · `market_scan` (gainers / losers / volume / RSI, TH-US-crypto) · `economic_calendar` (ForexFactory, Thai time) · `position_size` · `price_alert` |
-| **MetaTrader 5** | `mt5_account` · `mt5_trade` (off by default, max-lot limit, two-step confirmation) |
-| **Built-in** | Google Search grounding (auto-disabled for 6 h when its quota runs out) |
+| **Web search** | No general web search by default: Google Search grounding needs a key with a Search allowance (free-tier projects have none — `set search 1` to enable on a paid key). Current events go through `get_news` (Google News, last 7 days first), facts through `search_knowledge`. DuckDuckGo was evaluated and is not usable (no free search API; the HTML page blocks automated requests). |
 
 All data sources are free and key-less; every HTTPS connection is certificate-verified.
-Market data comes from TradingView's public scanner endpoint (unofficial) — **for information only, not investment advice.**
+Results say **when** a figure is valid, so the assistant does not call old data "today": `as_of` on every live-data result, the fuel price's effective date, market open/closed + quote time, news publish time.
+Market data comes from TradingView's public scanner endpoint (unofficial) and is **read-only** — the assistant cannot place trades or connect to a broker. **For information only, not investment advice.**
 
 Details and timings → [wiki/11-Data-Tools-and-Cards.md](wiki/11-Data-Tools-and-Cards.md) · [wiki/09-Assistant-Profiles-and-Tools.md](wiki/09-Assistant-Profiles-and-Tools.md)
 
@@ -205,22 +204,13 @@ flowchart LR
 
 Full design → [PROJECT_ARCHITECTURE_SPEC.md](PROJECT_ARCHITECTURE_SPEC.md)
 
-## 📈 MetaTrader 5 (optional)
-
-Works with the same **mt5-core-server** bridge as the PersonalAIBot Android app.
-
-1. Studio → ⚙️ Settings → **Finance / MetaTrader 5** → enter the server URL (e.g. `http://192.168.1.10:8000`) and token.
-2. `mt5_account` is now available: balance, equity, floating P/L, open positions, orders, history.
-3. Voice trading (`mt5_trade`) stays **off** until you tick *Allow voice trading* (with a warning). Even then every order
-   is limited to *max lot*, read back to you, and sent only after you clearly confirm within 2 minutes.
-
 ## 🖥️ ESP32-AI Studio
 
 | Tab | Highlights |
 |---|---|
 | 📜 Debug log | Colour-coded live log, regex filter, copy/save, console with history |
 | 💬 Chat | Type to the assistant; it answers through the board's speaker |
-| ⚙️ Settings | Wi-Fi scan, API key + self-test, profile / voice / personality, models, Search, mic sensitivity, Finance & MT5, import/export (no secrets) |
+| ⚙️ Settings | Wi-Fi scan, API key + self-test, profile / voice / personality, models, Search, mic sensitivity, finance tools, import/export (no secrets) |
 | 🧰 Tools | Record what the AI hears (waveform + WAV), speaker test, run any of the AI's tools, eye emotions, memory tools |
 | 🖥️ Screen | Live mirror of the LCD — click to tap, drag to swipe, right-click to long-press |
 | 📊 Status | Session, models & cool-downs, tokens/min graph, RAM, storage, battery |
@@ -237,12 +227,15 @@ Portable modules (memory, tools, scheduler, tasks, personas, model fallback, cal
 host_tests\run_tests.bat
 ```
 
-29 suites · 1,446 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+31 suites · 1,547 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
 
 ## 📁 Project layout
 
 ```text
-src/agent      AgentController (the brain), AgentTools, WebTools + WebToolsExtra (data tools), Personas, Scheduler, TaskList
+src/agent      AgentController (the brain: setup/loop) + AgentSession (Wi-Fi, Live session, fallback, tool calls),
+               AgentMic (VAD/AGC), AgentRoutines (sleep, reminders, consolidation), AgentDevice (status, device, radio),
+               AgentTools, WebTools + WebToolsExtra (data tools), Personas, Scheduler, TaskList
 src/ai         GeminiLiveClient (geminiIO task), TextModelClient, ModelFallback, root CAs
 src/ui         Eyes, FaceScreen, CardScreen (data cards), menus, Thai keyboard
 src/audio      AudioManager (I2S), ES8311 driver, resampler
@@ -269,7 +262,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 
 ## 🔒 Security & privacy
 
-**Where your Wi-Fi password, API key and MT5 token live**
+**Where your Wi-Fi password and API key live**
 
 | Place | Contains secrets? |
 |---|---|
@@ -279,17 +272,17 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 | The SD card — `agent/secrets.json` (or the board's NVS flash when no card is inserted) | **Yes, encrypted** — AES-256-GCM with a key derived from this chip's factory MAC + unique-ID eFuses (`src/app/SecretBox.*`). The file opens only on the board that wrote it (moving the card to another board = set up again with `ai-setup.txt`); reading the card on a PC shows no secrets. A plain `ai-setup.txt` is overwritten and deleted right after import. Older plain-text copies are wiped automatically once (including the Wi-Fi driver's own copy, now disabled with `WiFi.persistent(false)`). |
 
 - This is not full flash encryption: someone who has your board **and** this firmware could still derive the key. Use a dedicated API key and rotate it if the board is lost.
-- Neither the firmware nor the Studio ever prints the API key, Wi-Fi password or MT5 token; `config` shows only a masked hint and `secretsSealed`. Exported settings files contain no secrets; voice recordings (`recordings/`) are git-ignored.
+- Neither the firmware nor the Studio ever prints the API key or Wi-Fi password; `config` shows only a masked hint and `secretsSealed`. Exported settings files contain no secrets; voice recordings (`recordings/`) are git-ignored.
 - Audio is streamed to Google's Gemini API while the mic is open. Memory and notes stay on the board's SD card / flash.
-- Voice trading is disabled by default and always confirmed; you are responsible for any trades.
+- The Gemini key is sent in the `x-goog-api-key` header (never in a URL). Data tools only use certificate-verified HTTPS; plain `http://` is refused.
 
 ## 🧑‍💻 For developers
 
 - **Fork & build:** `pio run` builds from a clean clone — no `secrets.h` needed. Settings live in NVS (`src/app/Settings.*`), so your own keys never touch the source tree.
 - **Add a tool:** declare it in `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`); network tools go in `src/agent/WebToolsExtra.cpp` and draw a `CardData` (see [wiki/11](wiki/11-Data-Tools-and-Cards.md)).
 - **Test without a board:** `host_tests\run_tests.bat`; on a board, every tool can be called from the Studio's 🧰 tab or the serial console (`tool <name> {json}`).
-- **Publishing a release:** bump `FIRMWARE_VERSION` in `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py`. The script builds the factory image (`tools/make_release.py`), creates the GitHub Release as a draft, uploads `.bin` + `.sha256`, publishes it and re-downloads it to check the sha256. Releases here are **immutable**: a published version can never get new files or reuse its tag, so every release needs a new version number. (`--dry-run` only checks.)
-- **CI:** [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml) does the same on GitHub Actions but is manual-only for now (*Actions → Firmware → Run workflow*). `tools/make_release.py` refuses to run while `include/secrets.h` holds real values and scans the image for API-key-like strings.
+- **Publishing a release:** bump `FIRMWARE_VERSION` in `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py`. The script builds the factory image (`tools/make_release.py`), creates the GitHub Release as a draft, uploads `.bin` + `.sha256`, publishes it and re-downloads it to check the sha256. The host tests run before anything is published (`--skip-tests` only on a PC without a compiler). Releases here are **immutable**: a published version can never get new files or reuse its tag, so every release needs a new version number. (`--dry-run` only checks.)
+- **CI:** [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml) does the same on GitHub Actions but is manual-only for now (*Actions → Firmware → Run workflow*); the release job waits for the host-tests job. `tools/make_release.py` refuses to run while `include/secrets.h` holds real values and scans the image for API-key-like strings.
 - **Docs:** the `wiki/` folder is an Obsidian vault; please add problems you solve to [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md).
 
 Pull requests and issues are welcome.

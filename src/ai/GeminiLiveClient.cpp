@@ -51,12 +51,11 @@ bool GeminiLiveClient::begin(GeminiListener* listener) {
     _ssl = esp_transport_ssl_init();
     if (!_ssl) return false;
     esp_transport_ssl_set_cert_data(_ssl, GOOGLE_ROOT_CA_PEM, strlen(GOOGLE_ROOT_CA_PEM));  // verify the server
-    esp_transport_keep_alive_t ka = {};
-    ka.keep_alive_enable = true;  // TCP keep-alive finds a dead Wi-Fi link even when we are silent
-    ka.keep_alive_idle = 10;
-    ka.keep_alive_interval = 5;
-    ka.keep_alive_count = 3;
-    esp_transport_ssl_set_keep_alive(_ssl, &ka);
+    _keepAlive.keep_alive_enable = true;  // TCP keep-alive finds a dead Wi-Fi link even when we are silent
+    _keepAlive.keep_alive_idle = 10;
+    _keepAlive.keep_alive_interval = 5;
+    _keepAlive.keep_alive_count = 3;
+    esp_transport_ssl_set_keep_alive(_ssl, &_keepAlive);  // stores the pointer: a member, not a local
     _wst = esp_transport_ws_init(_ssl);
     if (!_wst) return false;
     esp_transport_set_default_port(_wst, GEMINI_PORT);
@@ -70,8 +69,8 @@ bool GeminiLiveClient::configure(const char* apiKey) {
     if (!_configured) return false;
 
     xSemaphoreTake(_cfgLock, portMAX_DELAY);
-    // Documented: ?key= in the URL. The official SDKs send the x-goog-api-key header instead;
-    // both are supported here (serial "keymode header|query") to diagnose key/quota issues.
+    // Default: the x-goog-api-key header, as the official SDKs send it (the key never appears in a URL).
+    // The documented ?key= form is kept for diagnosis (serial "keymode query|header", not saved).
     if (_keyInHeader) {
         _path = GEMINI_WS_PATH;
         _headers = String("x-goog-api-key: ") + apiKey + "\r\n";

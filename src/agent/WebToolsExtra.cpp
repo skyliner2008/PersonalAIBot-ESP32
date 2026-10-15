@@ -1,7 +1,7 @@
 /**
  * @file WebToolsExtra.cpp
  * @brief Tools ported from the PersonalAIBot app: calculator, units, world clock, location, Wikipedia,
- *        market overview / analysis / scan, economic calendar, position size, notes, price alerts, MT5
+ *        market overview / analysis / scan, economic calendar, position size, notes, price alerts
  * @see wiki/11-Data-Tools-and-Cards.md
  */
 
@@ -21,7 +21,6 @@ namespace {
 
 constexpr uint16_t kUp = 0x2FE8, kDown = 0xF9E7, kOrange = 0xFD20, kDim = 0x9CD3;
 
-uint16_t signColor(double v) { return v > 1e-9 ? kUp : (v < -1e-9 ? kDown : kDim); }
 uint16_t ratingColor(double r) { return r >= 0.1 ? kUp : (r <= -0.1 ? kDown : kDim); }
 
 uint32_t nowEpoch() {
@@ -182,68 +181,6 @@ bool fetchSymbol(const String& token, const String& fields, JsonDocument& q, Str
     }
     return false;
 }
-
-// ---------------------------------------------------------------- MT5 helpers
-
-String mt5Base() {
-    const SettingsData s = gSettings.get();
-    String b = s.mt5Url;
-    b.trim();
-    while (b.endsWith("/")) b.remove(b.length() - 1);
-    if (b.length() && !b.endsWith("/api/mt5")) b += "/api/mt5";
-    return b;
-}
-
-int mt5Call(const char* path, String& resp, const char* body = nullptr) {
-    const SettingsData s = gSettings.get();
-    const String base = mt5Base();
-    if (base.isEmpty()) return -20;
-    return httpRequest(base + path, resp, body, s.mt5Token);
-}
-
-JsonVariantConst unwrapObject(JsonDocument& d) {
-    if (d["data"].is<JsonObjectConst>()) return d["data"];
-    if (d["result"].is<JsonObjectConst>()) return d["result"];
-    return d.as<JsonVariantConst>();
-}
-JsonArrayConst unwrapArray(JsonDocument& d) {
-    if (d.is<JsonArrayConst>()) return d.as<JsonArrayConst>();
-    for (const char* k : {"data", "result", "items", "positions", "orders", "history", "deals"}) {
-        if (d[k].is<JsonArrayConst>()) return d[k];
-    }
-    return JsonArrayConst();
-}
-double num(JsonVariantConst o, const char* a, const char* b = nullptr, const char* c = nullptr) {
-    for (const char* k : {a, b, c}) {
-        if (!k || o[k].isNull()) continue;
-        if (o[k].is<const char*>()) return atof(o[k].as<const char*>());
-        return o[k].as<double>();
-    }
-    return 0;
-}
-const char* sideOf(JsonVariantConst o) {
-    for (const char* k : {"side", "action"}) {
-        String s = o[k] | "";
-        s.toLowerCase();
-        if (s.indexOf("buy") >= 0 || s == "long") return "BUY";
-        if (s.indexOf("sell") >= 0 || s == "short") return "SELL";
-    }
-    if (!o["type"].isNull()) {
-        if (o["type"].is<int>()) return (o["type"].as<int>() % 2 == 0) ? "BUY" : "SELL";
-        String t = o["type"] | "";
-        t.toLowerCase();
-        if (t.indexOf("buy") >= 0) return "BUY";
-        if (t.indexOf("sell") >= 0) return "SELL";
-        if (t.length() && isdigit((unsigned char)t[0])) return (t.toInt() % 2 == 0) ? "BUY" : "SELL";
-    }
-    return "";
-}
-
-struct PendingTrade {
-    String action, symbol, ticket;
-    float volume = 0, sl = 0, tp = 0;
-    uint32_t at = 0;
-} gPending;
 
 }  // namespace
 
@@ -417,7 +354,7 @@ void runMarketOverview(JsonObjectConst a, JsonDocument& out, CardData& card) {
     std::vector<String> tickers;
     for (const Item& i : kItems) tickers.push_back(i.sym);
     JsonDocument d(JsonPsramAllocator::instance());
-    if (!scanTickers(tickers, "[\"close\",\"change\"]", d)) {
+    if (!scanTickers(tickers, "[\"close\",\"change\",\"current_session\"]", d)) {
         setError(out, "ดึงข้อมูลตลาดไม่สำเร็จ");
         return;
     }
@@ -435,6 +372,8 @@ void runMarketOverview(JsonObjectConst a, JsonDocument& out, CardData& card) {
             o["name"] = i.name;
             o["price"] = r.value;
             o["change_pct"] = r.changePct;
+            const char* session = row["d"][2] | "";
+            if (*session) o["market_open"] = !strcmp(session, "market");  // closed: the last close
         }
     }
     // crypto sentiment (alternative.me Fear & Greed)
@@ -452,7 +391,7 @@ void runMarketOverview(JsonObjectConst a, JsonDocument& out, CardData& card) {
         }
     }
     if (!card.subtitle[0]) copyStr(card.subtitle, sizeof(card.subtitle), "TradingView • เปลี่ยนแปลงวันนี้");
-    out["result"]["note"] = "ภาพรวมแสดงบนจอแล้ว สรุปเด่นๆ 2-3 อย่าง";
+    out["result"]["note"] = "ภาพรวมแสดงบนจอแล้ว สรุปเด่นๆ 2-3 อย่าง ตลาดที่ market_open=false คือราคาปิดล่าสุด";
 }
 
 // ============================================================ technical analysis
@@ -686,6 +625,10 @@ void runEconomicCalendar(JsonObjectConst a, JsonDocument& out, CardData& card) {
     String range = a["range"] | "week";
     String impact = a["impact"] | "high";
     const uint32_t now = nowEpoch();
+    if (!now) {  // "today", "past" and the day names all need the date
+        setError(out, "นาฬิกายังไม่ซิงก์เวลา ลองใหม่อีกครู่");
+        return;
+    }
     if (gCalendar.isEmpty() || millis() - gCalendarAt > 1800000) {  // the feed allows few requests: cache 30 min
         String body;
         if (httpGet("https://nfs.faireconomy.media/ff_calendar_thisweek.json", body) != 200) {
@@ -728,6 +671,9 @@ void runEconomicCalendar(JsonObjectConst a, JsonDocument& out, CardData& card) {
         JsonObject o = arr.add<JsonObject>();
         char when[32];
         snprintf(when, sizeof(when), "%s %02d:%02d", thaiWeekdayShort(weekday(th.year, th.month, th.day)), th.hour, th.minute);
+        char ymd[12];
+        snprintf(ymd, sizeof(ymd), "%04d-%02d-%02d", th.year, th.month, th.day);
+        o["date"] = ymd;
         o["when_th"] = when;
         o["currency"] = e["country"] | "";
         o["event"] = e["title"] | "";
@@ -752,10 +698,12 @@ void runEconomicCalendar(JsonObjectConst a, JsonDocument& out, CardData& card) {
     if (!card.rows) {
         copyStr(card.body, sizeof(card.body), arr.size() ? "ข่าวสำคัญของสัปดาห์นี้ประกาศไปหมดแล้ว" : "ไม่มีข่าวเศรษฐกิจสำคัญในช่วงนี้");
         card.kind = CardData::Text;
-        out["result"]["note"] = arr.size() ? "ข่าวสำคัญในช่วงนี้ประกาศไปแล้วทั้งหมด (done=true)" : "ไม่มีข่าวเศรษฐกิจสำคัญในช่วงที่ถาม";
+        out["result"]["note"] = arr.size() ? "ข่าวสำคัญในช่วงนี้ประกาศไปแล้วทั้งหมด (done=true) ข้อมูลนี้ไม่มีตัวเลขจริง (actual) ห้ามเดาผล"
+                                           : "ไม่มีข่าวเศรษฐกิจสำคัญในช่วงที่ถาม (ข้อมูลครอบคลุมเฉพาะสัปดาห์นี้ อาทิตย์-เสาร์)";
         return;
     }
-    out["result"]["note"] = "ตารางแสดงบนจอแล้ว บอกเหตุการณ์สำคัญ 2-3 รายการพร้อมเวลาไทย";
+    out["result"]["note"] = "ตารางแสดงบนจอแล้ว บอกเหตุการณ์สำคัญ 2-3 รายการพร้อมเวลาไทย ข้อมูลนี้ไม่มีตัวเลขจริง (actual) "
+                            "ของข่าวที่ประกาศแล้ว (done=true) ห้ามเดาผล ถ้าถามผลให้ใช้ Google Search";
 }
 
 // ============================================================ position size
@@ -1006,186 +954,6 @@ bool checkPriceAlerts(const ToolEnv& env, String& message) {
         }
     }
     return false;
-}
-
-// ============================================================ MT5 (mt5-core-server bridge)
-
-void runMt5Account(JsonObjectConst a, JsonDocument& out, CardData& card) {
-    if (mt5Base().isEmpty()) {
-        setError(out, "ยังไม่ได้ตั้งค่า MT5 server (set mt5url / PC app)");
-        return;
-    }
-    String view = a["view"] | "summary";
-    String resp;
-    JsonDocument d(JsonPsramAllocator::instance());
-    JsonObject r = out["result"].to<JsonObject>();
-    card.kind = CardData::Table;
-    if (view == "summary") {
-        const int code = mt5Call("/account", resp);
-        if (code != 200 || deserializeJson(d, resp)) {
-            setError(out, code == 401 || code == 403 ? "MT5 token ไม่ถูกต้อง" : "ติดต่อ MT5 server ไม่ได้");
-            return;
-        }
-        JsonVariantConst acc = unwrapObject(d);
-        const double bal = num(acc, "balance"), eq = num(acc, "equity"), fm = num(acc, "free_margin", "freeMargin");
-        const char* cur = acc["currency"] | "USD";
-        r["balance"] = bal;
-        r["equity"] = eq;
-        r["free_margin"] = fm;
-        r["margin"] = num(acc, "margin");
-        r["floating_pl"] = eq - bal;
-        r["currency"] = cur;
-        copyStr(card.title, sizeof(card.title), "บัญชี MT5");
-        snprintf(card.subtitle, sizeof(card.subtitle), "%s • %s", (const char*)(acc["server"] | ""), cur);
-        char buf[32];
-        auto add = [&](const char* name, double v, uint16_t color) {
-            CardData::Row& row = card.row[card.rows++];
-            copyStr(row.name, sizeof(row.name), name);
-            snprintf(buf, sizeof(buf), "%.2f", v);
-            copyStr(row.extra, sizeof(row.extra), buf);
-            row.color = color;
-        };
-        add("Balance", bal, 0xFFFF);
-        add("Equity", eq, 0xFFFF);
-        add("กำไร/ขาดทุนลอย", eq - bal, signColor(eq - bal));
-        add("Free margin", fm, kDim);
-        view = "positions";  // and the open positions below
-        d.clear();
-    }
-    const char* path = view == "orders" ? "/orders" : view == "history" ? "/history?limit=10" : "/positions";
-    const int code = mt5Call(path, resp);
-    if (code != 200 || deserializeJson(d, resp)) {
-        if (!card.rows) setError(out, "ติดต่อ MT5 server ไม่ได้");
-        return;
-    }
-    JsonArray list = r[view].to<JsonArray>();
-    if (!card.title[0]) {
-        copyStr(card.title, sizeof(card.title), view == "orders" ? "MT5 คำสั่งรอ" : view == "history" ? "MT5 ประวัติ" : "MT5 สถานะเปิด");
-    }
-    for (JsonVariantConst p : unwrapArray(d)) {
-        JsonObject o = list.add<JsonObject>();
-        for (const char* k : {"ticket", "order", "deal", "id"}) {
-            if (!p[k].isNull()) {
-                o["ticket"] = p[k];
-                break;
-            }
-        }
-        o["symbol"] = p["symbol"] | "";
-        o["side"] = sideOf(p);
-        o["volume"] = num(p, "volume", "lots");
-        o["price_open"] = num(p, "price_open", "open_price", "price");
-        o["profit"] = num(p, "profit");
-        if (num(p, "sl", "stop_loss")) o["sl"] = num(p, "sl", "stop_loss");
-        if (num(p, "tp", "take_profit")) o["tp"] = num(p, "tp", "take_profit");
-        if (card.rows < CardData::kMaxRows) {
-            CardData::Row& row = card.row[card.rows++];
-            snprintf(row.name, sizeof(row.name), "%s %s %.2f", (const char*)(p["symbol"] | ""), sideOf(p), num(p, "volume", "lots"));
-            snprintf(row.extra, sizeof(row.extra), "%+.2f", num(p, "profit"));
-            row.color = signColor(num(p, "profit"));
-        }
-    }
-    r["count"] = list.size();
-}
-
-void runMt5Trade(JsonObjectConst a, JsonDocument& out, CardData& card) {
-    const SettingsData s = gSettings.get();
-    if (mt5Base().isEmpty()) {
-        setError(out, "ยังไม่ได้ตั้งค่า MT5 server");
-        return;
-    }
-    if (!s.mt5Trade) {
-        setError(out, "การเทรดด้วยเสียงปิดอยู่ (เปิดได้ที่ PC app: set mt5trade 1)");
-        return;
-    }
-    String action = a["action"] | "";
-    action.toLowerCase();
-    String symbol = a["symbol"] | "";
-    symbol.toUpperCase();
-    const float volume = a["volume"] | 0.0f, sl = a["sl"] | 0.0f, tp = a["tp"] | 0.0f;
-    String ticket;
-    if (a["ticket"].is<const char*>()) ticket = a["ticket"].as<const char*>();
-    else if (!a["ticket"].isNull()) ticket = String((unsigned long)a["ticket"].as<double>());
-    const bool confirm = a["confirm"] | false;
-    const bool open = action == "buy" || action == "sell";
-    if (!open && action != "close" && action != "close_all" && action != "modify") {
-        setError(out, "action ต้องเป็น buy, sell, close, close_all หรือ modify");
-        return;
-    }
-    if (open && (symbol.isEmpty() || volume <= 0)) {
-        setError(out, "ต้องมี symbol และ volume");
-        return;
-    }
-    if (open && volume > s.mt5MaxLot + 1e-6) {
-        char buf[96];
-        snprintf(buf, sizeof(buf), "volume เกินที่อนุญาต (สูงสุด %.2f lot)", s.mt5MaxLot);
-        setError(out, buf);
-        return;
-    }
-    char summary[160];
-    snprintf(summary, sizeof(summary), "%s %s %s%s%s", action.c_str(), symbol.c_str(),
-             open ? String(volume, 2).c_str() : ticket.c_str(), sl > 0 ? (String(" SL ") + String(sl, 5)).c_str() : "",
-             tp > 0 ? (String(" TP ") + String(tp, 5)).c_str() : "");
-    // Step 1: no confirm -> remember and ask. Step 2: confirm=true must repeat the same order within 2 min.
-    if (!confirm) {
-        gPending.action = action;
-        gPending.symbol = symbol;
-        gPending.ticket = ticket;
-        gPending.volume = volume;
-        gPending.sl = sl;
-        gPending.tp = tp;
-        gPending.at = millis();
-        JsonObject r = out["result"].to<JsonObject>();
-        r["needs_confirmation"] = true;
-        r["order"] = summary;
-        r["note"] = "อ่านรายละเอียดคำสั่งให้ผู้ใช้ฟังและถามยืนยัน ถ้าผู้ใช้ยืนยันชัดเจนให้เรียกซ้ำด้วย confirm=true";
-        card.kind = CardData::Text;
-        copyStr(card.title, sizeof(card.title), "ยืนยันคำสั่ง MT5?");
-        copyStr(card.big, sizeof(card.big), summary);
-        copyStr(card.body, sizeof(card.body), "พูดว่า \"ยืนยัน\" เพื่อส่งคำสั่ง หรือ \"ยกเลิก\"");
-        return;
-    }
-    if (!gPending.at || millis() - gPending.at > 120000 || gPending.action != action || gPending.symbol != symbol ||
-        fabsf(gPending.volume - volume) > 1e-6) {
-        setError(out, "ไม่มีคำสั่งที่รอยืนยันตรงกัน ให้เรียกครั้งแรกโดยไม่ใส่ confirm ก่อน");
-        return;
-    }
-    gPending.at = 0;
-    JsonDocument body;
-    String path;
-    if (open) {
-        path = "/order";
-        body["action"] = action;
-        body["symbol"] = symbol;
-        body["volume"] = volume;
-        if (sl > 0) body["sl"] = sl;
-        if (tp > 0) body["tp"] = tp;
-        body["comment"] = "esp32-ai voice";
-    } else if (action == "close") {
-        path = "/close";
-        body["symbol"] = symbol;
-        body["ticket"] = ticket;
-    } else if (action == "close_all") {
-        path = "/close_all";
-        if (symbol.length()) body["symbol"] = symbol;
-    } else {
-        path = "/modify";
-        if (symbol.length()) body["symbol"] = symbol;
-        if (ticket.length()) body["ticket"] = ticket;
-        if (sl > 0) body["sl"] = sl;
-        if (tp > 0) body["tp"] = tp;
-    }
-    String payload, resp;
-    serializeJson(body, payload);
-    const int code = mt5Call(path.c_str(), resp, payload.c_str());
-    JsonObject r = out["result"].to<JsonObject>();
-    r["http"] = code;
-    r["order"] = summary;
-    r["server_response"] = resp.substring(0, 300);
-    r["ok"] = code >= 200 && code < 300;
-    card.kind = CardData::Text;
-    copyStr(card.title, sizeof(card.title), code >= 200 && code < 300 ? "ส่งคำสั่ง MT5 แล้ว" : "คำสั่ง MT5 ไม่สำเร็จ");
-    copyStr(card.big, sizeof(card.big), summary);
-    copyStr(card.body, sizeof(card.body), resp.substring(0, 300).c_str());
 }
 
 }  // namespace webtools

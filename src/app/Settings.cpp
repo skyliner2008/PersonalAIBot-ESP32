@@ -55,8 +55,10 @@ void copyStr(char* dst, size_t cap, const char* src) {
 
 // ---- secrets: sealed blob under "<name>_e"; "<name>" is the pre-v3.2 plain-text copy ----
 constexpr size_t kBlobCap = 192;  // longest secret (API key, 127 chars) + SecretBox::kOverhead
+// NVS keys of the MT5 bridge removed in v3.4 (deleted when found)
+constexpr const char* kLegacyKeys[] = {"mt5url", "mt5tok", "mt5tok_e", "mt5trade", "mt5lot"};
 
-// SD-card copy: {"v":1,"pass_e":"<base64 blob>","key_e":"...","mt5tok_e":"..."}
+// SD-card copy: {"v":1,"pass_e":"<base64 blob>","key_e":"..."}
 bool sealToJson(JsonDocument& doc, const char* name, const char* value) {
     if (!*value) return true;
     uint8_t blob[kBlobCap];
@@ -147,7 +149,12 @@ bool Settings::applyProfile(SettingsData& d, const char* profileId) {
 bool Settings::begin() {
     _lock = xSemaphoreCreateMutex();
     load();
-    if (_plainFound || driverKeepsWifiCopy()) migrate();
+    if (_plainFound || driverKeepsWifiCopy()) {
+        migrate();
+    } else if (_legacyFound) {
+        save(_data);  // drops the old MT5 keys (secrets are not re-sealed: unchanged)
+        Serial.println("[Settings] Removed the old MT5 bridge settings");
+    }
     Serial.printf("[Settings] agent \"%s\", voice %s, model %s, Wi-Fi %s, API key %s\n", _data.agentName,
                   _data.voice, liveModelId(_data.model), hasWifi() ? _data.wifiSsid : "(not set)",
                   hasApiKey() ? "set" : "(not set)");
@@ -166,7 +173,10 @@ void Settings::load() {
     p.begin("cfg", false);  // read-write so the namespace exists on first boot (no NOT_FOUND error)
     if (p.isKey("ssid")) p.getString("ssid", d.wifiSsid, sizeof(d.wifiSsid));
     _plainFound = false;
-    _nvsHasSecrets = p.isKey("pass_e") || p.isKey("key_e") || p.isKey("mt5tok_e");
+    _nvsHasSecrets = p.isKey("pass_e") || p.isKey("key_e");
+    // the MT5 bridge was removed (v3.4): its settings are dropped from NVS on this boot
+    for (const char* k : kLegacyKeys) _legacyFound |= p.isKey(k);
+    if (p.isKey("mt5tok")) _plainFound = true;  // a plain-text token: the NVS wipe in migrate() erases it
     readSecret(p, "pass", "pass_e", d.wifiPass, sizeof(d.wifiPass), _plainFound);
     readSecret(p, "key", "key_e", d.apiKey, sizeof(d.apiKey), _plainFound);
     if (p.isKey("agent")) p.getString("agent", d.agentName, sizeof(d.agentName));
@@ -189,10 +199,6 @@ void Settings::load() {
     d.micGain = p.getUChar("mgain", d.micGain);
     d.micMuted = p.getBool("muted", d.micMuted);
     if (p.isKey("radioname")) p.getString("radioname", d.radioName, sizeof(d.radioName));
-    if (p.isKey("mt5url")) p.getString("mt5url", d.mt5Url, sizeof(d.mt5Url));  // isKey: no NOT_FOUND log
-    readSecret(p, "mt5tok", "mt5tok_e", d.mt5Token, sizeof(d.mt5Token), _plainFound);
-    d.mt5Trade = p.getBool("mt5trade", d.mt5Trade);
-    d.mt5MaxLot = p.getFloat("mt5lot", d.mt5MaxLot);
     d.financeTools = p.getBool("fintools", d.financeTools);
     if (d.micGain > 7) d.micGain = 7;
     d.rotation = p.getUChar("rot", d.rotation);
@@ -233,7 +239,6 @@ void Settings::load() {
     // what is on flash now (a plain-text copy forces the next save to seal it)
     copyStr(_sealedPass, sizeof(_sealedPass), d.wifiPass);
     copyStr(_sealedKey, sizeof(_sealedKey), d.apiKey);
-    copyStr(_sealedTok, sizeof(_sealedTok), d.mt5Token);
     _sealedValid = !_plainFound;
 }
 
@@ -252,7 +257,7 @@ void Settings::migrate() {
         return;
     }
     memset(back, 0, sizeof(back));
-    Serial.println("[Settings] Encrypting Wi-Fi password / API key / MT5 token and wiping the old plain-text copies...");
+    Serial.println("[Settings] Encrypting Wi-Fi password / API key and wiping the old plain-text copies...");
     nvs_flash_deinit();
     const esp_err_t er = nvs_flash_erase();
     nvs_flash_init();
@@ -260,7 +265,7 @@ void Settings::migrate() {
     save(d);
     load();
     const bool same = !strcmp(_data.wifiPass, d.wifiPass) && !strcmp(_data.apiKey, d.apiKey) &&
-                      !strcmp(_data.mt5Token, d.mt5Token) && !strcmp(_data.wifiSsid, d.wifiSsid);
+                      !strcmp(_data.wifiSsid, d.wifiSsid);
     if (same && !_plainFound) {
         _migrated = true;
         Serial.printf("[Settings] Secrets encrypted on flash (NVS wipe %s)\n", er == ESP_OK ? "ok" : "failed");
@@ -273,7 +278,6 @@ void Settings::migrate() {
     p.begin("cfg", false);
     p.putString("pass", d.wifiPass);
     p.putString("key", d.apiKey);
-    p.putString("mt5tok", d.mt5Token);
     p.end();
 }
 
@@ -307,7 +311,9 @@ void Settings::save(const SettingsData& d) {
     };
     putSecret("pass", "pass_e", d.wifiPass, _sealedPass, sizeof(_sealedPass));
     putSecret("key", "key_e", d.apiKey, _sealedKey, sizeof(_sealedKey));
-    putSecret("mt5tok", "mt5tok_e", d.mt5Token, _sealedTok, sizeof(_sealedTok));
+    for (const char* k : kLegacyKeys) {
+        if (p.isKey(k)) p.remove(k);
+    }
     p.putString("agent", d.agentName);
     p.putString("user", d.userName);
     p.putString("voice", d.voice);
@@ -325,9 +331,6 @@ void Settings::save(const SettingsData& d) {
     p.putUChar("mgain", d.micGain);
     p.putBool("muted", d.micMuted);
     p.putString("radioname", d.radioName);
-    p.putString("mt5url", d.mt5Url);
-    p.putBool("mt5trade", d.mt5Trade);
-    p.putFloat("mt5lot", d.mt5MaxLot);
     p.putBool("fintools", d.financeTools);
     p.putUChar("rot", d.rotation);
     p.putBool("inv", d.lcdInvert);
@@ -368,21 +371,19 @@ void Settings::update(const std::function<void(SettingsData&)>& fn) {
 // ============================================================
 
 bool Settings::saveSdSecrets(const SettingsData& d) {
-    if (_sealedValid && !strcmp(_sealedPass, d.wifiPass) && !strcmp(_sealedKey, d.apiKey) &&
-        !strcmp(_sealedTok, d.mt5Token)) {
+    if (_sealedValid && !strcmp(_sealedPass, d.wifiPass) && !strcmp(_sealedKey, d.apiKey)) {
         return true;  // unchanged: no rewrite (new random IVs would change the file every time)
     }
     JsonDocument doc;
     doc["v"] = 1;
     doc["note"] = "Encrypted for one board only. To set up again, put ai-setup.txt next to the agent folder.";
     if (!sealToJson(doc, "pass_e", d.wifiPass) || !sealToJson(doc, "key_e", d.apiKey) ||
-        !sealToJson(doc, "mt5tok_e", d.mt5Token) || !jsonfile::save(_sdSecrets, doc)) {
+        !jsonfile::save(_sdSecrets, doc)) {
         Serial.println("[Settings] ERROR: could not write secrets to the SD card");
         return false;
     }
     copyStr(_sealedPass, sizeof(_sealedPass), d.wifiPass);
     copyStr(_sealedKey, sizeof(_sealedKey), d.apiKey);
-    copyStr(_sealedTok, sizeof(_sealedTok), d.mt5Token);
     _sealedValid = true;
     return true;
 }
@@ -392,15 +393,14 @@ bool Settings::loadSdSecrets(SettingsData& d) {
     if (!jsonfile::load(_sdSecrets, doc)) return false;
     SettingsData t = d;
     if (!openFromJson(doc, "pass_e", t.wifiPass, sizeof(t.wifiPass)) ||
-        !openFromJson(doc, "key_e", t.apiKey, sizeof(t.apiKey)) ||
-        !openFromJson(doc, "mt5tok_e", t.mt5Token, sizeof(t.mt5Token))) {
+        !openFromJson(doc, "key_e", t.apiKey, sizeof(t.apiKey))) {
         Serial.println("[Settings] secrets.json on this SD card was made by another board - "
                        "set Wi-Fi / API key again (ai-setup.txt or the menu)");
         return false;
     }
     copyStr(d.wifiPass, sizeof(d.wifiPass), t.wifiPass);
     copyStr(d.apiKey, sizeof(d.apiKey), t.apiKey);
-    copyStr(d.mt5Token, sizeof(d.mt5Token), t.mt5Token);
+    if (!doc["mt5tok_e"].isNull()) _legacyFound = true;  // written before v3.4: rewrite without it
     memset(&t, 0, sizeof(t));
     return true;
 }
@@ -429,8 +429,7 @@ void Settings::attachSecretStore(const char* sdRoot) {
         if (sdOk) {  // what is on the card now: no rewrite unless something changes
             copyStr(_sealedPass, sizeof(_sealedPass), d.wifiPass);
             copyStr(_sealedKey, sizeof(_sealedKey), d.apiKey);
-            copyStr(_sealedTok, sizeof(_sealedTok), d.mt5Token);
-            _sealedValid = true;
+            _sealedValid = !_legacyFound;
         } else {
             _sealedValid = false;
         }
@@ -444,8 +443,6 @@ void Settings::attachSecretStore(const char* sdRoot) {
         if (s.ssid[0]) copyStr(d.wifiSsid, sizeof(d.wifiSsid), s.ssid);
         if (s.pass[0] || s.ssid[0]) copyStr(d.wifiPass, sizeof(d.wifiPass), s.pass);  // open network: empty
         if (s.key[0]) copyStr(d.apiKey, sizeof(d.apiKey), s.key);
-        if (s.mt5Url[0]) copyStr(d.mt5Url, sizeof(d.mt5Url), s.mt5Url);
-        if (s.mt5Token[0]) copyStr(d.mt5Token, sizeof(d.mt5Token), s.mt5Token);
         _imported = true;
     }
     memset(&s, 0, sizeof(s));
@@ -471,7 +468,7 @@ void Settings::attachSecretStore(const char* sdRoot) {
         Serial.println("[Settings] SD card not writable - secrets kept in NVS");
         return;
     }
-    save(d);  // non-secret fields (SSID, MT5 URL) + removes pass_e / key_e / mt5tok_e from NVS
+    save(d);  // non-secret fields (SSID, ...) + removes pass_e / key_e from NVS
     _movedFromNvs = fromNvs;
     _nvsHasSecrets = false;
     if (_imported) {

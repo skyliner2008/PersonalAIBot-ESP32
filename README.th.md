@@ -4,13 +4,13 @@
 
 ### ผู้ช่วย AI คุยด้วยเสียงภาษาไทยแบบเรียลไทม์ บนบอร์ด ESP32-S3 จอสัมผัส
 
-**คุยเสียงด้วย Gemini Live** · **ความจำระยะยาวในตัวเครื่อง** · **44 tools พร้อมการ์ดกราฟิกบนจอ** · **แอปคู่หูบน PC**
+**คุยเสียงด้วย Gemini Live** · **ความจำระยะยาวในตัวเครื่อง** · **42 tools พร้อมการ์ดกราฟิกบนจอ** · **แอปคู่หูบน PC**
 
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
-[![Firmware](https://img.shields.io/badge/firmware-v3.3.0-3ddc84)](src/app/AppConfig.h)
-[![Tests](https://img.shields.io/badge/host%20tests-1%2C446%20checks%20passing-3ddc84)](host_tests/)
+[![Firmware](https://img.shields.io/badge/firmware-v3.4.0-3ddc84)](src/app/AppConfig.h)
+[![Tests](https://img.shields.io/badge/host%20tests-1%2C547%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -37,7 +37,6 @@
 | 📊 **การ์ดข้อมูลสด** | อากาศ + PM2.5, ราคาน้ำมันไทย, หุ้น/ทอง/คริปโต/ค่าเงิน, วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, ข่าว, Wikipedia — วาดเป็นกราฟิกขณะ AI พูด |
 | 📻 **วิทยุออนไลน์** | หน้าจอแบบแอปวิทยุ พร้อม 16 สถานีไทยที่ทดสอบแล้ว: เลื่อนแล้วแตะเลือกสถานี ปุ่มเพิ่ม/ลดเสียง และแตะกลางจอเพื่อสั่งงาน AI ได้เหมือนเดิม พูด "เปิดวิทยุลูกทุ่ง" หรือ "สถานีที่ 4" แล้ว AI จะเลือกจากรายการให้ แก้รายการ (เพิ่ม แก้ ลบ เรียงลำดับ ทดสอบ URL) ได้ใน ESP32-AI Studio ถอดรหัส MP3/AAC ด้วย Helix และวิทยุจะเบาลงเหลือ 12% ระหว่างคุย [wiki/12](wiki/12-Internet-Radio.md) |
 | ⏰ **ผู้ช่วยส่วนตัว** | ตั้งเวลา, แจ้งเตือน (ทุกวัน/วันทำงาน/ทุกสัปดาห์), รายการงาน, สมุดโน้ต, แจ้งเตือนราคาด้วยเสียง, เครื่องคิดเลข, แปลงหน่วย, เวลาต่างประเทศ |
-| 📈 **MetaTrader 5** *(ไม่บังคับ)* | ดูพอร์ต MT5 ผ่าน [mt5-core-server](#-metatrader-5-ไม่บังคับ) — การเทรดด้วยเสียง **ปิดเป็นค่าเริ่มต้น** และต้องยืนยันด้วยเสียง 2 ขั้น |
 | 🔁 **ซ่อมตัวเองได้** | สลับโมเดลอัตโนมัติ, หยุดพักเมื่อติดโควตา, ปิด Google Search อัตโนมัติเมื่อโควตาหมด, resume เซสชัน, ต่อ Wi-Fi ใหม่ |
 | 🖥️ **ESP32-AI Studio** | แอป PC โหมดมืด: ตั้งค่าทุกอย่าง, debug log สด, แชท, จอเสมือนแตะได้, อัดเสียงไมค์, รัน tool, build & flash |
 
@@ -78,7 +77,7 @@
    (ถ้าหาบอร์ดไม่เจอ: กด **BOOT** ค้าง → แตะ **RESET** → ปล่อย BOOT แล้วกด Connect ใหม่)
 3. ช่อง Flash Address ใส่ **`0x0`** → เลือกไฟล์ `.bin` → **Program** เสร็จแล้วกด **RESET** ที่บอร์ด
 
-ใช้ command line ก็ได้: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.2.1-factory.bin`
+ใช้ command line ก็ได้: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.4.0-factory.bin`
 
 > ไฟล์ factory เริ่มที่ `0x0` จึง**ล้างค่าตั้งค่าเดิมในบอร์ด**ไปด้วย (ติดตั้งใหม่สะอาด)
 
@@ -156,7 +155,7 @@ python tools/pc_app/esp32_ai_studio.py
 AI เลือกเรียกเองตามบทสนทนา tool ข้อมูลทำงานใน task เบื้องหลังและวาดการ์ดบนจอขณะ AI พูดต่อได้
 
 <details>
-<summary><b>Tools ทั้งหมด 44 ตัว</b> (ค่าเริ่มต้น 42 ตัว — MT5 อีก 2 ตัวจะเปิดเมื่อตั้งค่า server)</summary>
+<summary><b>Tools ทั้งหมด 42 ตัว</b> (36 ตัวถ้าปิดชุด tool การเงิน)</summary>
 
 | กลุ่ม | Tools |
 |---|---|
@@ -166,11 +165,11 @@ AI เลือกเรียกเองตามบทสนทนา tool �
 | **ข้อมูลสด** 🖼️ | `get_weather` (Open-Meteo + PM2.5, ไม่ระบุที่ = ใช้ตำแหน่งจาก IP) · `get_oil_price` (บางจาก) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
 | **เครื่องมือทั่วไป** 🖼️ | `calculate` · `convert_units` (รวม ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (รองรับ DST) · `get_location` · `search_knowledge` (Wikipedia ไทย/อังกฤษ) · `notes` |
 | **ชุดการเงิน** 🖼️ | `market_overview` (+ ดัชนีกลัว/โลภคริปโต) · `market_analysis` (RSI, MACD, EMA, ADX, หลายกรอบเวลา, P/E, ปันผล) · `market_scan` (ขึ้นแรง/ลงแรง/วอลุ่ม/RSI — ไทย/สหรัฐ/คริปโต) · `economic_calendar` (ForexFactory เวลาไทย) · `position_size` · `price_alert` |
-| **MetaTrader 5** | `mt5_account` · `mt5_trade` (ปิดเป็นค่าเริ่มต้น, จำกัด lot, ยืนยัน 2 ขั้น) |
-| **ในตัวโมเดล** | Google Search grounding (ปิดอัตโนมัติ 6 ชม. เมื่อโควตาหมด) |
+| **ค้นเว็บ** | ปิดการค้นเว็บทั่วไปเป็นค่าเริ่มต้น: Google Search grounding ต้องใช้ key ที่มีสิทธิ์ Search (โปรเจกต์ free tier ไม่มี — เปิดด้วย `set search 1` เมื่อใช้ key แบบเสียเงิน) เรื่องล่าสุดใช้ `get_news` (Google News 7 วันล่าสุดก่อน) ข้อเท็จจริงใช้ `search_knowledge` · ทดลอง DuckDuckGo แล้วใช้ไม่ได้ (ไม่มี API ค้นเว็บฟรี และหน้า HTML บล็อกโปรแกรมอัตโนมัติ) |
 
 แหล่งข้อมูลทั้งหมดฟรีและไม่ต้องใช้ key ทุกการเชื่อมต่อ HTTPS ตรวจใบรับรอง
-ข้อมูลตลาดมาจาก scanner สาธารณะของ TradingView (ไม่เป็นทางการ) — **เพื่อประกอบการรับรู้เท่านั้น ไม่ใช่คำแนะนำการลงทุน**
+ผลลัพธ์บอก**ว่าข้อมูลเป็นของเวลาไหน** เพื่อไม่ให้ผู้ช่วยเรียกข้อมูลเก่าว่า "วันนี้": `as_of` ในทุก tool ข้อมูลสด, วันที่ราคาน้ำมันมีผล, ตลาดเปิด/ปิด + เวลาของราคา, เวลาที่ข่าวเผยแพร่
+ข้อมูลตลาดมาจาก scanner สาธารณะของ TradingView (ไม่เป็นทางการ) และเป็นการ**อ่านข้อมูลอย่างเดียว** — ผู้ช่วยส่งคำสั่งซื้อขายหรือเชื่อมต่อโบรกเกอร์ไม่ได้ **เพื่อประกอบการรับรู้เท่านั้น ไม่ใช่คำแนะนำการลงทุน**
 
 รายละเอียดและเวลาที่ใช้ → [wiki/11-Data-Tools-and-Cards.md](wiki/11-Data-Tools-and-Cards.md) · [wiki/09-Assistant-Profiles-and-Tools.md](wiki/09-Assistant-Profiles-and-Tools.md)
 
@@ -206,22 +205,13 @@ flowchart LR
 
 การออกแบบทั้งหมด → [PROJECT_ARCHITECTURE_SPEC.md](PROJECT_ARCHITECTURE_SPEC.md)
 
-## 📈 MetaTrader 5 (ไม่บังคับ)
-
-ใช้ bridge **mt5-core-server** ตัวเดียวกับแอป PersonalAIBot บนมือถือ
-
-1. Studio → ⚙️ ตั้งค่า → **การเงิน / MetaTrader 5** → ใส่ URL ของ server (เช่น `http://192.168.1.10:8000`) และ token
-2. ใช้ `mt5_account` ได้ทันที: balance, equity, กำไร/ขาดทุนลอย, สถานะเปิด, คำสั่งรอ, ประวัติ
-3. การเทรดด้วยเสียง (`mt5_trade`) จะ**ปิด**จนกว่าจะติ๊ก *อนุญาตส่งคำสั่งเทรดด้วยเสียง* (มีกล่องเตือน) และแม้เปิดแล้ว
-   ทุกคำสั่งถูกจำกัดด้วย *lot สูงสุด* AI ต้องอ่านทวนให้ฟัง และส่งจริงเมื่อคุณยืนยันชัดเจนภายใน 2 นาทีเท่านั้น
-
 ## 🖥️ ESP32-AI Studio
 
 | แท็บ | ทำอะไรได้ |
 |---|---|
 | 📜 Debug log | log สดแยกสี, กรองด้วย regex, คัดลอก/บันทึก, ช่องพิมพ์คำสั่งพร้อมประวัติ |
 | 💬 แชท | พิมพ์คุยกับผู้ช่วย ตอบออกลำโพงบอร์ด |
-| ⚙️ ตั้งค่า | สแกน Wi-Fi, API key + ทดสอบ, โปรไฟล์/เสียง/นิสัย, โมเดล, Search, ความไวไมค์, การเงิน & MT5, นำเข้า/ส่งออก (ไม่มีความลับ) |
+| ⚙️ ตั้งค่า | สแกน Wi-Fi, API key + ทดสอบ, โปรไฟล์/เสียง/นิสัย, โมเดล, Search, ความไวไมค์, tool การเงิน, นำเข้า/ส่งออก (ไม่มีความลับ) |
 | 🧰 เครื่องมือ | อัดเสียงที่ AI ได้ยิน (กราฟ + WAV), ทดสอบลำโพง, รัน tool ของ AI ทุกตัว, อารมณ์ดวงตา, เครื่องมือความจำ |
 | 🖥️ หน้าจอ | ภาพจอสด — คลิก = แตะ, ลาก = เลื่อน, คลิกขวา = กดค้าง |
 | 📊 สถานะ | เซสชัน, โมเดล & เวลาพัก, กราฟโทเคน/นาที, RAM, ที่เก็บข้อมูล, แบตเตอรี่ |
@@ -238,12 +228,15 @@ flowchart LR
 host_tests\run_tests.bat
 ```
 
-29 ชุดทดสอบ · 1,446 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
+31 ชุดทดสอบ · 1,547 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
+Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ หรือ clang++)
 
 ## 📁 โครงสร้างโปรเจกต์
 
 ```text
-src/agent      AgentController (สมอง), AgentTools, WebTools + WebToolsExtra (tools ข้อมูล), Personas, Scheduler, TaskList
+src/agent      AgentController (สมอง: setup/loop) + AgentSession (Wi-Fi, Live session, fallback, tool calls),
+               AgentMic (VAD/AGC), AgentRoutines (หลับ, การแจ้งเตือน, สรุปความจำ), AgentDevice (สถานะ, อุปกรณ์, วิทยุ),
+               AgentTools, WebTools + WebToolsExtra (tools ข้อมูล), Personas, Scheduler, TaskList
 src/ai         GeminiLiveClient (task geminiIO), TextModelClient, ModelFallback, root CA
 src/ui         ดวงตา, FaceScreen, CardScreen (การ์ดข้อมูล), เมนู, คีย์บอร์ดไทย
 src/audio      AudioManager (I2S), ไดรเวอร์ ES8311, resampler
@@ -270,7 +263,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 
 ## 🔒 ความปลอดภัย & ความเป็นส่วนตัว
 
-**รหัส Wi-Fi, API key และ MT5 token เก็บอยู่ที่ไหน**
+**รหัส Wi-Fi และ API key เก็บอยู่ที่ไหน**
 
 | ที่ | มีความลับไหม |
 |---|---|
@@ -280,17 +273,17 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 | การ์ด SD — `agent/secrets.json` (ถ้าไม่ได้ใส่การ์ด: NVS ในแฟลชบอร์ด) | **มี แต่เข้ารหัส** AES-256-GCM ด้วยกุญแจที่คำนวณจาก MAC + eFuse unique ID ของชิปตัวนั้น (`src/app/SecretBox.*`) — ไฟล์เปิดได้เฉพาะบอร์ดที่สร้าง (ย้ายการ์ดไปบอร์ดอื่น = ตั้งค่าใหม่ด้วย `ai-setup.txt`) เปิดการ์ดบนคอมพิวเตอร์จะไม่เห็นรหัส และ `ai-setup.txt` ถูกเขียนทับแล้วลบทันทีหลังอ่าน สำเนาแบบข้อความธรรมดาเดิมถูกล้างอัตโนมัติครั้งเดียว (รวมสำเนาที่ไดรเวอร์ Wi-Fi เก็บเอง ซึ่งปิดแล้วด้วย `WiFi.persistent(false)`) |
 
 - ไม่ใช่ flash encryption เต็มรูปแบบ: คนที่ได้ทั้งบอร์ด**และ**เฟิร์มแวร์นี้ไปยังคำนวณกุญแจได้ ควรใช้ API key แยกเฉพาะบอร์ดนี้ และเปลี่ยน key ถ้าบอร์ดหาย
-- เฟิร์มแวร์และ Studio **ไม่เคยพิมพ์** API key, รหัส Wi-Fi หรือ MT5 token ออกมา — `config` แสดงแค่ตัวย่อที่ซ่อนแล้วและ `secretsSealed` ไฟล์ตั้งค่าที่ส่งออกไม่มีความลับ ไฟล์เสียงที่อัด (`recordings/`) ถูก git-ignore
+- เฟิร์มแวร์และ Studio **ไม่เคยพิมพ์** API key หรือรหัส Wi-Fi ออกมา — `config` แสดงแค่ตัวย่อที่ซ่อนแล้วและ `secretsSealed` ไฟล์ตั้งค่าที่ส่งออกไม่มีความลับ ไฟล์เสียงที่อัด (`recordings/`) ถูก git-ignore
 - ขณะเปิดไมค์ เสียงจะถูกส่งไปที่ Gemini API ของ Google ส่วนความจำและโน้ตอยู่ใน SD/แฟลชของบอร์ด
-- การเทรดด้วยเสียงปิดเป็นค่าเริ่มต้นและต้องยืนยันทุกครั้ง ผลจากการเทรดเป็นความรับผิดชอบของผู้ใช้
+- Gemini API key ส่งใน header `x-goog-api-key` (ไม่อยู่ใน URL) และ tools ข้อมูลใช้เฉพาะ HTTPS ที่ตรวจใบรับรอง — `http://` ธรรมดาถูกปฏิเสธ
 
 ## 🧑‍💻 สำหรับนักพัฒนา
 
 - **Fork & build:** `pio run` build ได้จาก clone ใหม่โดยไม่ต้องมี `secrets.h` — ค่าตั้งค่าอยู่ใน NVS (`src/app/Settings.*`) key ของคุณจึงไม่เข้าไปอยู่ในซอร์สโค้ด
 - **เพิ่ม tool:** ประกาศใน `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`) tool ที่ใช้เน็ตใส่ใน `src/agent/WebToolsExtra.cpp` และวาด `CardData` (ดู [wiki/11](wiki/11-Data-Tools-and-Cards.md))
 - **ทดสอบไม่ต้องมีบอร์ด:** `host_tests\run_tests.bat` — บนบอร์ดเรียก tool ทุกตัวได้จากแท็บ 🧰 ใน Studio หรือ serial (`tool <name> {json}`)
-- **ออก Release:** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py` สคริปต์จะ build ไฟล์ factory (`tools/make_release.py`) สร้าง Release แบบร่าง แนบ `.bin` + `.sha256` เผยแพร่ แล้วดาวน์โหลดกลับมาเทียบ sha256 — Release ของ repo นี้เป็นแบบ **immutable** เผยแพร่แล้วแก้ไฟล์หรือใช้ชื่อ tag ซ้ำไม่ได้ ทุกครั้งต้องใช้เลขเวอร์ชันใหม่ (`--dry-run` = ตรวจอย่างเดียว)
-- **CI:** [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml) ทำแบบเดียวกันบน GitHub Actions แต่ตอนนี้ตั้งเป็นกดรันเองเท่านั้น (*Actions → Firmware → Run workflow*) — `tools/make_release.py` ไม่ยอมทำงานถ้า `include/secrets.h` มีค่าจริง และสแกนไฟล์หาสิ่งที่หน้าตาเหมือน API key
+- **ออก Release:** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py` สคริปต์จะ build ไฟล์ factory (`tools/make_release.py`) สร้าง Release แบบร่าง แนบ `.bin` + `.sha256` เผยแพร่ แล้วดาวน์โหลดกลับมาเทียบ sha256 โดยรัน host tests ก่อนเผยแพร่เสมอ (`--skip-tests` ใช้เฉพาะเครื่องที่ไม่มี compiler) — Release ของ repo นี้เป็นแบบ **immutable** เผยแพร่แล้วแก้ไฟล์หรือใช้ชื่อ tag ซ้ำไม่ได้ ทุกครั้งต้องใช้เลขเวอร์ชันใหม่ (`--dry-run` = ตรวจอย่างเดียว)
+- **CI:** [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml) ทำแบบเดียวกันบน GitHub Actions แต่ตอนนี้ตั้งเป็นกดรันเองเท่านั้น (*Actions → Firmware → Run workflow*) และ job ออก release จะรอ job host-tests ผ่านก่อน — `tools/make_release.py` ไม่ยอมทำงานถ้า `include/secrets.h` มีค่าจริง และสแกนไฟล์หาสิ่งที่หน้าตาเหมือน API key
 - **เอกสาร:** โฟลเดอร์ `wiki/` เป็น Obsidian vault — ปัญหาที่แก้ได้ช่วยบันทึกใน [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md)
 
 ยินดีรับ Pull request และ Issue

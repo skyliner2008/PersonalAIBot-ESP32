@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   firmware:
+    needs: host-tests  # never publish an image whose tests fail
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

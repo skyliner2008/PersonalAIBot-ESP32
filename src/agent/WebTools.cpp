@@ -13,6 +13,8 @@
 #include <WiFiClientSecure.h>
 #include <math.h>
 
+#include <algorithm>
+
 #include "../ai/GoogleRootCA.h"
 #include "../ui/CardScreen.h"
 #include "../util/JsonAlloc.h"
@@ -28,7 +30,7 @@ const char* const kWebTools[] = {"get_weather",     "get_oil_price",   "get_mark
                                  "get_news",        "calculate",       "convert_units",     "get_world_time",
                                  "get_location",    "search_knowledge", "market_overview",  "market_analysis",
                                  "market_scan",     "economic_calendar", "position_size",   "notes",
-                                 "price_alert",     "mt5_account",     "mt5_trade"};
+                                 "price_alert"};
 
 constexpr uint32_t kAlertCheckMs = 120000;
 
@@ -131,7 +133,8 @@ void runWeather(JsonObjectConst args, JsonDocument& out, CardData& card) {
 
     // PM2.5 (separate API; the card still works without it)
     snprintf(url, sizeof(url),
-             "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=%.4f&longitude=%.4f&current=pm2_5,us_aqi",
+             "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=%.4f&longitude=%.4f&current=pm2_5,us_aqi_pm2_5"
+             "&timezone=Asia%%2FBangkok",
              lat, lon);
     String aq;
     if (httpGet(url, aq) == 200) {
@@ -139,7 +142,8 @@ void runWeather(JsonObjectConst args, JsonDocument& out, CardData& card) {
         if (!deserializeJson(a, aq)) {
             const float pm = a["current"]["pm2_5"] | -1.0f;
             w.pm25 = pm < 0 ? -1 : (int16_t)lroundf(pm);
-            w.aqi = a["current"]["us_aqi"] | -1;
+            // us_aqi is the worst of all pollutants (often a modelled ozone peak: 201 while PM2.5 is 25 ug/m3)
+            w.aqi = a["current"]["us_aqi_pm2_5"] | -1;
         }
     }
 
@@ -157,7 +161,7 @@ void runWeather(JsonObjectConst args, JsonDocument& out, CardData& card) {
     now["rain_mm"] = w.rain;
     if (w.pm25 >= 0) {
         res["pm25"] = w.pm25;
-        res["us_aqi"] = w.aqi;
+        res["us_aqi_pm25"] = w.aqi;
     }
     JsonArray fc = res["forecast"].to<JsonArray>();
     for (size_t i = 0; i < times.size() && i < 5; i++) {
@@ -202,29 +206,70 @@ void runOil(JsonDocument& out, CardData& card) {
         setError(out, "ข้อมูลราคาน้ำมันอ่านไม่ได้");
         return;
     }
+    // "PriceToday" is the price in force now; "PriceYesterday" is the price BEFORE THE LAST ADJUSTMENT
+    // (which may be a week ago), not yesterday's. When it took effect: "ราคามีผล ณ วันที่ 9 ต.ค. 69
+    // เวลา 05.00 น." (OilRemark2), else the announcement date (OilPriceDate) + 1 day.
+    const char* remark = root["OilRemark2"] | "";
+    datadates::Ymd eff;
+    bool haveEff = datadates::parseThaiDate(remark, eff);
+    if (!haveEff && datadates::parseSlashDate(root["OilPriceDate"] | "", nullptr, eff)) {
+        const timefmt::Civil c = timefmt::toCivil((uint32_t)((eff.day() + 1) * 86400), 0);
+        eff.y = c.year, eff.m = c.month, eff.d = c.day, eff.hh = 5, eff.mm = 0;
+        haveEff = true;
+    }
+    const uint32_t now = epochNow();
+    const int64_t today = now ? timefmt::localDay(now, TIME_UTC_OFFSET_SEC) : 0;
+    const int daysSince = haveEff && now ? (int)(today - eff.day()) : -1;
+
     card.kind = CardData::Oil;
-    copyStr(card.title, sizeof(card.title), "ราคาน้ำมันวันนี้ (บางจาก)");
-    copyStr(card.subtitle, sizeof(card.subtitle), root["OilRemark2"] | "");
+    copyStr(card.title, sizeof(card.title), "ราคาน้ำมัน (บางจาก)");
+    if (haveEff) {  // the remark itself is longer than the subtitle
+        snprintf(card.subtitle, sizeof(card.subtitle), "มีผล %d %s %02d.%02d น.%s", eff.d, datadates::thaiMonthAbbr(eff.m),
+                 eff.hh, eff.mm, daysSince > 0 ? " • ส่วนต่าง=ตอนปรับ" : "");
+    } else {
+        copyStr(card.subtitle, sizeof(card.subtitle), remark);
+    }
     JsonObject res = out["result"].to<JsonObject>();
     res["source"] = "บางจาก (ราคาขายปลีก กทม.)";
-    res["effective"] = root["OilRemark2"] | "";
+    res["effective"] = remark;
+    if (haveEff) {
+        char buf[20];
+        snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d", eff.y, eff.m, eff.d, eff.hh, eff.mm);
+        res["price_effective_since"] = buf;
+    }
+    if (daysSince >= 0) res["days_since_last_change"] = daysSince;
     JsonArray items = res["prices_baht_per_litre"].to<JsonArray>();
+    bool tomorrowAny = false;
     for (JsonObjectConst o : list.as<JsonArrayConst>()) {
         if (card.rows >= CardData::kMaxRows) break;
         CardData::Row& r = card.row[card.rows++];
         copyStr(r.name, sizeof(r.name), o["OilName"] | "");
         r.value = o["PriceToday"] | 0.0f;
-        // PriceDifYesterday is not reliable (0.00 while yesterday 42.19 -> today 42.94): compute it
-        const float yesterday = o["PriceYesterday"] | r.value;
-        r.change = roundf((r.value - yesterday) * 100.0f) / 100.0f;
+        const float before = o["PriceYesterday"] | r.value;  // PriceDif* fields are always 0.00: compute it
+        r.change = roundf((r.value - before) * 100.0f) / 100.0f;
         r.next = o["PriceTomorrow"] | 0.0f;
         JsonObject it = items.add<JsonObject>();
         it["name"] = r.name;
-        it["today"] = r.value;
-        it["vs_yesterday"] = r.change;
-        if (r.next > 0 && fabsf(r.next - r.value) > 0.001f) it["tomorrow"] = r.next;
+        it["price_now"] = r.value;
+        it["change_at_last_adjustment"] = r.change;
+        if (r.next > 0 && fabsf(r.next - r.value) > 0.001f) {
+            it["tomorrow"] = r.next;
+            tomorrowAny = true;
+        }
     }
-    res["note"] = "ตารางราคาแสดงบนจอแล้ว ตอบเฉพาะชนิดที่ผู้ใช้ถาม หรือสรุปการขึ้นลง";
+    String note = "ตารางราคาแสดงบนจอแล้ว ตอบเฉพาะชนิดที่ผู้ใช้ถาม price_now คือราคาที่ใช้อยู่ตอนนี้ ";
+    if (daysSince > 0) {
+        char since[48];  // daysSince > 0 implies haveEff
+        snprintf(since, sizeof(since), "%d %s %02d.%02d น.", eff.d, datadates::thaiMonthAbbr(eff.m), eff.hh, eff.mm);
+        note += "ราคานี้ใช้มาตั้งแต่ ";
+        note += since;
+        note += " (" + String(daysSince) + " วันก่อน) change_at_last_adjustment คือส่วนต่างตอนปรับราคาครั้งนั้น "
+                "ไม่ใช่การเปลี่ยนแปลงเมื่อวานหรือวันนี้ ";
+    } else if (daysSince == 0) {
+        note += "ราคาเพิ่งปรับวันนี้ change_at_last_adjustment คือส่วนต่างจากราคาเดิม ";
+    }
+    if (tomorrowAny) note += "มีประกาศราคาพรุ่งนี้ (tomorrow) แล้ว";
+    res["note"] = note;
 }
 
 // ---------------------------------------------------------------- TradingView
@@ -260,7 +305,21 @@ const Alias* findAlias(const String& s) {
 }
 
 constexpr char kFields[] =
-    "description,close,change,change_abs,high,low,open,Perf.W,Perf.1M,Perf.3M,Perf.Y,RSI,Recommend.All,currency";
+    "description,close,change,change_abs,high,low,open,Perf.W,Perf.1M,Perf.3M,Perf.Y,RSI,Recommend.All,currency,"
+    "current_session,last_bar_update_time,update_mode";
+
+// When the price is from: market open or closed (weekend / night: the last close), last update, delay
+void addFreshness(const JsonDocument& q, JsonObject res) {
+    const char* session = q["current_session"] | "";
+    if (*session) {
+        res["market_open"] = !strcmp(session, "market");
+        if (strcmp(session, "market") != 0) res["session"] = session;  // out_of_session / pre_market / post_market
+    }
+    const uint32_t last = q["last_bar_update_time"] | 0u;
+    if (last) res["price_time"] = thaiDateTime(last);
+    const char* mode = q["update_mode"] | "";
+    if (!strncmp(mode, "delayed_streaming_", 18)) res["delayed_min"] = atoi(mode + 18) / 60;
+}
 
 bool fetchQuote(const String& symbol, JsonDocument& q) {
     String body;
@@ -322,6 +381,7 @@ bool quoteOne(String token, CardData::Row& row, JsonObject res) {
         res["perf_1y_pct"] = row.perf[3];
         if (row.rsi >= 0) res["rsi"] = row.rsi;
         if (row.rating > -2) res["tv_rating"] = row.rating;  // -1 strong sell .. +1 strong buy
+        addFreshness(q, res);
         return true;
     }
     res["symbol"] = token;
@@ -358,7 +418,8 @@ void runQuote(JsonObjectConst args, JsonDocument& out, CardData& card) {
         copyStr(card.title, sizeof(card.title), "ราคาตลาด");
         copyStr(card.subtitle, sizeof(card.subtitle), "TradingView • เปลี่ยนแปลงวันนี้");
     }
-    out["result"]["note"] = "กราฟแสดงบนจอแล้ว พูดสรุปราคาและการเปลี่ยนแปลงสั้นๆ ไม่ใช่คำแนะนำการลงทุน";
+    out["result"]["note"] = "กราฟแสดงบนจอแล้ว พูดสรุปราคาและการเปลี่ยนแปลงสั้นๆ ไม่ใช่คำแนะนำการลงทุน "
+                            "ถ้า market_open=false ให้บอกว่าเป็นราคาปิดล่าสุด (price_time) ไม่ใช่ราคาตอนนี้";
 }
 
 void runFx(JsonObjectConst args, JsonDocument& out, CardData& card) {
@@ -387,6 +448,7 @@ void runFx(JsonObjectConst args, JsonDocument& out, CardData& card) {
     res["to"] = to;
     res["rate"] = rate;
     res["converted"] = result;
+    addFreshness(q, res);
 
     card.kind = CardData::Quotes;
     card.rows = 1;
@@ -416,48 +478,86 @@ void decodeEntities(String& s) {
     s.replace("]]>", "");
 }
 
-void runNews(JsonObjectConst args, JsonDocument& out, CardData& card) {
-    const char* topic = args["topic"] | "";
-    String url = *topic ? String("https://news.google.com/rss/search?hl=th&gl=TH&ceid=TH:th&q=") + urlEncode(topic)
-                        : String("https://news.google.com/rss?hl=th&gl=TH&ceid=TH:th");
-    String body;
-    if (httpGet(url, body) != 200) {
-        setError(out, "ดึงข่าวไม่สำเร็จ");
-        return;
-    }
-    card.kind = CardData::News;
-    snprintf(card.title, sizeof(card.title), "%s%s", *topic ? "ข่าว: " : "ข่าวล่าสุด", topic);
-    copyStr(card.subtitle, sizeof(card.subtitle), "Google News");
-    JsonArray arr = out["result"]["headlines"].to<JsonArray>();
+struct NewsItem {
+    String title, source;
+    uint32_t published;
+};
+
+// Google News RSS: up to `max` items (title split from " - source", pubDate -> epoch)
+void parseNews(const String& body, std::vector<NewsItem>& items, size_t max) {
     int pos = 0;
-    while (card.rows < CardData::kMaxRows) {
+    while (items.size() < max) {
         const int item = body.indexOf("<item>", pos);
         if (item < 0) break;
         const int t0 = body.indexOf("<title>", item);
         const int t1 = body.indexOf("</title>", t0);
         if (t0 < 0 || t1 < 0) break;
         pos = t1;
-        String title = body.substring(t0 + 7, t1);
-        decodeEntities(title);
-        String source;
-        const int dash = title.lastIndexOf(" - ");
-        if (dash > 0) {
-            source = title.substring(dash + 3);
-            title = title.substring(0, dash);
+        const int next = body.indexOf("<item>", t1);
+        const int d0 = body.indexOf("<pubDate>", t1);
+        const int d1 = d0 >= 0 ? body.indexOf("</pubDate>", d0) : -1;
+        NewsItem n{body.substring(t0 + 7, t1), String(), 0};
+        if (d0 >= 0 && d1 > d0 && (next < 0 || d0 < next)) {
+            n.published = datadates::parseRfc822(body.substring(d0 + 9, d1).c_str());
         }
-        CardData::Row& r = card.row[card.rows++];
-        copyStr(r.name, sizeof(r.name), title.c_str());
-        copyStr(r.extra, sizeof(r.extra), source.c_str());
-        JsonObject h = arr.add<JsonObject>();
-        h["title"] = title;
-        h["source"] = source;
+        decodeEntities(n.title);
+        const int dash = n.title.lastIndexOf(" - ");
+        if (dash > 0) {
+            n.source = n.title.substring(dash + 3);
+            n.title = n.title.substring(0, dash);
+        }
+        items.push_back(n);
     }
-    if (!card.rows) {
+}
+
+void runNews(JsonObjectConst args, JsonDocument& out, CardData& card) {
+    const char* topic = args["topic"] | "";
+    // A topic search is ordered by relevance and reaches back months ("latest Man Utd result" gave a
+    // February match): ask for the last 7 days first (Google News "when:7d"), all time only if empty.
+    std::vector<NewsItem> items;
+    bool recent = *topic != 0;
+    for (int attempt = 0; attempt < 2 && items.empty(); attempt++) {
+        String url = *topic ? String("https://news.google.com/rss/search?hl=th&gl=TH&ceid=TH:th&q=") +
+                                  urlEncode((String(topic) + (recent ? " when:7d" : "")).c_str())
+                            : String("https://news.google.com/rss?hl=th&gl=TH&ceid=TH:th");
+        String body;
+        if (httpGet(url, body) != 200) {
+            setError(out, "ดึงข่าวไม่สำเร็จ");
+            return;
+        }
+        parseNews(body, items, CardData::kMaxRows);  // the most relevant ones...
+        if (!*topic) break;
+        if (items.empty()) recent = false;
+    }
+    if (items.empty()) {
         setError(out, "ไม่พบข่าว");
-        card.kind = CardData::None;
         return;
     }
-    out["result"]["note"] = "หัวข้อข่าวแสดงบนจอแล้ว เล่าสรุป 2-3 ข่าวสั้นๆ";
+    if (*topic) {  // ...newest first (sorting all 100 by date let generic newer news push the topic out)
+        std::stable_sort(items.begin(), items.end(),
+                         [](const NewsItem& a, const NewsItem& b) { return a.published > b.published; });
+    }
+    card.kind = CardData::News;
+    snprintf(card.title, sizeof(card.title), "%s%s", *topic ? "ข่าว: " : "ข่าวล่าสุด", topic);
+    copyStr(card.subtitle, sizeof(card.subtitle), *topic && recent ? "Google News • 7 วันล่าสุด" : "Google News");
+    JsonArray arr = out["result"]["headlines"].to<JsonArray>();
+    const uint32_t now = epochNow();
+    for (const NewsItem& n : items) {
+        if (card.rows >= CardData::kMaxRows) break;
+        CardData::Row& r = card.row[card.rows++];
+        copyStr(r.name, sizeof(r.name), n.title.c_str());
+        copyStr(r.extra, sizeof(r.extra), n.source.c_str());
+        JsonObject h = arr.add<JsonObject>();
+        h["title"] = n.title;
+        h["source"] = n.source;
+        if (n.published) {
+            h["published"] = thaiDateTime(n.published);
+            if (now > n.published) h["age_hours"] = (now - n.published) / 3600;
+        }
+    }
+    if (*topic) out["result"]["range"] = recent ? "7 วันล่าสุด (ใหม่สุดก่อน)" : "ทุกช่วงเวลา (ไม่พบข่าวใน 7 วัน)";
+    out["result"]["note"] = "หัวข้อข่าวแสดงบนจอแล้ว เล่าสรุป 2-3 ข่าวสั้นๆ ข่าวที่ age_hours มากกว่า 24 "
+                            "ให้บอกวันที่ (published) ด้วย อย่าเล่าเหมือนเป็นข่าววันนี้";
 }
 
 }  // namespace
@@ -573,10 +673,13 @@ void WebTools::loop() {
         else if (!strcmp(j.name, "position_size")) runPositionSize(a, out, card);
         else if (!strcmp(j.name, "notes")) runNotes(env, a, out, card);
         else if (!strcmp(j.name, "price_alert")) runPriceAlert(env, a, out, card);
-        else if (!strcmp(j.name, "mt5_account")) runMt5Account(a, out, card);
-        else if (!strcmp(j.name, "mt5_trade")) runMt5Trade(a, out, card);
         else setError(out, "unknown tool");
         if (out.isNull() || out.size() == 0) setError(out, "no data");
+        // live data: "now" for the model (its prompt date is from the session start, or missing if
+        // the clock was not synced yet), so "today" / "yesterday" in its answer match the data
+        const bool pure = !strcmp(j.name, "calculate") || !strcmp(j.name, "convert_units") ||
+                          !strcmp(j.name, "position_size") || !strcmp(j.name, "notes");
+        if (!pure && out["result"].is<JsonObject>() && epochNow()) out["result"]["as_of"] = thaiDateTime(epochNow());
         if (card.kind != CardData::None && out["error"].isNull()) {
             gCard.show(card, 30000);
         }

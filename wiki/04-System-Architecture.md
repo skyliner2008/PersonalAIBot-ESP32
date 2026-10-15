@@ -139,8 +139,14 @@ src/
 ├── app/AppConfig.h          # ค่าคงที่: เสียง, VAD, งบโทเคน, ความจำ
 ├── app/Settings.*           # การตั้งค่าใน NVS (Wi-Fi, API key, ชื่อ, เสียง, นิสัย, โมเดล, calibration)
 ├── agent/
-│   ├── AgentController.*    # สมองของ agent (GeminiListener + DeviceOps + UiHost)
-│   ├── AgentTools.*         # 20 function declarations + dispatch
+│   ├── AgentController.*    # สมองของ agent (GeminiListener + DeviceOps + UiHost): setup, settings, main loop
+│   ├── AgentSession.cpp     #   └ Wi-Fi, Live session, setup message, model fallback, tool calls, ผล web tools
+│   ├── AgentMic.cpp         #   └ mic gate, local VAD + AGC, wake detection
+│   ├── AgentRoutines.cpp    #   └ หลับ/ตื่น/โหมดนาฬิกา, reminders, consolidation, episodic log
+│   ├── AgentDevice.cpp      #   └ สถานะ UI, DeviceOps (สั่งเครื่องด้วยเสียง), วิทยุ, diagnostics
+│   ├── AgentInternal.h      #   └ ค่าคงที่/helper ที่ไฟล์ Agent*.cpp ใช้ร่วมกัน
+│   ├── AgentTools.*         # 42 function declarations + dispatch
+│   ├── WebTools*.*          # tools ข้อมูล (HTTPS เท่านั้น) ใน task webTools
 │   ├── Personas.*           # 30 เสียง, 7 นิสัย, 8 โปรไฟล์, 8 สีตา
 │   ├── Scheduler.* / TaskList.*  # timers & reminders / to-do
 │   └── Consolidation.*      # prompt/schema/parser/rate-limit สำหรับ Flash-Lite

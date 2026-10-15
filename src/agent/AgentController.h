@@ -35,6 +35,7 @@
 #include "AgentTools.h"
 #include "Consolidation.h"
 #include "Scheduler.h"
+#include "SearchGate.h"
 #include "TaskList.h"
 #include "WebTools.h"
 
@@ -148,7 +149,8 @@ private:
         CMD_SEARCH_RETRY,
         CMD_POWER_SAVE
     };
-    enum class SetupMode : uint8_t { Full, NoSearch, Minimal };  // diagnostic setup variants
+    // diagnostic setup variants; SearchOnly = Minimal + googleSearch (is Search itself refused? T048)
+    enum class SetupMode : uint8_t { Full, NoSearch, Minimal, SearchOnly };
 
     struct ToolRequest {
         const char* name;
@@ -223,8 +225,7 @@ private:
     bool _searchInSetup = false;     // the current/last setup offered googleSearch
     bool _vadTuningInSetup = false;  // ... and realtimeInputConfig.automaticActivityDetection
     bool _vadTuningRejected = false; // a model refused it: leave it out from now on (until reboot)
-    uint32_t _searchOffUntil = 0;    // monoSec: Google Search quota used up, sessions go without it
-    static constexpr uint32_t kSearchOffSec = 6 * 3600;
+    search::Gate _search;            // Google Search grounding: suspect / confirmed quota (SearchGate.h)
 
     // Conversation
     volatile bool _muted = false;
@@ -329,6 +330,8 @@ private:
     void fillDiagnostics(JsonObject out);
     void startApiTest();
     bool searchAvailable() const;
+    void handleSearchGate();                                       // expiry / late save of the Search pause
+    static void saveSearchState(uint32_t epoch, uint8_t strikes);  // NVS "rt": srchoff, srchn (0 = remove)
     void handleProbeResult(int status, const PsString* report);
     void flushUserTurn();
     void flushAgentTurn(bool interrupted);

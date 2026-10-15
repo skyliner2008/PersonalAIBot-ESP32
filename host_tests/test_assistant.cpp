@@ -260,7 +260,7 @@ TEST(tool_declarations_per_model) {
     size_t count;
     bool search;
     const size_t bytes = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)42);  // 25 core (incl. configure_device, rest_screen, mute_microphone, play_radio, stop_radio) + 5 live data + 6 utilities + 6 finance (MT5 off)
+    CHECK_EQ(count, (size_t)42);  // 25 core (incl. configure_device, rest_screen, mute_microphone, play_radio, stop_radio) + 5 live data + 6 utilities + 6 finance
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
@@ -278,17 +278,20 @@ TEST(tool_declarations_per_model) {
     CHECK(bytes < 15000);  // billed every turn: keep the declarations compact
     printf("    tool declarations: %u bytes JSON\n", (unsigned)bytes);
 
-    // optional packs: finance off -> 31; MT5 read-only -> +1; trading only when enabled -> +1
-    rig.tools.setPacks(false, false, false);
+    // optional finance pack off -> 36 (no trading tools exist at all)
+    rig.tools.setFinancePack(false);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
     CHECK_EQ(count, (size_t)36);
-    rig.tools.setPacks(true, true, false);
+    rig.tools.setFinancePack(true);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)43);
-    rig.tools.setPacks(true, true, true);
-    behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)44);
-    rig.tools.setPacks(true, false, false);
+    CHECK_EQ(count, (size_t)42);
+    {
+        JsonDocument doc;
+        rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
+        for (JsonObjectConst d : doc[0]["functionDeclarations"].as<JsonArrayConst>()) {
+            CHECK(std::string(d["name"] | "").rfind("mt5", 0) != 0);
+        }
+    }
 
     behaviors(ToolBehavior::NonBlocking, false, expr, recall, count, search);
     CHECK(recall == "NON_BLOCKING" && expr == "NON_BLOCKING" && !search);
@@ -656,8 +659,8 @@ TEST(sd_setup_file) {
         fputs("  wifi_ssid = \"Home Net 2.4G\"  \r\n", f);
         fputs("WIFI_PASSWORD=p@ss=word#1\r\n", f);
         fputs("GEMINI_API_KEY=your-gemini-api-key-here\r\n", f);  // template value -> ignored
-        fputs("; MT5_URL=http://ignored\n", f);
-        fputs("MT5_TOKEN='tok 123'\n", f);
+        fputs("; a comment=ignored\n", f);
+        fputs("MT5_TOKEN='tok 123'\n", f);  // key from older templates: MT5 support was removed -> ignored
         fputs("UNKNOWN=x\n", f);
         fclose(f);
     }
@@ -666,8 +669,13 @@ TEST(sd_setup_file) {
     CHECK(std::string(v.ssid) == "Home Net 2.4G");
     CHECK(std::string(v.pass) == "p@ss=word#1");  // only the first '=' splits; '#' inside a value is kept
     CHECK(v.key[0] == '\0');
-    CHECK(v.mt5Url[0] == '\0');
-    CHECK(std::string(v.mt5Token) == "tok 123");
+    {
+        char line[] = "gemini_api_key = 'AIza key 123'";  // single quotes are stripped
+        setupfile::Values q;
+        CHECK(setupfile::parseLine(line, q) && std::string(q.key) == "AIza key 123");
+        char legacy[] = "MT5_URL=http://192.168.1.10:8000";
+        CHECK(!setupfile::parseLine(legacy, q));
+    }
 
     setupfile::wipe(path.c_str());
     FILE* gone = fopen(path.c_str(), "rb");
@@ -726,4 +734,109 @@ TEST(radio_resampler) {
     const double up = toneRms(22050, 1, 1000, &n);      // mono 22.05 kHz is upsampled
     CHECK(n >= 23990 && n <= 24010);
     CHECK(up > 6500 && up < 7500);
+}
+
+#include "agent/SearchGate.h"
+
+TEST(search_gate) {
+    using search::Gate;
+    const uint32_t E = 1800000000;  // a synced clock
+    uint32_t ep = 99, pause = 0;
+    uint8_t n = 0;
+
+    // Reboot left a session open: quota with Search, quota without Search too -> not Search
+    Gate g;
+    CHECK(g.available(10, E));
+    CHECK(g.onLiveQuota(10));            // first time: log it
+    CHECK(!g.onLiveQuota(12));           // still suspect: no second log
+    CHECK(!g.available(12, E));          // the retry goes without Search
+    CHECK(g.onQuotaWithoutSearch(14));   // ... and fails the same way
+    CHECK(g.available(15, E) && !g.confirmed(15, E));
+    CHECK(!g.onQuotaWithoutSearch(16));  // not suspect any more: nothing to say
+    CHECK(!g.onReadyWithoutSearch(17, E, ep, n, pause));  // a later plain session confirms nothing
+
+    // No Search allowance: quota with Search, fine without -> confirmed 6 h, saved
+    CHECK(g.onLiveQuota(30));
+    CHECK(g.onReadyWithoutSearch(32, E, ep, n, pause));
+    CHECK(pause == Gate::kConfirmedSec && ep == E + Gate::kConfirmedSec && n == 1);
+    CHECK(!g.available(33, E + 1) && g.confirmed(33, E + 1));
+    CHECK_EQ(g.secondsLeft(32, E), Gate::kConfirmedSec);
+
+    // ... survives a reboot: before SNTP it stays off, after the deadline it comes back
+    Gate b;
+    b.restore(ep, n);
+    CHECK(!b.available(1, 0));               // clock unknown: keep it off
+    CHECK(!b.available(1, E + 60));          // still inside the pause
+    CHECK(!b.savedExpired(E + 60));
+    CHECK(b.savedExpired(ep) && b.available(1, ep));
+    b.clearSaved();
+    CHECK(b.available(1, 0));
+
+    // ... and when it fails again the pause doubles: 12 h, 24 h, 48 h, 48 h
+    for (uint32_t want : {2u, 4u, 8u, 8u}) {
+        b.onLiveQuota(100);
+        CHECK(b.onReadyWithoutSearch(101, E, ep, n, pause));
+        CHECK_EQ(pause, Gate::kConfirmedSec * want);
+        b.clearSaved();
+    }
+    CHECK(n == 5);
+    // a session WITH Search that works: the streak starts over (and the saved state is cleared)
+    CHECK(b.onReadyWithSearch());
+    CHECK(b.strikes() == 0 && b.available(102, E));
+    b.onLiveQuota(200);
+    CHECK(b.onReadyWithoutSearch(201, E, ep, n, pause) && pause == Gate::kConfirmedSec);
+
+    // A suspicion nothing settles expires by itself
+    Gate u;
+    u.onLiveQuota(100);
+    CHECK(!u.available(100 + Gate::kSuspectSec - 1, E));
+    CHECK(u.available(100 + Gate::kSuspectSec, E));
+
+    // Confirmed before the clock synced: saved once the clock is known
+    Gate c;
+    c.onLiveQuota(5);
+    CHECK(c.onReadyWithoutSearch(5, 0, ep, n, pause) && ep == 0);  // nothing to save yet
+    CHECK(!c.available(6, 0));
+    uint32_t persist = 0;
+    CHECK(!c.needsSave(6, 0, persist));
+    CHECK(c.needsSave(105, E, persist) && persist == E + Gate::kConfirmedSec - 100);
+    CHECK(!c.needsSave(106, E + 1, persist));  // only once
+
+    // "Try Search again" clears everything, and says whether flash must be cleared
+    CHECK(g.reset());
+    CHECK(g.available(33, E + 1));
+    CHECK(!g.reset());
+}
+
+#include "util/DataDates.h"
+
+TEST(data_dates) {
+    using namespace datadates;
+    Ymd e;
+    CHECK(parseThaiDate("ราคามีผล ณ วันที่ 9 ต.ค. 69 เวลา 05.00 น.", e));
+    CHECK(e.y == 2026 && e.m == 10 && e.d == 9 && e.hh == 5 && e.mm == 0);
+    CHECK(parseThaiDate("มีผล 31 ธ.ค. 2569", e) && e.y == 2026 && e.m == 12 && e.d == 31 && e.hh == 0);
+    CHECK(parseThaiDate("วันที่ 1 มี.ค. 70 เวลา 22:30", e) && e.y == 2027 && e.m == 3 && e.hh == 22 && e.mm == 30);
+    CHECK(!parseThaiDate("ราคาน้ำมันวันนี้", e));
+    CHECK(!parseThaiDate("12 ตค 69", e));  // not an abbreviation we know
+    CHECK(std::string(thaiMonthAbbr(10)) == "ต.ค.");
+
+    CHECK(parseSlashDate("08/10/2569", "20:40", e) && e.y == 2026 && e.m == 10 && e.d == 8 && e.hh == 20 && e.mm == 40);
+    CHECK(parseSlashDate("15/10/2026", nullptr, e) && e.y == 2026);
+    CHECK(!parseSlashDate("2569-10-08", nullptr, e));
+
+    // 9 Oct -> 15 Oct = 6 days (what the fuel tool reports as days_since_last_change)
+    Ymd now, eff;
+    now.y = eff.y = 2026;
+    now.m = eff.m = 10;
+    now.d = 15;
+    eff.d = 9;
+    CHECK_EQ(now.day() - eff.day(), (int64_t)6);
+
+    const uint32_t t = parseRfc822("Thu, 15 Oct 2026 12:14:28 GMT");
+    char buf[20];
+    timefmt::formatDateTime(t, 7 * 3600, buf, sizeof(buf));
+    CHECK(std::string(buf) == "2026-10-15 19:14");
+    CHECK_EQ(parseRfc822("Thu, 15 Oct 2026 19:14:28 +0700"), t);
+    CHECK_EQ(parseRfc822("garbage"), 0u);
 }

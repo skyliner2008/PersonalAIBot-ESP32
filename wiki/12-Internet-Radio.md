@@ -8,7 +8,7 @@ status: implemented — station list + touch player, tested on hardware 2026-10-
 # 📻 Internet Radio
 
 > **Related:** [[06-Avatar-and-Thai-UI]] | [[09-Assistant-Profiles-and-Tools]] | [[11-Data-Tools-and-Cards]] | [[04-System-Architecture]]
-> **Code:** `src/audio/RadioStations.*` (รายการสถานี) · `src/ui/RadioScreen.*` (หน้าจอวิทยุ) · `src/audio/RadioPlayer.*` (stream + decode) · `src/util/RadioResampler.h` (→ mono 24 kHz) · `src/audio/AudioManager.*` (mixer + ducking) · `src/agent/AgentController.cpp` (`playRadio`, `handleRadio`) · `lib/helix-mp3`, `lib/helix-aac`
+> **Code:** `src/audio/RadioStations.*` (รายการสถานี) · `src/ui/RadioScreen.*` (หน้าจอวิทยุ) · `src/audio/RadioPlayer.*` (stream + decode) · `src/util/RadioResampler.h` (→ mono 24 kHz) · `src/audio/AudioManager.*` (mixer + ducking) · `src/agent/AgentDevice.cpp` (`playRadio`, `handleRadio`) · `lib/helix-mp3`, `lib/helix-aac`
 
 ## ปัญหาที่ต้องแก้ก่อนเพิ่มวิทยุ
 

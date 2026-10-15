@@ -143,10 +143,14 @@ private:
     TaskHandle_t _io = nullptr;
     esp_transport_handle_t _ssl = nullptr;
     esp_transport_handle_t _wst = nullptr;
+    // The SSL transport keeps only a POINTER to this (esp_tls_cfg_t::keep_alive_cfg) and reads it on
+    // every connect: it must live as long as the transport (a local in begin() = garbage socket options
+    // later, seen as TLS handshakes failing with -0x004E / -0x004C - T047).
+    esp_transport_keep_alive_t _keepAlive = {};
 
     String _path;
     String _headers;
-    bool _keyInHeader = false;
+    bool _keyInHeader = true;  // x-goog-api-key like the SDKs: the key stays out of URLs / proxy logs
     bool _configured = false;
     bool _started = false;
     volatile uint32_t _cfgGen = 0;

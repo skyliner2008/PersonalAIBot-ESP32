@@ -1,0 +1,762 @@
+/**
+ * @file AgentSession.cpp
+ * @brief AgentController: Wi-Fi, Live session, model fallback, tool calls, web-tool results
+ * @see wiki/04-System-Architecture.md
+ */
+
+#include "AgentInternal.h"
+
+// ============================================================
+// Connectivity, session, model fallback
+// ============================================================
+
+void AgentController::handleConnectivity() {
+    const uint32_t now = millis();
+    if (!_cfg.wifiSsid[0]) return;
+
+    if (!_wifiStarted) {
+        static bool eventsRegistered = false;
+        if (!eventsRegistered) {  // why a connection failed (debug log / PC app)
+            eventsRegistered = true;
+            WiFi.onEvent(
+                [](arduino_event_id_t, arduino_event_info_t info) {
+                    const uint8_t r = info.wifi_sta_disconnected.reason;
+                    gWifiReason = r;
+                    Serial.printf("[WiFi] Disconnect reason %u\n", r);
+                },
+                ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+        }
+        WiFi.mode(WIFI_STA);
+        WiFi.setSleep(false);  // power save adds latency/jitter to audio streaming
+        WiFi.setAutoReconnect(false);  // retried below with back-off instead of every second
+        _wifiRetryMs = kWifiRetryMinMs;
+        _wifiFailures = 0;
+        WiFi.begin(_cfg.wifiSsid, _cfg.wifiPass);
+        _wifiStarted = true;
+        _wifiBeginAt = now;
+        Serial.printf("[WiFi] Connecting to %s...\n", _cfg.wifiSsid);
+    }
+    const bool up = WiFi.status() == WL_CONNECTED;
+    if (up != _wifiUp) {
+        _wifiUp = up;
+        if (up) {
+            Serial.printf("[WiFi] Connected, IP %s, RSSI %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
+            _wifiRetryMs = kWifiRetryMinMs;
+            _wifiFailures = 0;
+            if (_wifiErrorShown) {
+                _wifiErrorShown = false;
+                _face->setSystemText("", 1);
+            }
+            if (!_timeStarted) {
+                configTzTime(TIME_TZ, TIME_NTP_1, TIME_NTP_2, TIME_NTP_3);
+                _timeStarted = true;
+            }
+        } else {
+            Serial.println("[WiFi] Disconnected");
+            _wifiBeginAt = now;
+        }
+    }
+    if (!up && now - _wifiBeginAt > _wifiRetryMs) {
+        _wifiFailures++;
+        if (_wifiFailures >= 3 && !_holdUntil && !_fatalError) {  // tell the user why
+            char buf[160];
+            snprintf(buf, sizeof(buf), "ต่อ Wi-Fi \"%s\" ไม่ได้: %s (รหัส %u)", _cfg.wifiSsid,
+                     wifiReasonTh(gWifiReason.load()), (unsigned)gWifiReason.load());
+            _face->setSystemText(buf, 0);
+            _wifiErrorShown = true;
+        }
+        Serial.printf("[WiFi] Retry %u in %lu s (last reason %u)\n", (unsigned)_wifiFailures,
+                      (unsigned long)(_wifiRetryMs / 1000), (unsigned)gWifiReason.load());
+        WiFi.disconnect();
+        WiFi.begin(_cfg.wifiSsid, _cfg.wifiPass);
+        _wifiBeginAt = now;
+        _wifiRetryMs = _wifiRetryMs * 2 > kWifiRetryMaxMs ? kWifiRetryMaxMs : _wifiRetryMs * 2;
+    }
+
+    if (!_timeValidSeen && nowEpoch()) {
+        _timeValidSeen = true;
+        char buf[24];
+        timefmt::formatDateTime(nowEpoch(), TIME_UTC_OFFSET_SEC, buf, sizeof(buf));
+        Serial.printf("[Time] Synced: %s (UTC+7)\n", buf);
+        if (_storage->kind() != StorageKind::None) {
+            _episodes.open(_storage->episodesDir(), &_sink, nowEpoch());
+            const int keep = _storage->kind() == StorageKind::SdCard ? MEMORY_EPISODE_KEEP_DAYS_SD
+                                                                     : MEMORY_EPISODE_KEEP_DAYS_FLASH;
+            _episodes.prune(keep, nowEpoch());
+            _tasks.purgeDone(nowEpoch(), 30);
+        }
+    }
+
+    if (_holdUntil && monoSec() >= _holdUntil) {
+        Serial.println("[Agent] Pause over, trying Gemini again");
+        _holdUntil = 0;
+        _face->setSystemText("", 1);
+    }
+    const bool wanted = up && _configOk && !_sleeping && !_fatalError && !_holdUntil;
+    if (wanted && !_gemini.started()) _gemini.start();
+
+    if (_reconnectPending && !_audio->isPlaying() && _gemini.started()) {
+        _reconnectPending = false;
+        _gemini.restart();  // resumes with the handle
+    }
+}
+
+void AgentController::startFreshSession(const char* hint) {
+    flushUserTurn();
+    flushAgentTurn(false);
+    _resumeHandle = "";
+    _audio->clearPlayback();
+    _dropAudio = false;
+    _awaitingReply = false;
+    if (hint) _face->setHint(hint, 2000);
+    if (_gemini.started()) _gemini.restart();
+}
+
+void AgentController::buildSystemPrompt(PsString& p) {
+    const persona::Personality& pers = persona::kPersonalities[_cfg.personality % persona::kPersonalityCount];
+    p.reserve(5000);
+    p = "คุณคือ \"";
+    p += _cfg.agentName;
+    p += "\" ผู้ช่วยส่วนตัว AI บนอุปกรณ์ตั้งโต๊ะของผู้ใช้";
+    if (_cfg.userName[0]) {
+        p += " ผู้ใช้ชื่อ \"";
+        p += _cfg.userName;
+        p += "\"";
+    }
+    p += "\nนิสัย: ";
+    p += pers.prompt;
+    p += "\nการพูด: ตอบเป็นภาษาเดียวกับที่ผู้ใช้พูด (ปกติภาษาไทย) สั้น เป็นธรรมชาติ ";
+    p += persona::politeParticle((persona::Gender)_cfg.gender);
+    p += " ไม่อ่านสัญลักษณ์หรือรายการยาว\n"
+         "ดวงตา: คุณมีดวงตาบนจอ เรียก set_expression ให้เข้ากับอารมณ์ที่กำลังพูดอย่างเงียบๆ\n"
+         "ความจำ: เรียก save_memory/save_relation ทันทีที่รู้ข้อมูลสำคัญของผู้ใช้ และ recall_memory "
+         "ก่อนตอบเรื่องส่วนตัว ห้ามแต่งความจำ\n"
+         "ผู้ช่วยส่วนตัว: ใช้ set_timer, set_reminder, add_task ฯลฯ ตามที่ผู้ใช้ขอ ";
+    p += "ข้อมูลสด (แสดงกราฟิกบนจอให้เอง แล้วคุณพูดสรุปสั้นๆ): อากาศ/ฝน/ฝุ่น PM2.5 = get_weather, "
+         "ราคาน้ำมันในไทย = get_oil_price, หุ้น/ดัชนี/ทองคำ/คริปโต/ค่าเงิน/น้ำมันดิบ = get_market_quote, "
+         "แลกเงิน = convert_currency, ข่าว = get_news, คิดเลข = calculate (ห้ามคิดเลขเอง), แปลงหน่วย = convert_units, "
+         "เวลาต่างประเทศ = get_world_time, ความรู้ทั่วไป/ใครคือ/คืออะไร = search_knowledge, จดโน้ตยาว = notes ";
+    if (_cfg.financeTools) {
+        p += "การเงิน: ภาพรวมตลาด = market_overview, วิเคราะห์เทคนิค = market_analysis, หุ้นเด่น/ร่วง = market_scan, "
+             "ข่าวเศรษฐกิจ = economic_calendar, ขนาด lot = position_size, แจ้งเตือนราคา = price_alert "
+             "(บอกเสมอว่าไม่ใช่คำแนะนำการลงทุน) ";
+    }
+    p += searchAvailable() ? "เรื่องอื่นที่ต้องใช้ข้อมูลล่าสุดใช้ Google Search "
+                           : "ไม่มีการค้นเว็บทั่วไป: เรื่องล่าสุด (ผลกีฬา หวย เหตุการณ์ ราคาทองไทย) ใช้ get_news ระบุ topic "
+                             "แล้วตอบจากหัวข่าวพร้อมบอกวันที่ ข้อเท็จจริงทั่วไปใช้ search_knowledge ถ้ายังหาไม่ได้ให้บอกตรงๆ "
+                             "ว่าค้นไม่ได้ ห้ามเดา ";
+    p += "เปลี่ยนเสียง/นิสัย/ชื่อด้วย configure_assistant ถ้าผู้ใช้บอกลาหรือราตรีสวัสดิ์ให้เรียก go_to_sleep\n"
+         "ควบคุมเครื่อง: เสียงดัง/เบา = set_volume (change +/-), จอสว่าง/มืด = set_brightness (change +/-), "
+         "ความไวไมค์ / ตั้งเวลาพัก / ตั้งเวลาโหมดนาฬิกา = configure_device, พักหน้าจอ / โหมดนาฬิกาเดี๋ยวนี้ = rest_screen, วิทยุ = play_radio / stop_radio (เปิดแล้วพูดชื่อสถานีสั้นๆ แล้วเงียบ เพลงที่เล่นอยู่ดูได้จาก get_device_status), ปิดไมค์ = mute_microphone "
+         "(เปิดไมค์ด้วยเสียงไม่ได้ บอกผู้ใช้ให้แตะปุ่มไมค์บนจอ)\n"
+         "ข้อความที่ขึ้นต้นด้วย [แจ้งเตือนจากระบบ] หรือ [แจ้งเตือนราคาจากระบบ] มาจากอุปกรณ์ ให้แจ้งผู้ใช้ทันทีสั้นๆ\n";
+    if (gStations.count()) {  // play_radio picks from this list (number, name or genre)
+        String list;
+        gStations.describe(list);
+        p += "สถานีวิทยุในรายการ: ";
+        p += list.c_str();
+        p += "\n";
+    }
+
+    const uint32_t now = nowEpoch();
+    char buf[160];
+    if (now) {
+        const timefmt::Civil c = timefmt::toCivil(now, TIME_UTC_OFFSET_SEC);
+        snprintf(buf, sizeof(buf), "\n## ตอนนี้: วัน%s %04d-%02d-%02d %02d:%02d น.\n", timefmt::thaiWeekday(c.weekday),
+                 c.year, c.month, c.day, c.hour, c.minute);
+        p += buf;
+    }
+    if (_tasks.openCount() || !_scheduler.items().empty()) {
+        snprintf(buf, sizeof(buf), "งานค้าง %u รายการ, การแจ้งเตือนที่รออยู่ %u รายการ\n",
+                 (unsigned)_tasks.openCount(), (unsigned)_scheduler.items().size());
+        p += buf;
+    }
+
+    PsString core;
+    _memory.buildCoreMemory(core, MEMORY_CORE_PROMPT_BYTES);
+    p += "\n## สิ่งสำคัญที่คุณจำได้เกี่ยวกับผู้ใช้\n";
+    p += core.empty() ? PsString("(ยังไม่มี ค่อยๆ ทำความรู้จักและบันทึกไว้)\n") : core;
+
+    PsString recent;
+    _episodes.buildRecentContext(recent, MEMORY_RECENT_TURNS, MEMORY_RECENT_PROMPT_BYTES, AGENT_USER_LABEL,
+                                 AGENT_SELF_LABEL);
+    if (!recent.empty()) {
+        p += "\n## บทสนทนาล่าสุดก่อนเซสชันนี้ (บริบท ไม่ต้องทวน)\n";
+        p += recent;
+    }
+}
+
+void AgentController::buildSetup(JsonObject setup) {
+    const uint8_t model = _liveSel.active(monoSec());
+    if (model != _activeModel) {
+        _resumeHandle = "";  // a handle belongs to one model's session
+        _activeModel = model;
+    }
+    _closeSeen = false;
+    String modelPath = String("models/") + liveModelId(model);
+    setup["model"] = modelPath;
+
+    JsonObject gen = setup["generationConfig"].to<JsonObject>();
+    gen["responseModalities"].to<JsonArray>().add("AUDIO");
+    if (_setupMode == SetupMode::Minimal) {  // diagnostic: model + modality only
+        Serial.printf("[Agent] Setup: %s, MINIMAL (diagnostic)\n", liveModelId(model));
+        return;
+    }
+    if (_setupMode == SetupMode::SearchOnly) {  // diagnostic: is Search refused even with nothing else?
+        _searchInSetup = false;                 // the answer is logged, not fed to search::Gate
+        setup["tools"].to<JsonArray>().add<JsonObject>()["googleSearch"].to<JsonObject>();
+        Serial.printf("[Agent] Setup: %s, SEARCH ONLY (diagnostic)\n", liveModelId(model));
+        return;
+    }
+    gen["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"] = _cfg.voice;
+    if (model == (uint8_t)LiveModel::Live38Thinking) {
+        gen["thinkingConfig"]["thinkingLevel"] = thinkingLevelId(_cfg.thinking);
+    }
+
+    PsString prompt;
+    buildSystemPrompt(prompt);
+    setup["systemInstruction"]["parts"][0]["text"] = prompt.c_str();
+
+    _searchInSetup = searchAvailable();
+    _tools->addDeclarations(setup["tools"].to<JsonArray>(), behaviorFor(model), _searchInSetup);
+
+    setup["inputAudioTranscription"].to<JsonObject>();
+    setup["outputAudioTranscription"].to<JsonObject>();
+#if AGENT_SERVER_VAD_TUNING
+    // Server VAD finds the start of speech inside our pre-roll; high start sensitivity catches soft
+    // voices, low end sensitivity keeps Thai sentences with pauses in one turn (we send audioStreamEnd).
+    _vadTuningInSetup = !_vadTuningRejected && _setupMode == SetupMode::Full;
+    if (_vadTuningInSetup) {
+        JsonObject vad = setup["realtimeInputConfig"]["automaticActivityDetection"].to<JsonObject>();
+        vad["startOfSpeechSensitivity"] = "START_SENSITIVITY_HIGH";
+        vad["endOfSpeechSensitivity"] = "END_SENSITIVITY_LOW";
+        vad["prefixPaddingMs"] = 300;
+        vad["silenceDurationMs"] = 900;
+    }
+#endif
+    JsonObject cwc = setup["contextWindowCompression"].to<JsonObject>();
+    cwc["triggerTokens"] = AGENT_CTX_TRIGGER_TOKENS;
+    cwc["slidingWindow"]["targetTokens"] = AGENT_CTX_TARGET_TOKENS;
+
+    JsonObject resume = setup["sessionResumption"].to<JsonObject>();
+    if (_resumeHandle.length()) resume["handle"] = _resumeHandle.c_str();
+
+    Serial.printf("[Agent] Setup: %s, %s session, voice %s, prompt %u bytes%s%s\n", liveModelId(model),
+                  _resumeHandle.length() ? "resumed" : "new", _cfg.voice, (unsigned)prompt.size(),
+                  _searchInSetup ? "" : ", no Google Search", model != _cfg.model ? " (FALLBACK)" : "");
+}
+
+void AgentController::onSetupComplete() {
+    if (_setupMode == SetupMode::SearchOnly) {
+        Serial.printf("[Diag] SEARCH ONLY setup accepted by %s: Search itself is allowed - the full setup is what "
+                      "fails (try: ask <question that needs the web>)\n", liveModelId(_activeModel));
+    }
+    _failedResumes = 0;
+    _sessionGen++;  // web-tool answers from an older session are dropped
+    _liveSel.reportSuccess(_activeModel);
+    _fatalError = false;
+    if (_searchInSetup) {
+        if (_search.onReadyWithSearch()) saveSearchState(0, 0);  // Search works again: the doubling starts over
+    } else {
+        uint32_t epoch = 0, pause = 0;
+        uint8_t strikes = 0;
+        if (_search.onReadyWithoutSearch(monoSec(), clockEpoch(), epoch, strikes, pause)) {
+            saveSearchState(epoch, strikes);
+            Serial.printf("[Search] quota with Google Search, fine without it -> Search off for %lu h (%u in a row%s)\n",
+                          (unsigned long)(pause / 3600), (unsigned)strikes, epoch ? ", kept across reboots" : "");
+            _face->setHint("Google Search ใช้ไม่ได้ (โควตา) ปิดการค้นหาชั่วคราว", 3000);
+        }
+    }
+    if (_activeModel != _cfg.model) {
+        char buf[96];
+        snprintf(buf, sizeof(buf), "ใช้ %s แทนชั่วคราว", liveModelLabel(_activeModel));
+        _face->setHint(buf, 3000);
+    }
+    if (_wakeBuffering) sendPreroll();
+}
+
+void AgentController::onDisconnected(bool wasReady) {
+    _replyAudio = false;  // a reply cut off by the drop: the next one discards stale mic audio again
+    flushUserTurn();
+    flushAgentTurn(!wasReady);
+    _awaitingReply = false;
+    _vadOpen = false;
+    const bool closeSeen = _closeSeen;
+    _closeSeen = false;
+    if (wasReady || _sleeping || !_gemini.started()) return;
+    if (closeSeen) return;  // already classified from the server's close frame
+    // Dropped before setupComplete: a bad resume handle or an unhealthy model
+    if (_resumeHandle.length() && ++_failedResumes >= 2) {
+        _resumeHandle = "";
+        _failedResumes = 0;
+        return;
+    }
+    const uint32_t sec = monoSec();
+    if (_liveSel.reportFailure(_activeModel, fallback::Failure::Transient, sec)) {
+        Serial.printf("[Fallback] %s keeps failing -> %s\n", liveModelId(_activeModel),
+                      liveModelId(_liveSel.active(sec)));
+    }
+    if (_liveSel.allCoolingDown(sec)) enterHold(sec);
+}
+
+void AgentController::onServerClose(int code, const char* reason) {
+    const fallback::Failure f = fallback::classifyClose(code, reason);
+    Serial.printf("[Agent] Server close %d (%s): %s\n", code, fallback::failureName(f), reason ? reason : "");
+    _closeSeen = true;
+    if (_setupMode == SetupMode::SearchOnly && !_gemini.isReady()) {  // diagnostic answer, then back to normal
+        Serial.printf("[Diag] SEARCH ONLY setup refused (%d %s) -> the key/project cannot use Search with %s\n", code,
+                      fallback::failureName(f), liveModelId(_activeModel));
+        _setupMode = SetupMode::Full;
+        _resumeHandle = "";
+        _reconnectPending = true;
+        return;
+    }
+    if (f != fallback::Failure::None) {
+        char buf[100];
+        snprintf(buf, sizeof(buf), "%d %s: %s", code, fallback::failureName(f), reason ? reason : "");
+        _lastClose = buf;
+    }
+    if (f == fallback::Failure::Auth) {
+        _fatalError = true;
+        _errorText = "API key ใช้ไม่ได้ ตรวจในเมนูตั้งค่า";
+        _face->setSystemText(_errorText.c_str(), 0);
+        if (_gemini.started()) _gemini.stop();
+        return;
+    }
+    // A model that does not accept realtimeInputConfig answers 1007 (invalid argument) or "not
+    // supported": retry the same model without the VAD tuning instead of putting it on a cool-down.
+    const bool mentionsVad = reason && (strstr(reason, "realtime") || strstr(reason, "activity") ||
+                                        strstr(reason, "Realtime") || strstr(reason, "sensitivity"));
+    if (_vadTuningInSetup && !_gemini.isReady() && (code == 1007 || mentionsVad)) {  // only a setup rejection
+        _vadTuningRejected = true;
+        Serial.printf("[Fallback] %s rejected the VAD tuning -> retrying without it\n", liveModelId(_activeModel));
+        _resumeHandle = "";
+        _reconnectPending = true;
+        return;
+    }
+    if (f == fallback::Failure::SessionExpired) {  // stale resume handle: fresh session, same model
+        Serial.println("[Agent] Resume handle expired -> fresh session");
+        _resumeHandle = "";
+        _failedResumes = 0;
+        _reconnectPending = true;
+        return;
+    }
+    const uint32_t sec = monoSec();
+    // Grounding with Google Search has its own quota, and when it is used up the server closes the
+    // whole session with the same "exceeded your current quota" text (verified 2026-10-14: every
+    // live model failed with search, all worked without). But a session left open by a reboot
+    // without a close handshake gives the same text (T035), so Search is only SUSPECT here: retry
+    // the same model without it - if that session gets ready, it was Search (onSetupComplete); if it
+    // fails with quota too, it was not (below). A REST check cannot tell: free-tier REST models have
+    // no Search grounding at all (always 429), the Live models do - T045, T048.
+    if (f == fallback::Failure::Quota && _searchInSetup) {
+        if (_search.onLiveQuota(sec)) {
+            Serial.printf("[Fallback] quota error with Google Search -> retrying %s without search to see which it is\n",
+                          liveModelId(_activeModel));
+        }
+        _resumeHandle = "";
+        _reconnectPending = true;
+        return;
+    }
+    if (f == fallback::Failure::Quota && _search.onQuotaWithoutSearch(sec)) {
+        Serial.println("[Search] quota without Google Search as well: Search was not the cause (a session left "
+                       "open by a reboot, or the model quota) - it stays on");
+    }
+    const uint8_t failed = _activeModel;
+    const bool switched = _liveSel.reportFailure(failed, f, sec);
+    if (_liveSel.allCoolingDown(sec)) {  // every model failed: not a model problem, stop cycling
+        enterHold(sec);
+        return;
+    }
+    if (switched) {
+        const uint8_t next = _liveSel.active(sec);
+        Serial.printf("[Fallback] %s unavailable (%s) -> switching to %s\n", liveModelId(failed),
+                      fallback::failureName(f), liveModelId(next));
+        char buf[96];
+        snprintf(buf, sizeof(buf), "สลับไปใช้ %s", liveModelLabel(next));
+        _face->setHint(buf, 3000);
+        _resumeHandle = "";
+        _reconnectPending = true;  // reconnect now with the next model
+    }
+}
+
+bool AgentController::searchAvailable() const {
+    return _cfg.googleSearch && _setupMode == SetupMode::Full && _search.available(monoSec(), clockEpoch());
+}
+
+void AgentController::saveSearchState(uint32_t epoch, uint8_t strikes) {
+    Preferences rt;
+    if (!rt.begin("rt", false)) return;
+    if (epoch) rt.putUInt("srchoff", epoch);
+    else if (rt.isKey("srchoff")) rt.remove("srchoff");
+    if (strikes) rt.putUChar("srchn", strikes);
+    else if (rt.isKey("srchn")) rt.remove("srchn");
+    rt.end();
+}
+
+void AgentController::handleSearchGate() {
+    const uint32_t epoch = clockEpoch();
+    if (_search.savedExpired(epoch)) {  // the pause saved before a reboot is over
+        _search.clearSaved();
+        saveSearchState(0, _search.strikes());
+        Serial.println("[Search] Google Search pause is over - offered again");
+    }
+    uint32_t persist = 0;
+    if (_search.needsSave(monoSec(), epoch, persist)) saveSearchState(persist, _search.strikes());  // confirmed before SNTP
+}
+
+void AgentController::enterHold(uint32_t sec) {
+    uint32_t wait = _liveSel.nextRecoveryIn(sec);
+    if (wait < 30) wait = 30;
+    _holdUntil = sec + wait;
+    _reconnectPending = false;
+    _resumeHandle = "";
+    if (_gemini.started()) _gemini.stop();
+
+    const fallback::Failure f = _liveSel.lastFailure();
+    const char* what = "เชื่อมต่อ Gemini ไม่สำเร็จ";
+    if (f == fallback::Failure::Quota) what = "โควตา API key หมดทุกโมเดล";
+    else if (f == fallback::Failure::NotFound) what = "API key นี้ใช้โมเดล Live ไม่ได้";
+    else if (f == fallback::Failure::Unavailable) what = "Gemini ไม่ว่างทุกโมเดล";
+    char buf[160];
+    const uint32_t epoch = nowEpoch();
+    if (epoch) {
+        const timefmt::Civil c = timefmt::toCivil(epoch + wait, TIME_UTC_OFFSET_SEC);
+        snprintf(buf, sizeof(buf), "%s • ลองใหม่ %02d:%02d หรือแตะจอ", what, c.hour, c.minute);
+    } else {
+        snprintf(buf, sizeof(buf), "%s • ลองใหม่ใน %lu นาที หรือแตะจอ", what, (unsigned long)((wait + 59) / 60));
+    }
+    _errorText = buf;
+    _face->setSystemText(buf, 0);
+    Serial.printf("[Fallback] all live models cooling down (%s) -> pausing %lu s\n", fallback::failureName(f),
+                  (unsigned long)wait);
+}
+
+void AgentController::startApiTest() {
+    // Text models first (the summary uses generate[0]). The live models are called with
+    // generateContent too: they normally refuse it, but a quota problem comes back as HTTP 429
+    // with the full QuotaFailure (the WebSocket close reason is cut at 123 bytes).
+    static const char* const kModels[] = {"gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-live",
+                                          "gemini-3.8-live-extended-thinking", "gemini-3.1-flash-live-preview"};
+    if (!_wifiUp || !_configOk) {
+        _face->setHint("ต่อ Wi-Fi และใส่ API key ก่อน", 2500);
+        Serial.println("APITEST {\"error\":\"wifi or api key missing\"}");
+        return;
+    }
+    if (!_text.submitProbe(kModels, 5, kModels, 5)) {
+        _face->setHint("ระบบกำลังทำงานอื่น ลองใหม่อีกครั้ง", 2500);
+        Serial.println("APITEST {\"error\":\"busy\"}");
+        return;
+    }
+    _face->setSystemText("กำลังทดสอบ API key ...", 30000);
+    Serial.println("[Agent] API key self-test started");
+}
+
+void AgentController::handleProbeResult(int status, const PsString* report) {
+    if (status != 200 || !report || report->empty()) {
+        _face->setSystemText("ทดสอบ API key ไม่สำเร็จ (Wi-Fi?)", 8000);
+        Serial.println("APITEST {\"error\":\"request failed\"}");
+        return;
+    }
+    {  // one write so other tasks' log lines cannot split the JSON
+        PsString line("APITEST ");
+        line += *report;
+        line += '\n';
+        Serial.write((const uint8_t*)line.data(), line.size());
+    }
+
+    JsonDocument doc(JsonPsramAllocator::instance());
+    if (deserializeJson(doc, report->c_str())) return;
+    int seen = 0, total = 0, keyError = 0;
+    for (JsonObjectConst m : doc["models"].as<JsonArrayConst>()) {
+        const int h = m["http"] | 0;
+        total++;
+        if (h == 200) seen++;
+        if (h == 400 || h == 401 || h == 403) keyError = h;
+    }
+    char buf[200];
+    JsonObjectConst g = doc["generate"][0];
+    const int gh = g["http"] | 0;
+    JsonObjectConst liveQuota;  // first live model that reports a quota failure
+    for (JsonObjectConst x : doc["generate"].as<JsonArrayConst>()) {
+        if ((x["http"] | 0) == 429 && strstr(x["id"] | "", "live")) {
+            liveQuota = x;
+            break;
+        }
+    }
+    if (keyError) {
+        snprintf(buf, sizeof(buf), "API key ใช้ไม่ได้ (HTTP %d) ตรวจ key ในเมนูตั้งค่า", keyError);
+    } else if (gh == 200 && !liveQuota.isNull()) {
+        snprintf(buf, sizeof(buf), "key ใช้ได้ (Flash-Lite OK) แต่ Live API โควตาหมด (limit %s) ตรวจ billing/limit ใน AI Studio",
+                 liveQuota["error"]["quota"][0]["limit"] | "?");
+    } else if (gh == 200) {
+        snprintf(buf, sizeof(buf), "API key ใช้ได้ • เห็นโมเดล %d/%d • เรียก Flash-Lite ได้", seen, total);
+    } else if (gh == 429) {
+        const char* limit = g["error"]["quota"][0]["limit"] | "?";
+        const char* id = g["error"]["quota"][0]["id"] | "";
+        snprintf(buf, sizeof(buf), "API key ถูกต้อง แต่โควตาหมด (limit %s%s) ตรวจ billing ใน AI Studio", limit,
+                 strstr(id, "FreeTier") ? ", free tier" : "");
+    } else {
+        snprintf(buf, sizeof(buf), "API key: เห็นโมเดล %d/%d • Flash-Lite HTTP %d", seen, total, gh);
+    }
+    _lastProbe = buf;
+    _face->setSystemText(buf, 20000);
+}
+
+void AgentController::retryNow() {
+    Serial.println("[Agent] Retry requested");
+    _holdUntil = 0;
+    _fatalError = false;
+    _errorText = "";
+    _face->setSystemText("", 1);
+    _face->setHint("กำลังลองเชื่อมต่อใหม่", 2000);
+}
+
+void AgentController::toggleMic() {
+    _muted = !_muted;
+    const bool muted = _muted;
+    gSettings.update([muted](SettingsData& d) { d.micMuted = muted; });  // remembered across reboots
+    _face->setHint(_muted ? "ปิดไมค์แล้ว" : "เปิดไมค์แล้ว", 1500);
+    _audio->playTone(_muted ? 440 : 880, 80, 3000);
+    Serial.printf("[Agent] Mic %s\n", _muted ? "off" : "on");
+}
+
+void AgentController::onAudio(const int16_t* pcm, size_t samples) {
+    if (_dropAudio) return;
+    if (!_userTurn.empty()) flushUserTurn();
+    if (!_replyAudio) {  // first audio of this reply: free the uplink for it
+        _replyAudio = true;
+        _gemini.discardQueuedMic();
+        _gemini.takeTurnReadMs();  // per-reply network figure starts now
+        _replyT0 = millis();
+        _replyBytes0 = _gemini.audioBytesReceived();  // already counts this first message
+    }
+    _replyLastMs = millis();
+    _awaitingReply = false;
+    _ringing = false;
+    _lastAgentAudio = millis();
+    markAnswered();
+    noteActivity();
+    _audio->writePlayback((const uint8_t*)pcm, samples * 2);
+}
+
+void AgentController::onInputTranscript(const char* text) {
+    if (!_agentTurn.empty()) flushAgentTurn(false);
+    if (_userTurn.empty()) _userTurnTs = nowEpoch();
+    _userTurn += text;
+    _lastUserSpeech = millis();
+    _awaitingReply = true;
+    _heardSinceSend = true;
+    noteActivity();
+    _face->pushTranscript('u', text);
+}
+
+// 3.1 Flash Live sometimes leaks tool-call scaffolding into the output transcription
+// ("functionreponsetextfunctionสวัสดีค่ะ..." after parallel tool calls): drop any run of ASCII
+// letters that contains "function".
+static void stripToolScaffolding(const char* in, String& out) {
+    out = "";
+    const size_t n = strlen(in);
+    size_t i = 0;
+    while (i < n) {
+        if (isalpha((unsigned char)in[i])) {
+            size_t j = i;
+            while (j < n && isalpha((unsigned char)in[j])) j++;
+            const String word = String(in + i).substring(0, j - i);
+            if (word.indexOf("function") < 0) out += word;
+            i = j;
+        } else {
+            out += in[i++];
+        }
+    }
+}
+
+void AgentController::onOutputTranscript(const char* raw) {
+    if (_dropAudio) return;
+    String clean;
+    stripToolScaffolding(raw, clean);
+    if (clean.isEmpty()) return;
+    const char* text = clean.c_str();
+    if (!_userTurn.empty()) flushUserTurn();
+    if (_agentTurn.empty()) _agentTurnTs = nowEpoch();
+    _agentTurn += text;
+    _awaitingReply = false;
+    markAnswered();
+    _face->pushTranscript('a', text);
+}
+
+void AgentController::onInterrupted() {
+    _audio->clearPlayback();
+    flushAgentTurn(true);
+    _dropAudio = false;
+}
+
+void AgentController::onGenerationComplete() { _audio->flushPlayback(); }
+
+void AgentController::onTurnComplete() {
+    Serial.printf("[Chat] turn complete (tokens/min %lu)\n", (unsigned long)tokensPerMinute());
+    flushUserTurn();
+    flushAgentTurn(_dropAudio);
+    _audio->flushPlayback();
+    _dropAudio = false;
+    _awaitingReply = false;
+    if (_replyAudio) {
+        // arrival rate: audio after the first message vs the time it took to come in (1.0 = real time)
+        const uint32_t wall = _replyLastMs - _replyT0;
+        const uint32_t audioMs = (_gemini.audioBytesReceived() - _replyBytes0) / (AUDIO_I2S_RATE * 2 / 1000);
+        _replyRate = wall >= 1500 ? (float)audioMs / (float)wall : 0.0f;  // short replies say little
+        _replyNeedMs = _replyRate > 0.0f && _replyRate < 1.0f ? (uint32_t)((float)audioMs * (1.0f - _replyRate)) : 0;
+        _replyReportPending = true;  // one line once the reply has finished playing
+    }
+    _replyAudio = false;
+}
+
+// After each spoken reply: how smooth it was, so a user's log shows why it stuttered
+void AgentController::reportReply() {
+    if (!_replyReportPending || _audio->isPlaying()) return;
+    _replyReportPending = false;
+    const AudioManager::ReplyStats s = _audio->takeReplyStats();
+    const uint32_t netMs = _gemini.takeTurnReadMs();
+    const uint32_t stale = _gemini.takeMicDiscarded();
+    // +20 % headroom: the next reply may be longer or the link a little slower
+    if (_replyRate > 0.0f) _audio->tunePrebuffer(_replyNeedMs * 6 / 5, s.gaps > 0);
+    char rate[48] = "-";
+    if (_replyRate > 0.0f) snprintf(rate, sizeof(rate), "%d%%", (int)(_replyRate * 100.0f + 0.5f));
+    Serial.printf("[Audio] จบคำตอบ: กระตุก %lu ครั้ง (นานสุด %lu ms) | บัฟเฟอร์ %lu -> %lu ms"
+                  " | เน็ตส่งเสียงทัน %s ของเวลาจริง (ต่ำกว่า 100%% = เน็ตช้ากว่าเสียง)"
+                  " | ก้อนหนึ่งมาช้าสุด %lu ms | ลำโพงรอนานสุด %lu ms | ทิ้งเสียงไมค์ค้างส่ง %lu ก้อน\n",
+                  (unsigned long)s.gaps, (unsigned long)s.longestGapMs, (unsigned long)s.prebufferMs,
+                  (unsigned long)_audio->prebufferMs(), rate, (unsigned long)netMs, (unsigned long)s.outGapMaxMs,
+                  (unsigned long)stale);
+}
+
+void AgentController::onToolCall(JsonArrayConst calls) {
+    noteActivity();
+    markAnswered();
+    JsonDocument resp(JsonPsramAllocator::instance());
+    JsonArray responses = resp["toolResponse"]["functionResponses"].to<JsonArray>();
+    for (JsonObjectConst call : calls) {
+        const char* name = call["name"] | "";
+        if (webtools::isWebTool(name)) {  // HTTPS in the webTools task; answered later with the same id
+            String args;
+            serializeJson(call["args"], args);
+            if (_web.submit(call["id"] | "", name, args.c_str(), _sessionGen)) {
+                Serial.printf("[Tool] %s %s -> fetching...\n", name, args.c_str());
+                _face->setHint("กำลังดึงข้อมูล...", 2500);
+                _toolBusyUntil = millis() + 15000;
+                continue;
+            }
+        }
+        JsonObject fr = responses.add<JsonObject>();
+        if (!call["id"].isNull()) fr["id"] = call["id"];
+        fr["name"] = name;
+        JsonObject response = fr["response"].to<JsonObject>();
+        const bool ok = _tools->execute(name, call["args"].as<JsonObjectConst>(), response);
+        // On gemini-3.8-live set_expression is NON_BLOCKING: answer silently
+        if (_activeModel == (uint8_t)LiveModel::Live38 && AgentTools::isSilentTool(name)) {
+            response["scheduling"] = "SILENT";
+        }
+        if (strcmp(name, "set_expression") != 0) {
+            Serial.printf("[Tool] %s -> %s\n", name, ok ? "ok" : (response["error"] | "error"));
+        }
+        if (!ok) continue;
+        if (!strcmp(name, "save_memory") || !strcmp(name, "save_relation")) {
+            _face->setHint("จำไว้แล้ว", 1500);
+            _face->setExpression(Emotion::Happy, 1500);
+            _turnsSinceConsolidation = 0;  // the live model is already saving
+        } else if (!strcmp(name, "recall_memory") || !strcmp(name, "recall_conversation")) {
+            _face->setHint("กำลังนึก...", 1200);
+        } else if (!strcmp(name, "set_timer") || !strcmp(name, "set_reminder")) {
+            _face->setHint("ตั้งแจ้งเตือนแล้ว", 1500);
+        } else if (!strcmp(name, "add_task")) {
+            _face->setHint("เพิ่มงานแล้ว", 1500);
+        }
+    }
+    if (calls.size() == 1 && !strcmp(calls[0]["name"] | "", "set_expression")) {
+        // purely cosmetic: does not count as "thinking"
+    } else if ((int32_t)(_toolBusyUntil - millis()) < 600) {
+        _toolBusyUntil = millis() + 600;
+    }
+    if (responses.size() && !_gemini.sendJson(resp)) Serial.println("[Tool] ERROR: failed to send toolResponse");
+}
+
+// Finished web-tool calls: answer the model (same session only) or print for the console / PC app
+void AgentController::handleWebResults() {
+    webtools::Result r;
+    while (_web.poll(r)) {
+        JsonDocument result(JsonPsramAllocator::instance());
+        deserializeJson(result, r.json->c_str());
+        if (r.tag == webtools::kAlertTag) {  // a price alert fired in the background
+            const char* m = result["message"] | "";
+            Serial.printf("[Alert] %s\n", m);
+            PsString msg = "[แจ้งเตือนราคาจากระบบ] ";
+            msg += m;
+            msg += " — บอกผู้ใช้สั้นๆ";
+            _announcements.push_back(msg);
+            _face->setSystemText(m, 15000);
+            _face->setExpression(Emotion::Surprised, 4000);
+            _ringing = true;
+            _ringUntil = millis() + 10000;
+            _nextChime = millis();
+            noteActivity();
+            if (_sleeping) wake(false);
+            delete r.json;
+            continue;
+        }
+        const bool ok = result["error"].isNull();
+        Serial.printf("[Tool] %s -> %s (%.1f s)\n", r.name, ok ? "ok" : (const char*)(result["error"] | "error"),
+                      r.elapsedMs / 1000.0f);
+        if (r.tag == kConsoleTag) {
+            PsString line("TOOL ");
+            line += r.name;
+            line += ' ';
+            line += *r.json;
+            line += '\n';
+            Serial.write((const uint8_t*)line.data(), line.size());
+        } else if (r.tag == _sessionGen && _gemini.isReady()) {
+            JsonDocument resp(JsonPsramAllocator::instance());
+            JsonObject fr = resp["toolResponse"]["functionResponses"].add<JsonObject>();
+            if (r.id[0]) fr["id"] = r.id;
+            fr["name"] = r.name;
+            fr["response"] = result.as<JsonObjectConst>();
+            if (!_gemini.sendJson(resp)) Serial.println("[Tool] ERROR: failed to send toolResponse");
+        } else {
+            Serial.printf("[Tool] %s result dropped (session changed)\n", r.name);
+        }
+        if (!ok) _face->setHint("ดึงข้อมูลไม่สำเร็จ", 2000);
+        _toolBusyUntil = millis() + 600;
+        delete r.json;
+    }
+}
+
+void AgentController::onToolCallCancellation(JsonArrayConst ids) {
+    Serial.printf("[Tool] %u call(s) cancelled by the server\n", (unsigned)ids.size());
+}
+
+void AgentController::onSessionHandle(const char* handle, bool resumable) {
+    if (resumable && handle && *handle) _resumeHandle = handle;
+}
+
+void AgentController::onGoAway(uint32_t msLeft) {
+    Serial.printf("[Agent] goAway, %lu ms left - will resume\n", (unsigned long)msLeft);
+    _reconnectPending = true;
+}
+
+void AgentController::onUsage(uint32_t totalTokens) {
+    const uint32_t now = millis();
+    const uint32_t slot = (now / 10000) % 6;
+    if (now / 10000 != _tokBucketAt) {
+        // clear the buckets we skipped
+        const uint32_t steps = now / 10000 - _tokBucketAt;
+        for (uint32_t i = 1; i <= steps && i <= 6; i++) _tokBucket[(_tokBucketAt + i) % 6] = 0;
+        _tokBucketAt = now / 10000;
+    }
+    _tokBucket[slot] += totalTokens;
+}
+
+uint32_t AgentController::tokensPerMinute() const {
+    if (millis() / 10000 - _tokBucketAt >= 6) return 0;
+    uint32_t sum = 0;
+    for (uint32_t v : _tokBucket) sum += v;
+    return sum;
+}

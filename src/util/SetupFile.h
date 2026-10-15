@@ -6,10 +6,8 @@
  *     WIFI_SSID=MyHome_2.4G
  *     WIFI_PASSWORD=secret
  *     GEMINI_API_KEY=AIza...
- *     MT5_URL=http://192.168.1.10:8000      (optional)
- *     MT5_TOKEN=...                          (optional)
  *
- * Keys are case-insensitive, values may be quoted, a UTF-8 BOM (Windows Notepad) is skipped and
+ * Unknown keys (e.g. MT5_URL / MT5_TOKEN from older templates) are ignored. Keys are case-insensitive, values may be quoted, a UTF-8 BOM (Windows Notepad) is skipped and
  * template values ("your-...", "<...>", "YourWiFiName") count as empty. Header-only (host tested).
  */
 
@@ -22,7 +20,7 @@
 namespace setupfile {
 
 struct Values {
-    char ssid[33] = "", pass[65] = "", key[128] = "", mt5Url[100] = "", mt5Token[100] = "";
+    char ssid[33] = "", pass[65] = "", key[128] = "";
     bool any = false;
 };
 
@@ -63,8 +61,6 @@ inline bool parseLine(char* s, Values& out) {
     if (!strcmp(k, "WIFI_SSID")) copyTo(out.ssid, sizeof(out.ssid), v);
     else if (!strcmp(k, "WIFI_PASSWORD")) copyTo(out.pass, sizeof(out.pass), v);
     else if (!strcmp(k, "GEMINI_API_KEY")) copyTo(out.key, sizeof(out.key), v);
-    else if (!strcmp(k, "MT5_URL")) copyTo(out.mt5Url, sizeof(out.mt5Url), v);
-    else if (!strcmp(k, "MT5_TOKEN")) copyTo(out.mt5Token, sizeof(out.mt5Token), v);
     else return false;
     out.any = true;
     return true;

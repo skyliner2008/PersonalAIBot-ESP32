@@ -713,7 +713,7 @@ class Studio:
             return
         self.history.append(line)
         self.hist_pos = len(self.history)
-        secret = re.match(r"^set\s+(key|pass|mt5token)\s", line) is not None
+        secret = re.match(r"^set\s+(key|pass)\s", line) is not None
         self.send(line, mask=secret)
         self.cmd_var.set("")
 
@@ -919,7 +919,7 @@ class Studio:
         self.model_box = self._combo(mf, "Live model หลัก", self.model_var, 40)
         self.thinking_box = self._combo(mf, "ระดับการคิด (Ext.)", self.thinking_var, 40)
         self.textmodel_box = self._combo(mf, "Text model (ความจำ)", self.textmodel_var, 40)
-        self.search_var = tk.BooleanVar(value=True)
+        self.search_var = tk.BooleanVar(value=False)
         self.consolidate_var = tk.BooleanVar(value=True)
         row = ttk.Frame(mf)
         row.pack(fill="x")
@@ -958,30 +958,11 @@ class Studio:
         ttk.Label(df, text="สีจอบอร์ดไม่ตรงกับภาพในแอป (พื้นขาว/ตาน้ำเงิน) → แท็บ 🖥️ หน้าจอ → 🌓 สลับสีจอบอร์ด",
                   style="Dim.TLabel").pack(anchor="w")
 
-        ff = ttk.LabelFrame(right, text="การเงิน / MetaTrader 5", padding=10)
+        ff = ttk.LabelFrame(right, text="การเงิน (ข้อมูลจาก TradingView)", padding=10)
         ff.pack(fill="x", pady=(0, 10))
         self.finance_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(ff, text="เปิด tool การเงิน (วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, แจ้งเตือนราคา)",
                         variable=self.finance_var).pack(anchor="w")
-        self.mt5url_var = tk.StringVar()
-        LabeledEntry(ff, "MT5 server URL", self.mt5url_var).pack(fill="x", pady=2)
-        ttk.Label(ff, text="mt5-core-server เช่น http://192.168.1.10:8000 (เว้นว่าง = ปิด tool MT5)",
-                  style="Dim.TLabel").pack(anchor="w")
-        self.mt5token_var = tk.StringVar()
-        row = ttk.Frame(ff)
-        row.pack(fill="x", pady=2)
-        LabeledEntry(row, "MT5 token", self.mt5token_var, show="•", toggle=True).pack(side="left", fill="x", expand=True)
-        ttk.Button(row, text="บันทึก token", command=self.save_mt5_token).pack(side="left", padx=(4, 0))
-        self.mt5token_hint = ttk.Label(ff, text="", style="Dim.TLabel")
-        self.mt5token_hint.pack(anchor="w")
-        self.mt5trade_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(ff, text="อนุญาตส่งคำสั่งเทรดด้วยเสียง (AI ต้องทวนคำสั่งและได้คำยืนยันก่อนทุกครั้ง)",
-                        variable=self.mt5trade_var, command=self.on_mt5trade_toggle).pack(anchor="w")
-        row = ttk.Frame(ff)
-        row.pack(fill="x", pady=2)
-        ttk.Label(row, text="lot สูงสุดต่อคำสั่ง", width=18).pack(side="left")
-        self.mt5lot_var = tk.StringVar(value="0.10")
-        ttk.Spinbox(row, from_=0.01, to=100, increment=0.01, textvariable=self.mt5lot_var, width=8).pack(side="left")
 
         btns = ttk.Frame(tab)
         btns.grid(row=1, column=0, columnspan=2, sticky="ew", padx=4, pady=(0, 12))
@@ -1065,7 +1046,7 @@ class Studio:
             self._set_combo(self.thinking_box, int(c.get("thinking", 0)))
             self._set_combo(self.textmodel_box, int(c.get("textmodel", 0)))
             self.update_eye_swatch()
-        self.search_var.set(bool(c.get("search", True)))
+        self.search_var.set(bool(c.get("search", False)))
         self.consolidate_var.set(bool(c.get("consolidate", True)))
         self.volume_var.set(int(c.get("volume", 70)))
         self.bright_var.set(int(c.get("brightness", 80)))
@@ -1075,11 +1056,6 @@ class Studio:
         self.dim_var.set(int(c.get("dimlevel", 8)))
         self.rot_var.set(c.get("rotation", 1) == 3)
         self.finance_var.set(bool(c.get("finance", True)))
-        self.mt5url_var.set(c.get("mt5url", ""))
-        self.mt5token_var.set("")
-        self.mt5token_hint.configure(text="มี token อยู่แล้ว (เว้นว่าง = ไม่เปลี่ยน)" if c.get("mt5tokenSet") else "ยังไม่มี token")
-        self.mt5trade_var.set(bool(c.get("mt5trade", False)))
-        self.mt5lot_var.set(f"{float(c.get('mt5maxlot', 0.1)):.2f}")
         self.profile_baseline = self.form_values()
         self.settings_note.configure(text=f"อ่านค่าล่าสุด {time.strftime('%H:%M:%S')} • เฟิร์มแวร์ {c.get('fw', '?')}")
 
@@ -1138,33 +1114,7 @@ class Studio:
         v["dimlevel"] = str(self.dim_var.get())
         v["rotation"] = "3" if self.rot_var.get() else "1"
         v["finance"] = "1" if self.finance_var.get() else "0"
-        v["mt5url"] = self.mt5url_var.get().strip() or "-"
-        v["mt5trade"] = "1" if self.mt5trade_var.get() else "0"
-        try:
-            v["mt5maxlot"] = f"{max(0.01, min(100.0, float(self.mt5lot_var.get()))):.2f}"
-        except ValueError:
-            v["mt5maxlot"] = None
         return {k: val for k, val in v.items() if val is not None}
-
-    def on_mt5trade_toggle(self):
-        if self.mt5trade_var.get() and not messagebox.askyesno(
-                APP_TITLE, "อนุญาตให้ AI ส่งคำสั่งซื้อขายจริงบน MT5 ด้วยเสียง?\n\n"
-                           "• AI จะทวนคำสั่งและต้องได้คำยืนยันจากคุณก่อนทุกครั้ง\n"
-                           "• จำกัดขนาดไม่เกิน lot สูงสุดที่ตั้งไว้\n"
-                           "• ความเสี่ยงจากการเทรดเป็นของผู้ใช้"):
-            self.mt5trade_var.set(False)
-
-    def save_mt5_token(self):
-        token = self.mt5token_var.get().strip()
-        if not token:
-            messagebox.showwarning(APP_TITLE, "ใส่ token ก่อน (หรือใส่ - เพื่อลบ token บนบอร์ด)")
-            return
-        if any(ch.isspace() for ch in token):
-            messagebox.showwarning(APP_TITLE, "token มีช่องว่าง — ตรวจการคัดลอกอีกครั้ง")
-            return
-        self.send(f"set mt5token {token}", mask=True)
-        self.mt5token_var.set("")
-        self.root.after(800, lambda: self.send("config", echo=False))
 
     def save_settings(self):
         if not self.link.connected:
@@ -1279,10 +1229,7 @@ class Studio:
                     "micgain": int(s.get("micgain", 5)),
                     "sleep": int(s.get("sleep", 3)), "rotation": int(s.get("rotation", 1)),
                     "clock": int(s.get("clock", 5)), "dimlevel": int(s.get("dimlevel", 8)),
-                    "finance": s.get("finance", "1") == "1",
-                    "mt5url": "" if s.get("mt5url", "-") == "-" else s.get("mt5url"),
-                    "mt5trade": False,  # voice trading is never enabled from a file: tick it (with the warning)
-                    "mt5maxlot": float(s.get("mt5maxlot", 0.1))})
+                    "finance": s.get("finance", "1") == "1"})
         baseline = self.profile_baseline
         self.config_data, saved = cfg, self.config_data
         self.load_settings_form()
@@ -1321,8 +1268,11 @@ class Studio:
                     err = s.get("error", {})
                     q = err.get("quota") or []
                     extra = f" • โควตา {q[0].get('id')} limit {q[0].get('limit')}" if q else ""
-                    t.insert("end", f"✘ Google Search (grounding) HTTP {h} {err.get('status', '')}{extra}\n"
+                    t.insert("end", f"✘ Google Search (grounding) กับ {s.get('id')} HTTP {h} {err.get('status', '')}{extra}\n"
                                     f"   {err.get('message', '')[:200]}\n", "warn")
+                    if h == 429:  # free tier: no Search grounding for the REST 3.x models at all
+                        t.insert("end", "   ถ้า key เป็น free tier: Flash-Lite (REST) ใช้ Search ไม่ได้เลยตามเงื่อนไขของ Google\n"
+                                        "   — ไม่ได้แปลว่า Search ตอนคุยด้วยเสียง (Live) ใช้ไม่ได้ ดูสถานะ Search ในแท็บสถานะ\n", "dim")
         t.configure(state="disabled")
 
     # ---------------------------------------------------------- tools tab
@@ -1417,6 +1367,7 @@ class Studio:
         row.pack(fill="x")
         # Google Search on/off + "try Search again" live in ⚙️ (saved setting); these are temporary probes
         for text, cmd in (("setup ปกติ", "setupmode full"), ("setup ขั้นต่ำ", "setupmode min"),
+                          ("ทดสอบ Search", "setupmode searchonly"),  # [Diag] line: accepted / refused (quota)
                           ("key ใน URL", "keymode query"), ("key ใน header", "keymode header")):
             ttk.Button(row, text=text, command=lambda c=cmd: self.send(c)).pack(side="left", padx=2)
 
@@ -1888,8 +1839,11 @@ class Studio:
             parts.append(self.STATE_TH.get(d.get("state"), d.get("state", "?")))
             parts.append(f"Wi-Fi {d.get('rssi', '')} dBm" if d.get("wifi") else "Wi-Fi ✘")
             parts.append(f"AI: {d.get('session')} • {d.get('active_model', '')}")
-            if not d.get("google_search", True) and d.get("search_off_s"):
-                parts.append("Search ปิดชั่วคราว (โควตา)")
+            st = d.get("search_state")
+            if st == "suspect":
+                parts.append("Search: กำลังตรวจ")
+            elif st == "quota" or (st is None and not d.get("google_search", True) and d.get("search_off_s")):
+                parts.append("Search ปิดชั่วคราว (โควตาหมด)")
             if d.get("hold_s"):
                 parts.append(f"⏸ พักการเชื่อมต่อ {d['hold_s']} วิ ({d.get('last_failure')})")
             if d.get("muted"):
@@ -1906,7 +1860,7 @@ class Studio:
             "rssi": "สัญญาณ (dBm)", "ip": "IP", "muted": "ปิดไมค์", "sleeping": "พักเครื่อง",
             "auth_error": "API key ผิด", "error_text": "ข้อความผิดพลาด", "hold_s": "พักการเชื่อมต่อ (วิ)",
             "last_failure": "ความผิดพลาดล่าสุด", "last_close": "ปิดการเชื่อมต่อล่าสุด", "active_model": "โมเดลที่ใช้",
-            "preferred_model": "โมเดลหลัก", "google_search": "Google Search", "search_off_s": "Search ปิดอีก (วิ)",
+            "preferred_model": "โมเดลหลัก", "google_search": "Google Search", "search_off_s": "Search ปิดอีก (วิ)", "search_state": "สถานะ Search (ok/suspect/quota)",
             "setup_mode": "setup mode", "text_model": "Text model", "tokens_per_min": "โทเคน/นาที",
             "consolidations_today": "จัดความจำวันนี้", "memories": "ความจำ (facts)", "relations": "ความสัมพันธ์ (กราฟ)",
             "open_tasks": "งานค้าง", "reminders": "การแจ้งเตือน", "volume": "ความดัง", "mic_level": "ระดับไมค์",

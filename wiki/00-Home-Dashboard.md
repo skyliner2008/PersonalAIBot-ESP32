@@ -10,7 +10,7 @@ status: in-progress
 > **Project:** Personal AI Agent on ES3C28P (ESP32-S3 2.8" IPS LCD)
 > **Goal:** คุยด้วยเสียงภาษาไทยแบบ real-time กับ Gemini 3.8 Live + **ความจำระยะยาวแบบ standalone ในตัวเครื่อง**
 > **Board:** ES3C28P — ESP32-S3-N16R8 + ILI9341V + ES8311 + FT6336G + MicroSD
-> **Firmware:** v3.1.0 (2026-10-14) — ผู้ช่วยส่วนตัว + ดวงตา + เมนูทัช + auto fallback (รวม Google Search) + ปุ่มไมค์ + PC Studio app
+> **Firmware:** v3.4.0 (2026-10-15) — ผู้ช่วยส่วนตัว + ดวงตา + เมนูทัช + auto fallback (รวม Google Search) + ปุ่มไมค์ + วิทยุออนไลน์ + PC Studio app • host tests 31 ชุด / 1,547 checks
 
 ---
 
@@ -29,7 +29,7 @@ status: in-progress
 | 08 | [[08-Long-Term-Memory-GraphRAG]] | ความจำระยะยาว standalone: BM25 + Knowledge Graph | ✅ Implemented |
 | 09 | [[09-Assistant-Profiles-and-Tools]] | โปรไฟล์เสียง/นิสัย, เมนูทัช + คีย์บอร์ดไทย, 37+ tools, งบโทเคน, auto fallback, ทดสอบ API key | ✅ v3.1 |
 | 12 | [[12-Internet-Radio]] | วิทยุออนไลน์: รายการสถานีไทยที่ล็อกไว้ (แก้ใน Studio), หน้าจอแบบแอปวิทยุ (แตะกลางจอ = สั่ง AI), AI เลือกสถานีให้, Helix MP3/AAC, ลดเสียงตอนคุย | ✅ ทดสอบบนบอร์ดแล้ว |
-| 11 | [[11-Data-Tools-and-Cards]] | tools ข้อมูลสด + การ์ดกราฟิก: อากาศ/PM2.5, ราคาน้ำมัน, TradingView, ค่าเงิน, ข่าว + พอร์ตจาก PersonalAIBot: เครื่องคิดเลข, แปลงหน่วย, เวลาโลก, Wikipedia, โน้ต, วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, แจ้งเตือนราคา, MT5 | ✅ v3.2 |
+| 11 | [[11-Data-Tools-and-Cards]] | tools ข้อมูลสด + การ์ดกราฟิก: อากาศ/PM2.5, ราคาน้ำมัน, TradingView, ค่าเงิน, ข่าว + พอร์ตจาก PersonalAIBot: เครื่องคิดเลข, แปลงหน่วย, เวลาโลก, Wikipedia, โน้ต, วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, แจ้งเตือนราคา (TradingView อ่านอย่างเดียว — ไม่มี MT5 ตั้งแต่ v3.4) | ✅ v3.4 |
 | 10 | [[10-PC-Studio-App]] | แอป PC: ตั้งค่า, เครื่องมือ, debug log สด, แชทพิมพ์, จอเสมือน + แตะจากระยะไกล, build/upload | ✅ v3.1 |
 
 ---
@@ -75,7 +75,7 @@ ESP32-AI/
 ├── src/
 │   ├── main.cpp                   # boot, ui/led tasks, serial console
 │   ├── app/AppConfig.h            # persona, เสียง, ความจำ, echo gate
-│   ├── agent/                     # AgentController (สมอง), AgentTools (8 tools)
+│   ├── agent/                     # AgentController (+Session/Mic/Routines/Device), AgentTools (42 tools), WebTools
 │   ├── ai/                        # GeminiLiveClient, GoogleRootCA.h
 │   ├── audio/                     # AudioManager, ES8311, Resampler
 │   ├── display/                   # AvatarUI, TouchFT6336, LGFX config, fonts/
@@ -132,6 +132,12 @@ ESP32-AI/
 | 2026-10-15 | **แก้บอร์ดรีบูตเอง (CORRUPT HEAP)**: race ใน esp_websocket_client → เขียนใหม่เป็น task `geminiIO` ตัวเดียวถือการเชื่อมต่อ • 3 โมเดลรับ VAD tuning • พัก↔ตื่น 4 รอบผ่าน | [[07-Troubleshooting-Log#T039 บอร์ดรีบูตเอง CORRUPT HEAP หลัง error เครือข่าย - race ใน esp_websocket_client]] |
 | 2026-10-15 | ไมค์ต้องพูดใกล้ → ADC 18→36 dB + ปรับ "ความไวไมค์" ได้ • `apitest` ทดสอบ Search grounding: 429 = โควตา Search หมด (โมเดลรองรับ) • `searchretry` | [[07-Troubleshooting-Log#T036 ไอคอนไมค์ขึ้นแต่ AI เงียบ - 3.8 Live ไม่ค่อยตอบ]] |
 | 2026-10-15 | **แก้เสียง AI กระตุก**: jitter buffer ปรับตัวเอง (200→400→600 ms ตามเน็ต) + ตัวอ่าน WebSocket frame เอง (IDF 4.4 อ่าน header ขาดเมื่อ TLS ตัดกลาง → เสียงถูกอ่านเป็นคำสั่งปิด → หลุดกลางคำตอบ) + diag วัด gap/ลูปค้าง — 5 คำตอบยาว gap 1 ครั้ง (เดิม 3 ในเรื่องแรก) | [[07-Troubleshooting-Log#T044 เสียง AI ตอบกลับกระตุก - jitter buffer เล็ก + WebSocket อ่าน header ผิดจังหวะ]] |
+| 2026-10-15 | **v3.4.0: ถอด MT5 ออกทั้งหมด** (ไม่มีการเชื่อมต่อโบรกเกอร์ — ข้อมูลการเงินอ่านจาก TradingView อย่างเดียว: ลบ `mt5_account`/`mt5_trade`, ค่า `mt5*`, `MT5_*` ใน `ai-setup.txt`, ส่วน MT5 ใน Studio; boot แรกลบคีย์เก่าใน NVS/SD) • tools ข้อมูลใช้ **HTTPS เท่านั้น** • Gemini key ส่งทาง header `x-goog-api-key` เป็นค่าเริ่มต้น • แยก `AgentController.cpp` (2,000+ บรรทัด) เป็น Session/Mic/Routines/Device • `publish_release.py` รัน host tests ก่อนเผยแพร่ + CI release รอ host-tests • host tests 1,493 checks ✓ — **ยังไม่ได้ทดสอบบนบอร์ด** | [[11-Data-Tools-and-Cards#ไม่มีการเชื่อมต่อ MT5 / โบรกเกอร์ (ถอดออกใน v3.4)]] · [[04-System-Architecture]] |
+| 2026-10-15 | **แก้ "โควตา Google Search หมด" ขึ้นทุกครั้งที่ boot** — สถานะเก็บแค่ใน RAM (รีบูตแล้วชนซ้ำ) และ session ค้างจากการรีบูตแบบไม่ handshake ให้ error "quota" เหมือนกันจนโทษ Search ผิด → `search::Gate`: quota ตอนมี Search = แค่สงสัย, ตรวจด้วย REST (ping ธรรมดา + ping ที่มี googleSearch) → 429 = ปิด 6 ชม. **จำข้ามรีบูต** (NVS `rt`/`srchoff`), 200 = เปิดต่อไม่ขึ้นข้อความ • diag `search_state` • host test `search_gate` — ทดสอบบนบอร์ดแล้ว (T047) | [[07-Troubleshooting-Log#T045 "โควตา Google Search หมด" ขึ้นทุกครั้งหลัง boot]] |
+| 2026-10-15 | **ตรวจความถูกต้องของ tools ทั้งหมดกับ API จริง** — น้ำมัน: วันที่มีผล + "ส่วนต่างตอนปรับ" แทน "เมื่อวาน" (ราคาปรับ 9 ต.ค. ไม่ใช่วันนี้) • PM2.5 ใช้ AQI ของ PM2.5 • ราคาบอกตลาดเปิด/ปิด + เวลาราคา + หน่วง • ข่าวมีวันที่ • ปฏิทินมีวันที่ + กันนาฬิกายังไม่ซิงก์ • `as_of` ทุก tool ข้อมูลสด • **รอผล Google Search 25 วิ** ก่อนขึ้น "AI ไม่ตอบ" • host tests 31 ชุด / 1,541 checks — ทดสอบบนบอร์ดแล้ว (T047) | [[07-Troubleshooting-Log#T046 tool น้ำมันบอกวันที่ไม่ตรงปัจจุบัน + ตรวจความถูกต้องของ tools ทั้งหมด + รอผล Search]] |
+| 2026-10-15 | **ทดสอบ v3.4.0 บนบอร์ด + แก้ TLS ล้ม**: Live ต่อไม่ได้ (handshake -0x004E) เพราะ keep-alive config เป็นตัวแปร local ที่ IDF เก็บแค่ pointer → ย้ายเป็นสมาชิก (bisect บนบอร์ดกับ v3.3.0) • ยืนยันบนบอร์ด: จำโควตา Search ข้ามรีบูต (boot ไม่ชน quota) + tools น้ำมัน/อากาศ/ราคา/ข่าว ให้วันที่ถูกต้อง | [[07-Troubleshooting-Log#T047 v3.4.0 ต่อ Gemini ไม่ได้ - TLS handshake -0x004E / -0x004C (keep-alive pointer ค้าง)]] |
+| 2026-10-15 | **Search "quota เต็มตลอด" = key ไม่มีสิทธิ์ใช้ Search กับ Live** (ปิดใน 0.8 วิหลัง setup ก่อนค้นอะไร) • การตรวจ REST ใน T045 ผิด (free tier REST ไม่มี Search เลย = 429 เสมอ) → ให้ Live ตัดสิน: ไม่มี Search ใช้ได้ = ปิด 6→48 ชม. จำข้ามรีบูต • ทดสอบบนบอร์ดแล้ว | [[07-Troubleshooting-Log#T048 Google Search ขึ้น "quota เต็ม" ตลอด ตั้งแต่ 14 ต.ค. — key ไม่มีสิทธิ์ใช้ Search + การตรวจด้วย REST ผิด]] |
+| 2026-10-15 | **เลิกใช้ Google Search** (ค่าเริ่มต้นปิด) • ประเมิน DuckDuckGo: ไม่มี API ค้นเว็บฟรี + หน้า HTML บล็อกบอท → ไม่ใช้ • เรื่องล่าสุดใช้ `get_news` (7 วันล่าสุด, เกี่ยวข้องสุด 8 ข่าวเรียงใหม่สุด) • `setupmode searchonly` + ปุ่ม "ทดสอบ Search" ใน Studio: ทั้ง 3 โมเดล Live ถูกปฏิเสธแม้ setup มีแค่ Search • ทดสอบบนบอร์ดแล้ว | [[07-Troubleshooting-Log#T049 เลิกใช้ Google Search + ประเมิน DuckDuckGo + ข่าวตามหัวข้อได้ข่าวเก่า]] |
 | 2026-10-15 | **วิทยุ v3.3.0: รายการสถานี + หน้าจอแบบแอปวิทยุ** — เลิกค้น Radio Browser ออนไลน์ (ช้า/ล้ม/URL ขยะ) → 16 สถานีไทยที่ทดสอบแล้ว เก็บใน SD (`agent/radio_stations.json`) • AI เห็นรายการใน prompt เลือกตามชื่อ/เลข/แนว • หน้าจอวิทยุ: แผงกลางแตะ = สั่ง AI, แถบสถานีเลื่อนได้, ⏮ − + ⏭, เปิดเองเมื่อวิทยุเล่น, หลบให้โหมดนาฬิกา • Studio แท็บ 📻 วิทยุ (เพิ่ม/แก้/ลบ/เรียง/ทดสอบ URL) • ทดสอบบนบอร์ดแล้ว | [[12-Internet-Radio#รายการสถานี (ล็อกไว้ — ไม่ค้นออนไลน์)]] · [[10-PC-Studio-App]] |
 | 2026-10-15 | **ทดสอบวิทยุบนบอร์ด**: แก้ chunked transfer (เสียงสะดุด), watchdog รีบูต (ย้าย webTools/textModel ไป core 1), ตื่นเองเพราะเสียงวิทยุ (ประมาณเสียงสะท้อนจากระดับที่ส่งออก), การ์ดค้างทับนาฬิกา | [[12-Internet-Radio#ทดสอบบนบอร์ด (2026-10-15)]] · [[07-Troubleshooting-Log#T043 บอร์ดรีบูต task_wdt IDLE0 ขณะเปิดวิทยุ + เรียก tool ออนไลน์]] |
 | 2026-10-15 | **Internet Radio เฟส 1**: `play_radio`/`stop_radio`, ตัวเล่นสตรีม + Helix (RPSL, ไม่ใช้ส่วน GPL), mixer + ducking 12%, ปลุกด้วยเสียงต้องดังกว่าวิทยุ 2 เท่า, ชื่อสถานี/เพลงบนจอและนาฬิกา, host test resampler — build/บูตผ่าน รอ Wi-Fi ทดสอบสตรีม | [[12-Internet-Radio]] |

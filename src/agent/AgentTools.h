@@ -83,12 +83,8 @@ public:
     /** Append {"googleSearch":{}} (optional) and {"functionDeclarations":[...]} to `tools`. */
     void addDeclarations(JsonArray tools, ToolBehavior behavior, bool googleSearch) const;
 
-    /** Optional tool packs: finance (TradingView analysis / scan / calendar / alerts), MT5 (bridge configured), trading. */
-    void setPacks(bool finance, bool mt5, bool mt5Trade) {
-        _finance = finance;
-        _mt5 = mt5;
-        _mt5Trade = mt5Trade;
-    }
+    /** Optional tool pack: finance (TradingView analysis / scan / calendar / alerts). */
+    void setFinancePack(bool finance) { _finance = finance; }
 
     /**
      * Run one function call. Fills `response` with {"result": {...}} or {"error": "..."}.
@@ -110,7 +106,7 @@ private:
     todo::TaskList& _tasks;
     DeviceOps& _device;
     int32_t _utcOffset;
-    bool _finance = true, _mt5 = false, _mt5Trade = false;
+    bool _finance = true;
     uint32_t _memoryWrites = 0;
 
     using Handler = bool (AgentTools::*)(JsonObjectConst, JsonObject, const char*&);

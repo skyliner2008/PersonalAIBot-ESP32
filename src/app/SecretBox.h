@@ -1,6 +1,6 @@
 /**
  * @file SecretBox.h
- * @brief AES-256-GCM sealing of the Wi-Fi password, Gemini API key and MT5 token stored in NVS
+ * @brief AES-256-GCM sealing of the Wi-Fi password and Gemini API key stored in NVS / on the SD card
  * @see wiki/07-Troubleshooting-Log.md (T042)
  *
  * The key is SHA-256 over a fixed label + this chip's factory MAC + its 128-bit OPTIONAL_UNIQUE_ID
