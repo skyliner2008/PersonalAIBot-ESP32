@@ -140,6 +140,13 @@ DMA Channel: Auto
 > With 6/8 the other way round the speaker is silent and the mic reads all zeros.
 > See [[07-Troubleshooting-Log#T013 I2S DIN/DOUT สลับกัน - ไมค์อ่านได้ 0 ตลอด]]
 
+> [!TIP] ES8311 reg 0x44 — สัญญาณอ้างอิงสำหรับ AEC (วัดบนบอร์ด 2026-10-16)
+> เล่น tone 1 kHz (amplitude 6000) แล้วอ่าน raw RMS ช่อง L/R (`reg 44 <v>` + `tone` + `audio`):
+> `0x00` (ค่าที่ใช้อยู่) = ไมค์ทั้ง L/R • **`0x50` = L ไมค์ (เสียงสะท้อน 0.026), R = DAC loopback (0.12946 = ระดับดิจิทัลพอดี)** •
+> `0x40` = กลับข้าง (L DAC, R ไมค์) • `0x60` = DAC ทั้งสองช่อง • `0x30` = เงียบ
+> → ใช้ `0x50` เป็น input "MR" ให้ AEC ได้ (อ้างอิงตรงกับไมค์ทุก sample, รวมเสียงวิทยุ) · เสียงลำโพงเข้าไมค์แรง ≈ -14 dB จากระดับที่เล่น (volume 70)
+> ดูแผน: [[14-AEC-WakeWord-Plan]]
+
 ### FM8002E Speaker Amplifier
 | Signal | GPIO | Direction | Notes |
 |--------|------|-----------|-------|
