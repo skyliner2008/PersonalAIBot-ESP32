@@ -26,6 +26,14 @@
 
 namespace consolidate {
 
+/**
+ * Highest importance a fact extracted in the background may get. Core memories (importance >= 4,
+ * or profile) are put into every session's prompt: an extractor's guess from speech-to-text (radio,
+ * TV, other people) would otherwise be repeated to the user on every "hello" (T054). The live
+ * model saves what really matters itself, with a higher importance.
+ */
+inline constexpr uint8_t kMaxImportance = 3;
+
 struct Fact {
     PsString content;
     ltm::Category category = ltm::Category::Other;

@@ -10,7 +10,7 @@
 
 #pragma once
 
-#define FIRMWARE_VERSION        "3.4.3"
+#define FIRMWARE_VERSION        "3.4.4"
 
 // ============================================================
 // Prompt labels

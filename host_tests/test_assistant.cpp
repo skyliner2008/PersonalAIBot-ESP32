@@ -565,7 +565,10 @@ TEST(consolidation_prompt_and_parse) {
     std::vector<consolidate::Relation> rels;
     CHECK(consolidate::parseResult(answer, strlen(answer), facts, rels));
     CHECK_EQ(facts.size(), (size_t)2);  // "x" too short
-    CHECK(facts.size() == 2 && facts[1].category == ltm::Category::Other && facts[1].importance == 5);
+    CHECK(facts.size() == 2 && facts[1].category == ltm::Category::Other &&
+          facts[1].importance == consolidate::kMaxImportance);  // 9 -> capped (not a core memory)
+    CHECK(facts.size() == 2 && facts[0].importance == consolidate::kMaxImportance);  // 4 -> 3 too
+    CHECK(strstr(consolidate::systemPrompt(), "radio/TV") != nullptr);
     CHECK_EQ(rels.size(), (size_t)1);
     CHECK(!consolidate::parseResult("not json", 8, facts, rels));
 

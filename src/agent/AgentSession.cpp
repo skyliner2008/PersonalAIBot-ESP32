@@ -105,6 +105,7 @@ void AgentController::startFreshSession(const char* hint) {
     flushUserTurn();
     flushAgentTurn(false);
     _resumeHandle = "";
+    _freshPending = true;  // handles still queued from the old session must not bring it back
     _audio->clearPlayback();
     _dropAudio = false;
     _awaitingReply = false;
@@ -130,7 +131,8 @@ void AgentController::buildSystemPrompt(PsString& p) {
     p += " ไม่อ่านสัญลักษณ์หรือรายการยาว\n"
          "ดวงตา: คุณมีดวงตาบนจอ เรียก set_expression ให้เข้ากับอารมณ์ที่กำลังพูดอย่างเงียบๆ\n"
          "ความจำ: เรียก save_memory/save_relation ทันทีที่รู้ข้อมูลสำคัญของผู้ใช้ และ recall_memory "
-         "ก่อนตอบเรื่องส่วนตัว ห้ามแต่งความจำ\n"
+         "ก่อนตอบเรื่องส่วนตัว ห้ามแต่งความจำ บันทึกเฉพาะสิ่งที่ผู้ใช้พูดถึงตัวเองชัดเจน "
+         "(ไม่ใช่เสียงไม่ชัด เสียงวิทยุ/ทีวี หรือคนอื่นคุยกัน)\n"
          "ผู้ช่วยส่วนตัว: ใช้ set_timer, set_reminder, add_task ฯลฯ ตามที่ผู้ใช้ขอ ";
     p += "ข้อมูลสด (แสดงกราฟิกบนจอให้เอง แล้วคุณพูดสรุปสั้นๆ): อากาศ/ฝน/ฝุ่น PM2.5 = get_weather, "
          "ราคาน้ำมันในไทย = get_oil_price, หุ้น/ดัชนี/ทองคำ/คริปโต/ค่าเงิน/น้ำมันดิบ = get_market_quote, "
@@ -190,14 +192,18 @@ void AgentController::buildSystemPrompt(PsString& p) {
 
     PsString core;
     _memory.buildCoreMemory(core, MEMORY_CORE_PROMPT_BYTES);
-    p += "\n## สิ่งสำคัญที่คุณจำได้เกี่ยวกับผู้ใช้\n";
+    // "use when relevant": a remembered plan was raised on almost every "hello" (a trip the user never
+    // planned, saved from radio audio - T054)
+    p += "\n## สิ่งสำคัญที่คุณจำได้เกี่ยวกับผู้ใช้ (ใช้เมื่อเกี่ยวกับเรื่องที่ผู้ใช้พูด อย่ายกขึ้นมาเองตอนทักทาย)\n";
     p += core.empty() ? PsString("(ยังไม่มี ค่อยๆ ทำความรู้จักและบันทึกไว้)\n") : core;
 
     PsString recent;
     _episodes.buildRecentContext(recent, MEMORY_RECENT_TURNS, MEMORY_RECENT_PROMPT_BYTES, AGENT_USER_LABEL,
                                  AGENT_SELF_LABEL);
     if (!recent.empty()) {
-        p += "\n## บทสนทนาล่าสุดก่อนเซสชันนี้ (บริบท ไม่ต้องทวน)\n";
+        // the assistant's own lines are in here too: one greeting that raised an old topic used to be
+        // fed back into the next session, which raised it again (a loop - T054)
+        p += "\n## บทสนทนาล่าสุดก่อนเซสชันนี้ (บริบทเท่านั้น ไม่ต้องทวน อย่ายกเรื่องเก่าขึ้นมาเองตอนทักทาย)\n";
         p += recent;
     }
 }
@@ -268,6 +274,7 @@ void AgentController::onSetupComplete() {
                       "fails (try: ask <question that needs the web>)\n", liveModelId(_activeModel));
     }
     _failedResumes = 0;
+    _freshPending = false;  // the new session is up: its own resumption handles count from here
     _sessionGen++;  // web-tool answers from an older session are dropped
     _liveSel.reportSuccess(_activeModel);
     _fatalError = false;
@@ -751,6 +758,9 @@ void AgentController::onToolCallCancellation(JsonArrayConst ids) {
 }
 
 void AgentController::onSessionHandle(const char* handle, bool resumable) {
+    // a "new session" was asked for: updates still queued from the old one (read before its close)
+    // used to restore the handle, and the next setup resumed the old session after all
+    if (_freshPending) return;
     if (resumable && handle && *handle) _resumeHandle = handle;
 }
 

@@ -212,6 +212,7 @@ private:
     bool _timeStarted = false, _timeValidSeen = false;
     uint8_t _activeModel = 0;
     String _resumeHandle;
+    bool _freshPending = false;  // startFreshSession: ignore resumption handles until the new session is ready
     uint8_t _failedResumes = 0;
     bool _reconnectPending = false;  // goAway: resume after the current reply
     bool _restartPending = false;    // persona/model changed: fresh session after the reply

@@ -17,6 +17,9 @@ const char* systemPrompt() {
            "identity, preferences, health/allergies, people and pets, places, work, plans and appointments, "
            "things the user asked to remember. Ignore greetings, small talk, the assistant's own statements, "
            "questions, and temporary states. Do not repeat the known memories. "
+           "The user lines are speech-to-text from a room with a radio/TV: keep only what the user clearly says "
+           "about themselves; skip fragments, test commands, and anything that sounds like a broadcast or "
+           "other people talking (e.g. a DJ's chat, 'yes, at the dam'). "
            "Write facts as one self-contained third-person sentence in the conversation's language "
            "(Thai: start with 'ผู้ใช้'). importance 1-5 (5 = essential). "
            "Use relations for links between named entities. Return empty arrays if there is nothing new.";
@@ -98,7 +101,7 @@ bool parseResult(const char* json, size_t len, std::vector<Fact>& facts, std::ve
         x.content = c;
         x.category = ltm::parseCategory(f["category"] | "other");
         const int imp = f["importance"] | 3;
-        x.importance = (uint8_t)(imp < 1 ? 1 : (imp > 5 ? 5 : imp));
+        x.importance = (uint8_t)(imp < 1 ? 1 : (imp > kMaxImportance ? kMaxImportance : imp));
         facts.push_back(std::move(x));
         if (facts.size() >= 12) break;  // a runaway answer should not flood memory
     }

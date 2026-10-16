@@ -137,7 +137,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     };
     declare(d, b, "save_memory",
             "Save a durable fact about the user (personal details, preferences, people, pets, plans, "
-            "things to remember). Call as soon as you learn it.", save, 3);
+            "things to remember) the user clearly said. Call as soon as you learn it.", save, 3);
     static const Param rel[] = {
         {"subject", "STRING", nullptr, true, nullptr},
         {"relation", "STRING", "Short verb phrase, e.g. 'มีสุนัขชื่อ'.", true, nullptr},
