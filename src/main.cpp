@@ -808,7 +808,10 @@ void setup() {
     mbedtls_platform_set_calloc_free(tlsCalloc, heap_caps_free);  // before any TLS connection
     Serial.setRxBufferSize(2048);  // console lines with Thai JSON exceed the 256-byte default
     Serial.setTxBufferSize(4096);  // whole "<TAG> <json>" replies fit without blocking
-    Serial.setTxTimeoutMs(500);    // a reading host keeps up; a stalled one cannot block a task long
+    // a reading host drains the 4 KB buffer in milliseconds; a host that holds the port without reading
+    // (ESP32-AI Studio busy/disconnected) made every log line wait 500 ms: the agent loop stalled 10 s and
+    // 45 s right after a wake (T065). Now such lines are dropped instead.
+    Serial.setTxTimeoutMs(20);
     Serial.begin(115200);
     const uint32_t t0 = millis();
     while (!Serial && millis() - t0 < 1500) delay(10);
