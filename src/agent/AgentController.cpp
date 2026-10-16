@@ -56,6 +56,7 @@ bool AgentController::begin(AudioManager* audio, FaceScreen* face, Storage* stor
     _askQueue = xQueueCreate(4, sizeof(char*));
     _infoLock = xSemaphoreCreateMutex();
     _preroll.init(kWakeBufferSamples);
+    if (void* mem = psramMalloc(sizeof(echo::Canceller))) _aec = new (mem) echo::Canceller();  // internal RAM is scarce
     {  // a confirmed Search quota outlives the reboot (else every boot hits it again)
         Preferences rt;
         if (rt.begin("rt", false)) {  // read-write: creates the namespace on first boot (no NOT_FOUND log)

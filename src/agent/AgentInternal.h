@@ -11,6 +11,7 @@
 #include <WiFi.h>
 #include <atomic>
 #include <math.h>
+#include <new>
 #include <time.h>
 
 #include "../app/AppConfig.h"

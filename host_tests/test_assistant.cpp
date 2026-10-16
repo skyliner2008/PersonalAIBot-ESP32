@@ -1081,3 +1081,224 @@ TEST(ota_image_checks) {
         printf("    firmware.bin: %u KB, marker v%s\n", (unsigned)(img.size() / 1024), m.version());
     }
 }
+
+// ============================================================
+// v3.5.1: waking by voice over the radio with the DAC-loopback echo reference
+// ============================================================
+
+#include "util/EchoWakeGate.h"
+
+// music: reference 0.1 for `on` chunks then silence; the mic hears coupling x the room's response,
+// which lingers after the music stops (reverb, decaying `roomDecay` per 40-ms chunk)
+static int runMusic(echo::WakeGate& g, float coupling, float roomDecay, int settleChunks, float speechFrom = -1,
+                    float speech = 0.0f) {
+    float room = 0.0f;
+    int wakes = 0;
+    for (int i = 0; i < 160; i++) {
+        const float ref = (i % 80) < 60 ? 0.1f : 0.0f;  // 2.4 s of music, 0.8 s of silence, twice
+        room = ref > room ? ref : room * roomDecay;
+        float mic = coupling * room + 0.002f;
+        if (speechFrom >= 0 && i >= speechFrom && i < speechFrom + 12) mic += speech;
+        if (g.update(mic, ref, 0.005f, true, i < settleChunks, 0.002f)) wakes++;
+    }
+    return wakes;
+}
+
+TEST(echo_wake_gate) {
+    echo::WakeParams p;  // factor 3, min 0.02, decay 0.6
+    {  // music alone, room reverb a bit shorter than the envelope: never wakes, also when the music stops
+        echo::WakeGate g(p);
+        CHECK_EQ(runMusic(g, 0.3f, 0.55f, 30), 0);
+        CHECK(g.coupling() > 0.25f && g.coupling() < 0.35f);
+        CHECK(g.takePeakRatio() < p.factor);
+        CHECK(g.takePeakRatio() == 0.0f);  // reset on read
+    }
+    {  // louder echo (0.06): the tail stays above the 0.02 floor for a few chunks
+        echo::WakeGate g(p);
+        CHECK_EQ(runMusic(g, 0.6f, 0.55f, 30), 0);  // expected with the envelope
+        echo::WakeParams raw = p;
+        raw.decay = 0.0f;  // reference taken as is: the reverb tail looks like speech
+        echo::WakeGate r(raw);
+        CHECK(runMusic(r, 0.6f, 0.55f, 30) > 0);
+    }
+    {  // speech over the music (0.12 on top of an echo of 0.03) wakes it
+        echo::WakeGate g(p);
+        CHECK(runMusic(g, 0.3f, 0.55f, 30, 40, 0.12f) >= 8);
+    }
+    {  // soft sound over loud music does not (below factor x echo)
+        echo::WakeGate g(p);
+        CHECK_EQ(runMusic(g, 0.3f, 0.55f, 30, 40, 0.03f), 0);
+    }
+    {  // never while settling, and a relearn starts from scratch
+        echo::WakeGate g(p);
+        CHECK_EQ(runMusic(g, 0.3f, 0.55f, 1000, 40, 0.12f), 0);
+        g.relearn();
+        CHECK(g.coupling() == 0.0f);
+    }
+    {  // nothing playing: the plain voice threshold
+        echo::WakeGate g(p);
+        CHECK(g.update(0.01f, 0.0f, 0.005f, false, false));
+        CHECK(!g.update(0.004f, 0.0f, 0.005f, false, false));
+    }
+    {  // radio session on, its buffer ran dry (reference 0): a noisy room (0.015) must not wake it -
+       // as "nothing playing" (the old radioSounding() test) the plain threshold would have
+        echo::WakeGate g(p);
+        runMusic(g, 0.3f, 0.55f, 30);
+        int wakes = 0;
+        for (int i = 0; i < 40; i++) wakes += g.update(0.015f, 0.0f, 0.012f, true, false, 0.012f) ? 1 : 0;
+        CHECK_EQ(wakes, 0);
+        echo::WakeGate idle(p);
+        CHECK(idle.update(0.015f, 0.0f, 0.012f, false, false, 0.012f));
+    }
+    {  // volume up 6 dB: the coupling is carried over (x2), learning continues from there
+        echo::WakeGate g(p);
+        runMusic(g, 0.3f, 0.55f, 30);
+        const float c = g.coupling();
+        g.scaleCoupling(2.0f);
+        CHECK(fabsf(g.coupling() - 2.0f * c) < 1e-4f);
+        CHECK_EQ(runMusic(g, 0.6f, 0.55f, 0), 0);  // louder echo, no settling needed, no false wake
+        CHECK(fabsf(g.coupling() - 0.6f) < 0.1f);
+    }
+    {  // speaker so loud it saturates the mic (0.5 RMS at volume 85 on the board): never a wake
+        echo::WakeGate g(p);
+        runMusic(g, 0.3f, 0.55f, 30);
+        const float c = g.coupling();
+        int wakes = 0;
+        for (int i = 0; i < 20; i++) wakes += g.update(0.5f, 0.25f, 0.012f, true, false, 0.01f) ? 1 : 0;
+        CHECK_EQ(wakes, 0);
+        CHECK(g.coupling() == c);  // and nothing learned from it
+    }
+}
+
+// ============================================================
+// v3.5.1: NLMS echo canceller on the DAC-loopback reference
+// ============================================================
+
+#include <random>
+
+#include "util/EchoCanceller.h"
+
+TEST(echo_canceller) {
+    std::mt19937 rng(7);
+    std::normal_distribution<float> nd(0.0f, 1.0f);
+    // echo path like the board: 22 samples late, short decaying tail (sound through the case + desk)
+    float h[64] = {};
+    for (int k = 0; k < 40; k++) h[22 + k] = 0.25f * expf(-k / 6.0f) * (k % 2 ? -0.6f : 1.0f);
+    const size_t N = 640, chunks = 120;
+    std::vector<float> refF(N * chunks), micF(N * chunks), speech(N * chunks, 0.0f);
+    for (auto& v : refF) v = 0.15f * nd(rng);
+    for (size_t c = 80; c < 90; c++)  // someone talks over the music
+        for (size_t i = 0; i < N; i++) speech[c * N + i] = 0.06f * nd(rng);
+    for (size_t i = 0; i < micF.size(); i++) {
+        float e = 0.0f;
+        for (int k = 0; k < 64; k++) e += i >= (size_t)k ? h[k] * refF[i - k] : 0.0f;
+        micF[i] = e + speech[i] + 0.001f * nd(rng);
+    }
+    auto toI16 = [](float v) { return (int16_t)std::max(-32768.0f, std::min(32767.0f, v * 32768.0f)); };
+    std::vector<int16_t> mic(micF.size()), ref(refF.size()), out(N);
+    for (size_t i = 0; i < mic.size(); i++) mic[i] = toI16(micF[i]), ref[i] = toI16(refF[i]);
+
+    static echo::Canceller aec;  // ~5 KB: not on the stack
+    aec.reset();
+    float resMusic = 0.0f, resSpeech = 0.0f, micMusic = 0.0f, resAfter = 0.0f;
+    int dt = 0, dtFalse = 0;
+    for (size_t c = 0; c < chunks; c++) {
+        const float res = aec.process(&mic[c * N], &ref[c * N], out.data(), N, c < 25);
+        if (c >= 40 && c < 80) {
+            resMusic = std::max(resMusic, res);
+            micMusic = std::max(micMusic, aec.micRms());
+            dtFalse += aec.doubleTalk() ? 1 : 0;
+        }
+        if (c >= 80 && c < 90) {
+            resSpeech += res / 10;
+            dt += aec.doubleTalk() ? 1 : 0;
+        }
+        if (c >= 95) resAfter = std::max(resAfter, res);
+    }
+    printf("    echo canceller: music %.4f -> %.4f (%.1f dB), speech kept %.3f of 0.06\n", micMusic, resMusic,
+           20 * log10f(micMusic / resMusic), resSpeech);
+    CHECK(resMusic < micMusic / 10);              // > 20 dB of echo removed
+    CHECK_EQ(dtFalse, 0);                         // music alone is never taken for talk
+    CHECK(dt >= 9);                               // talk over the music is
+    CHECK(resSpeech > 0.045f && resSpeech < 0.08f);  // and the voice comes through
+    CHECK(resAfter < micMusic / 10);              // after the talk it still cancels (it did not learn the voice)
+
+    // loud music for a long time, then a very quiet passage (the board: the filter diverged there and
+    // added a fake echo): the residual must stay below the mic
+    {
+        static echo::Canceller a2;
+        a2.reset();
+        std::vector<int16_t> m2(N), r2(N), o2(N);
+        std::vector<float> hist(64, 0.0f);
+        int worse = 0;
+        size_t t = 0;
+        for (size_t c = 0; c < 1500; c++) {  // 60 s
+            const float amp = c < 1400 ? 0.3f : 0.003f;
+            for (size_t i = 0; i < N; i++, t++) {
+                const float r = amp * nd(rng);
+                for (int k = 63; k > 0; k--) hist[k] = hist[k - 1];
+                hist[0] = r;
+                float e = 0.0f;
+                for (int k = 0; k < 64; k++) e += h[k] * hist[k];
+                r2[i] = toI16(r);
+                m2[i] = toI16(e + 0.0005f * nd(rng));
+            }
+            const float res = a2.process(m2.data(), r2.data(), o2.data(), N, c < 25);
+            if (c >= 1400 && res > a2.micRms() * 1.25f) worse++;
+        }
+        CHECK_EQ(worse, 0);
+        CHECK_EQ(a2.takeBypasses(), 0u);
+        // a wrong filter (here: 10x too strong) is caught: the mic passes through, then it starts over
+        a2.scale(10.0f);
+        for (size_t c = 0; c < 4; c++) {
+            for (size_t i = 0; i < N; i++) {
+                const float r = 0.3f * nd(rng);
+                for (int k = 63; k > 0; k--) hist[k] = hist[k - 1];
+                hist[0] = r;
+                float e = 0.0f;
+                for (int k = 0; k < 64; k++) e += h[k] * hist[k];
+                r2[i] = toI16(r);
+                m2[i] = toI16(e);
+            }
+            a2.process(m2.data(), r2.data(), o2.data(), N, false);
+            if (c == 0) CHECK(memcmp(o2.data(), m2.data(), N * 2) == 0);
+        }
+        CHECK(a2.takeBypasses() >= 3);
+        CHECK_EQ(a2.takeResets(), 1u);
+    }
+
+    // loud echo through a slightly non-linear speaker (micgain 6 on the board: 0.06-0.17): what the linear
+    // filter cannot remove is above the absolute talk floor, yet it is not talk - no freezing, no bypass
+    {
+        static echo::Canceller a3;
+        a3.reset();
+        std::vector<int16_t> m3(N), r3(N), o3(N);
+        std::vector<float> hist(64, 0.0f);
+        int dtLoud = 0;
+        for (size_t c = 0; c < 200; c++) {
+            for (size_t i = 0; i < N; i++) {
+                const float r = 0.3f * nd(rng);
+                for (int k = 63; k > 0; k--) hist[k] = hist[k - 1];
+                hist[0] = r;
+                float e = 0.0f;
+                for (int k = 0; k < 64; k++) e += 2.0f * h[k] * hist[k];
+                e = tanhf(3.0f * e) / 3.0f;  // soft distortion
+                r3[i] = toI16(r);
+                m3[i] = toI16(e + 0.001f * nd(rng));
+            }
+            a3.process(m3.data(), r3.data(), o3.data(), N, c < 25);
+            if (c >= 50) dtLoud += a3.doubleTalk() ? 1 : 0;
+        }
+        printf("    non-linear loud echo: residual floor %.4f, talk flags %d / 150\n", a3.residualFloor(), dtLoud);
+        CHECK(a3.residualFloor() > 0.008f);  // the case: leftovers above kDtMin
+        CHECK(dtLoud <= 5);
+        CHECK_EQ(a3.takeBypasses(), 0u);
+    }
+
+    // nothing playing: the output is the mic, sample for sample
+    std::vector<int16_t> zeros(N, 0), quiet(N);
+    for (size_t i = 0; i < N; i++) quiet[i] = (int16_t)(i % 50);
+    aec.process(quiet.data(), zeros.data(), out.data(), N, false);
+    aec.process(quiet.data(), zeros.data(), out.data(), N, false);
+    CHECK(memcmp(out.data(), quiet.data(), N * 2) == 0);
+}

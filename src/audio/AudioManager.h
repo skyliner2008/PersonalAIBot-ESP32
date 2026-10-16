@@ -5,6 +5,7 @@
  *
  *   Speaker:  Gemini PCM 24 kHz -> playback ring (1 MB PSRAM) -> audioOutTask -> I2S TX
  *   Mic:      I2S RX 24 kHz -> audioInTask -> resample 16 kHz -> capture ring -> agent
+ *             (left slot = mic, right slot = DAC loopback when AUDIO_ECHO_REF: stored as pairs)
  *
  * The I2S bus runs at 24 kHz in both directions because the ES8311 ADC and
  * DAC share one LRCK. Mic audio is converted to 16 kHz for Gemini.
@@ -101,11 +102,18 @@ public:
     /** RMS (0-1) of the radio as sent to the speaker, after the duck gain: the echo reference. */
     float radioOutLevel() const { return _radioLevel; }
 
-    // ---- Capture (16 kHz, 16-bit mono PCM) ----
+    // ---- Capture (16 kHz, 16-bit mono PCM + the echo reference of the same samples) ----
     void setCaptureEnabled(bool on);
     bool captureEnabled() const { return _captureOn; }
-    size_t captureAvailable() const { return _capture.available(); }
-    size_t readCapture(uint8_t* buf, size_t bytes) { return _capture.read(buf, bytes); }
+    /** Mic samples waiting (each stored with its echo-reference sample). */
+    size_t captureSamples() const { return _capture.available() / 4; }
+    /**
+     * Up to n mic samples into `mic`; `refRms` = RMS (0-1) of what the speaker played during exactly
+     * those samples (DAC loopback, before the codec volume; 0 without AUDIO_ECHO_REF). Single reader.
+     */
+    size_t readCapture(int16_t* mic, size_t n, float& refRms, int16_t* refOut = nullptr);
+    /** The right slot carries the DAC loopback (ES8311 reg 0x44 = 0x50). */
+    bool hasEchoRef() const { return _echoRef; }
     float micLevel() const { return _micLevel; }
 
     // ---- Diagnostics ----
@@ -117,7 +125,12 @@ public:
     // ---- Control ----
     bool setVolume(int volume);
     int volume() const { return _volume; }
-    bool setMicGain(uint8_t step) { return _codec.setMicGain(step); }
+    bool setMicGain(uint8_t step) {
+        _micGain = step > 7 ? 7 : step;
+        return _codec.setMicGain(_micGain);
+    }
+    /** ES8311 ADC gain step 0-7 (6 dB each): the echo canceller rescales when it changes. */
+    int micGain() const { return _micGain; }
     bool codecReady() const { return _codec.ready(); }
     bool i2sReady() const { return _i2sReady; }
 
@@ -140,6 +153,8 @@ private:
     volatile bool _radioOn = false;
     volatile float _radioLevel = 0.0f;
     Downsampler24to16 _resampler;
+    Downsampler24to16 _refResampler;  // same filter as the mic: the pair stays sample-aligned
+    bool _echoRef = false;
 
     bool _i2sReady = false;
     volatile bool _playing = false;
@@ -160,6 +175,7 @@ private:
     bool _gapThisTurn = false;
     uint32_t _starvedAt = 0;
     int _volume = 70;
+    volatile int _micGain = AUDIO_MIC_GAIN;
 
     bool initI2S();
     static void outTaskEntry(void* self);

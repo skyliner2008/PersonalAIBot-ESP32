@@ -100,12 +100,16 @@ bool ES8311::begin(I2cBus* bus, uint32_t sampleRate) {
     return ok;
 }
 
-bool ES8311::setVolume(int volume) {
+static uint8_t volumeReg(int volume) {
     if (volume < 0) volume = 0;
     if (volume > 100) volume = 100;
-    const uint8_t reg = volume == 0 ? 0 : (uint8_t)((volume * 256) / 100 - 1);
-    return write(REG32_DAC, reg);
+    return volume == 0 ? 0 : (uint8_t)((volume * 256) / 100 - 1);
 }
+
+bool ES8311::setVolume(int volume) { return write(REG32_DAC, volumeReg(volume)); }
+
+// REG32 DAC volume: 0.5 dB a step, 0xBF = 0 dB (0x00 = mute)
+float ES8311::volumeDb(int volume) { return volume <= 0 ? -96.0f : ((int)volumeReg(volume) - 0xBF) * 0.5f; }
 
 bool ES8311::setMicGain(uint8_t step) {
     if (step > 7) step = 7;

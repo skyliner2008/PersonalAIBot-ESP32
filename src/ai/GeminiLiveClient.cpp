@@ -231,6 +231,7 @@ bool GeminiLiveClient::flushOutbox() {
         const bool ok = writeFrame(m.opcode, m.data, (int)m.len, kWriteTimeoutMs);
         if (millis() - w0 > _slowWriteMs) _slowWriteMs = millis() - w0;  // diag: uplink stalls
         const uint32_t len = m.len;
+        if (ok) _txBytes = _txBytes + len;  // diag: what the uplink actually delivers
         psramFree(m.data);
         if (!ok) {
             char why[64];

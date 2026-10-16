@@ -107,6 +107,13 @@ bool AudioManager::begin(I2cBus* bus) {
     }
     _codec.setMicGain(AUDIO_MIC_GAIN);
     setVolume(_volume);
+#if AUDIO_ECHO_REF
+    // ADCDAT = mic on the left slot, DAC loopback on the right (measured: wiki 01): the echo reference
+    // for waking by voice over the radio now, for AEC later (wiki 14)
+    _echoRef = _codec.write(0x44, 0x50);
+    _micRight = false;
+    Serial.printf("[Audio] Echo reference %s (ES8311 reg 0x44 = 0x50: L mic, R DAC loopback)\n", _echoRef ? "on" : "FAILED");
+#endif
 
     digitalWrite(PA_ENABLE, LOW);  // speaker ON
     Serial.printf("[Audio] Ready: I2S %d Hz, playback buffer %u KB, mic -> %d Hz\n", AUDIO_I2S_RATE,
@@ -265,7 +272,10 @@ void AudioManager::outLoop() {
 void AudioManager::inLoop() {
     static int16_t frames[kInChunkSamples * 2];  // interleaved L/R
     static int16_t mono[kInChunkSamples];
+    static int16_t ref[kInChunkSamples];
     static int16_t out16[Downsampler24to16::maxOutput(kInChunkSamples)];
+    static int16_t ref16[Downsampler24to16::maxOutput(kInChunkSamples)];
+    static int16_t pairs[Downsampler24to16::maxOutput(kInChunkSamples) * 2];  // capture ring: mic, ref, mic, ref ...
     float energyL = 0.0f, energyR = 0.0f;  // slow averages to choose the mic slot
 
     for (;;) {
@@ -287,7 +297,7 @@ void AudioManager::inLoop() {
         // Choose the mic slot only while the speaker is quiet: if the other slot carries the DAC
         // loopback, playback would win the comparison and the first ~0.7 s the user says after
         // each reply would be read from the wrong slot.
-        if (msSincePlayback() > 1500 && !_radioOn) {  // the radio would win the comparison too
+        if (!_echoRef && msSincePlayback() > 1500 && !_radioOn) {  // the radio would win the comparison too
             energyL = energyL * 0.95f + _rmsLeft * 0.05f;
             energyR = energyR * 0.95f + _rmsRight * 0.05f;
             _micRight = energyR > energyL * 1.5f;
@@ -297,9 +307,36 @@ void AudioManager::inLoop() {
         _inBlocks++;
 
         const size_t m = _resampler.process(mono, n, out16);
+        if (_echoRef) {
+            for (size_t i = 0; i < n; i++) ref[i] = frames[2 * i + 1];
+            _refResampler.process(ref, n, ref16);  // same filter, same count: stays aligned with the mic
+        }
         _micLevel = rms(out16, m);
-        if (_captureOn) _capture.write((const uint8_t*)out16, m * 2);
+        // whole pairs only: a partial write would shift every later mic/ref pair
+        if (_captureOn && _capture.freeSpace() >= m * 4) {
+            for (size_t i = 0; i < m; i++) {
+                pairs[2 * i] = out16[i];
+                pairs[2 * i + 1] = _echoRef ? ref16[i] : 0;
+            }
+            _capture.write((const uint8_t*)pairs, m * 4);
+        }
     }
+}
+
+size_t AudioManager::readCapture(int16_t* mic, size_t n, float& refRms, int16_t* refOut) {
+    constexpr size_t kMax = AUDIO_UPLOAD_RATE * AUDIO_MIC_CHUNK_MS / 1000;  // one agent chunk (640): internal RAM is scarce
+    static int16_t pairs[2 * kMax];
+    if (n > kMax) n = kMax;
+    const size_t got = _capture.read((uint8_t*)pairs, n * 4) / 4;
+    float acc = 0.0f;
+    for (size_t i = 0; i < got; i++) {
+        mic[i] = pairs[2 * i];
+        if (refOut) refOut[i] = pairs[2 * i + 1];
+        const float r = pairs[2 * i + 1] / 32768.0f;
+        acc += r * r;
+    }
+    refRms = got ? sqrtf(acc / (float)got) : 0.0f;
+    return got;
 }
 
 size_t AudioManager::writePlayback(const uint8_t* pcm, size_t bytes) {

@@ -34,6 +34,8 @@
 #include "../system/Storage.h"
 #include "../ui/UiTypes.h"
 #include "../util/Deadline.h"
+#include "../util/EchoCanceller.h"
+#include "../util/EchoWakeGate.h"
 #include "../util/NoiseFloor.h"
 #include "AgentTools.h"
 #include "Consolidation.h"
@@ -123,8 +125,9 @@ public:
     void uiApiTest() override { post(CMD_API_TEST); }  // API-key self-test (menu / console / PC app)
     void uiRestart() override { post(CMD_RESTART); }
     /** Record what the mic sends to Gemini (after AGC) for `sec` seconds; dumped as RECINFO + RECORD. */
-    void requestRecording(uint8_t sec) {
+    void requestRecording(uint8_t sec, bool withReference = false) {
         _recRequestSec = sec;
+        _recRequestPairs = withReference;  // "recref": raw mic + echo reference pairs (RECPAIRS), for AEC work
         post(CMD_RECORD);
     }
     void uiLongPress() override { post(CMD_NEW_SESSION); }
@@ -257,7 +260,12 @@ private:
     bool _gateAllowed = false;
     bool _vadOpen = false;
     uint8_t _onset = 0, _wakeVotes = 0;
-    float _radioRef = 0.0f, _coupling = 0.0f;  // radio echo estimate for waking by voice over music
+    uint8_t _wakeHistory = 0;  // radio + echo removal: one bit per chunk, wake on AEC_WAKE_VOTES of the last 8
+    // echo removal on the DAC loopback (util/EchoCanceller.h): ~5 KB, allocated in PSRAM by begin()
+    echo::Canceller* _aec = nullptr;
+    uint32_t _aecMaxUs = 0, _aecDoubleTalk = 0;  // diag (reset on read)
+    // radio echo estimate for waking by voice over music without the loopback (util/EchoWakeGate.h)
+    echo::WakeGate _echoGate{echo::WakeGate::Params{RADIO_WAKE_FACTOR, RADIO_WAKE_MIN_LEVEL, ECHO_REVERB_DECAY, 0.003f}};
     deadline::Timer _radioSettle;  // the radio (re)started or the volume changed: relearn its echo first
     vad::NoiseFloor _noise{0.002f, AGENT_VAD_MIN_LEVEL, AGENT_VAD_NOISE_FACTOR,
                            AGENT_VAD_NOISE_RISE_MS / AUDIO_MIC_CHUNK_MS};
@@ -265,7 +273,13 @@ private:
     bool _wakeBuffering = false;
     bool _prerollDraining = false;    // the wake-up backlog is going out as fast as the send queue drains
     static constexpr size_t kOutboxReserve = 4;  // send-queue slots kept free for toolResponse / stream end
-    bool _wakeHeard = false;        // voice in the wake buffer (a tap wake with silence sends nothing)
+    static constexpr size_t kMaxBacklog = AUDIO_UPLOAD_RATE * 6;  // at most 6 s behind real time (slow uplink;
+                                                                  // 2 s cut the command off a call made while connecting)
+    size_t _backlogDropped = 0;      // samples dropped from the backlog during this utterance
+    uint32_t _uttTx0 = 0;            // uplink bytes at the start of the utterance
+    int _aecMicGain = -1;            // ADC gain step the echo filter was learned at
+    uint8_t _wakeVoiced = 0;        // voiced chunks in the wake buffer (added to the sentence when it is sent)
+    bool _wakeHeard = false;       // voice in the wake buffer (a tap wake with silence sends nothing)
     bool _radioWasSounding = false;   // asleep: the radio (re)started -> relearn its echo before waking
     int _wakeVolume = -1;             // speaker volume the radio echo was learned at
     bool _freshAfterRadio = false;    // play_radio: next wake starts a new session (no replay of it)
@@ -288,6 +302,10 @@ private:
     bool _recActive = false;
     uint32_t _recDeadline = 0;
     volatile uint8_t _recRequestSec = 0;
+    volatile bool _recRequestPairs = false;
+    PsVector<int16_t> _pairRec;  // recref: interleaved mic, reference (16 kHz)
+    size_t _pairRecLen = 0;
+    bool _pairRecActive = false;
 
     // Reminders
     std::vector<PsString> _announcements;
@@ -359,6 +377,7 @@ private:
     void checkNoReply(uint32_t now);
     void markAnswered() { _replyWatchAt = 0; }
     void startRecording(uint8_t sec);
+    void recordPairs(const int16_t* mic, const int16_t* ref, size_t n);
     void recordChunk(const int16_t* pcm, size_t n, bool voice, bool sent);
     void finishRecording();
     uint32_t tokensPerMinute() const;

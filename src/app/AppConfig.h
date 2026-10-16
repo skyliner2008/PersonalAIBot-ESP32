@@ -10,7 +10,7 @@
 
 #pragma once
 
-#define FIRMWARE_VERSION        "3.5.0"
+#define FIRMWARE_VERSION        "3.5.1"
 #define OTA_REPO                "skyliner2008/PersonalAIBot-ESP32"  // GitHub Releases the board updates from
 
 // ============================================================
@@ -35,12 +35,23 @@
 #define AUDIO_UPLOAD_RATE       16000   // Gemini Live input rate (mic is resampled 3:2)
 #define AUDIO_MIC_CHUNK_MS      40      // size of each realtimeInput audio message
 #define AUDIO_PLAYBACK_BUFFER   (1024 * 1024)   // PSRAM, ~21 s of 24 kHz speech
-#define AUDIO_CAPTURE_BUFFER    (256 * 1024)    // PSRAM, ~8 s of 16 kHz mic: the agent loop can stall ~1.7 s
+#define AUDIO_CAPTURE_BUFFER    (512 * 1024)    // PSRAM, ~8 s of 16 kHz mic + echo reference pairs: the agent loop can stall ~1.7 s
                                                 // while the Live TLS handshake runs (wake-up = when people talk)
 #define AUDIO_RADIO_BUFFER      (192 * 1024)    // PSRAM, ~4 s of 24 kHz mono radio (absorbs network jitter)
 #define AUDIO_RADIO_PREBUFFER_MS 1000           // radio starts sounding once this much is queued
 #define RADIO_DUCK_GAIN         0.12f           // radio level while the assistant listens / talks
 #define RADIO_RESUME_MS         6000            // idle this long with the radio on -> back to sleep, radio up
+// Echo reference: ES8311 reg 0x44 = 0x50 puts the DAC data (everything played, before the codec volume)
+// on the right I2S slot next to the mic (left) - sample-aligned with what the mic hears (wiki 01, 14).
+#define AUDIO_ECHO_REF          1
+#define AEC_WAKE_MIN_LEVEL      0.006f          // radio on: after echo removal, wake on residual at least this loud
+                                                // (0.012 needed micgain 6 for 20-30 cm, where the radio clips the ADC;
+                                                // the echo ratio + votes below keep the radio out at micgain 5)
+#define AEC_WAKE_ECHO_RATIO     0.8f            // ... and above this share of the echo removed from the same chunk
+                                                // (with the 250 Hz high-pass the radio leaves 0.03-0.1 of it, rare chunks
+                                                // 0.7: at 0.4 one false wake in 5.5 min, at 0.8 none; a caller ~1+)
+#define AEC_WAKE_VOTES          6               // radio on: voiced residual in this many of the last 8 chunks
+#define ECHO_REVERB_DECAY       0.6f          // per 40-ms chunk: the room keeps sounding ~0.3 s after the music drops
 #define RADIO_WAKE_FACTOR       3.0f            // while the radio plays, wake on sound this many times the expected radio echo
 #define RADIO_WAKE_MIN_LEVEL    0.02f           // ... and at least this loud (mic RMS; speech ~0.05-0.12, radio leak ~0.005-0.01)
 // Jitter buffer for the assistant's voice. Gemini streams 24 kHz PCM as base64 (~64 KB/s); the

@@ -23,6 +23,8 @@ public:
 
     /** Speaker volume 0-100 (100 = +32 dB digital gain, ~75 = 0 dB). */
     bool setVolume(int volume);
+    /** DAC gain in dB that setVolume(volume) sets (volume 70 = -6.5 dB, 85 = +12.5 dB; 0 = muted). */
+    static float volumeDb(int volume);
 
     /** Mic ADC gain step 0-7 (0, 6, ... 42 dB). */
     bool setMicGain(uint8_t step);

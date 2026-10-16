@@ -230,7 +230,7 @@ flowchart LR
 host_tests\run_tests.bat
 ```
 
-38 ชุดทดสอบ · 1,630 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
+40 ชุดทดสอบ · 1,663 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ หรือ clang++)
 
 ## 📁 โครงสร้างโปรเจกต์

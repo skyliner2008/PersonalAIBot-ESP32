@@ -121,6 +121,8 @@ public:
     uint32_t takeSlowReadMs() { const uint32_t v = _slowReadMs; _slowReadMs = 0; return v; }
     uint32_t takeSlowWriteMs() { const uint32_t v = _slowWriteMs; _slowWriteMs = 0; return v; }
     uint32_t audioBytesReceived() const { return _audioBytes; }
+    /** Bytes written to the WebSocket so far (diag: uplink throughput). */
+    uint32_t txBytes() const { return _txBytes; }
 
 private:
     enum class MsgKind : uint8_t { Connected, Disconnected, Data, Closed };
@@ -165,6 +167,7 @@ private:
     volatile uint8_t _micGen = 0;
     volatile bool _streamEndPending = false;  // audioStreamEnd that did not fit the queue: sent after it
     uint32_t _audioBytes = 0;
+    volatile uint32_t _txBytes = 0;
     uint32_t _setupAt = 0;
     static constexpr uint32_t kSetupTimeoutMs = 15000;
 

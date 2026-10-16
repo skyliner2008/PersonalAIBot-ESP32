@@ -320,7 +320,20 @@ void AgentController::fillDiagnostics(JsonObject out) {
         out["radio_rate"] = gRadio.sampleRate();
     }
     if (gRadio.lastError()[0]) out["radio_error"] = gRadio.lastError();
-    out["radio_echo_coupling"] = _coupling;  // mic level / radio level, learned while asleep
+    out["radio_echo_coupling"] = _echoGate.coupling();  // mic level / reference level, learned while asleep
+    out["echo_ref"] = _audio->hasEchoRef() ? "dac_loopback" : "software";
+    out["echo_envelope"] = _echoGate.envelope();
+    out["echo_peak_ratio"] = _echoGate.takePeakRatio();  // music alone vs the wake factor (margin)
+    if (_aec) {  // echo removal: how much it takes off, what is left, talk detected over the speaker, cost
+        out["aec_erle_db"] = _aec->erleDb();
+        out["aec_residual"] = _aec->residualFloor();
+        out["aec_double_talk"] = _aecDoubleTalk;
+        out["aec_max_us"] = _aecMaxUs;  // per 40-ms chunk
+        out["aec_bypass"] = _aec->takeBypasses();  // chunks passed through: the filter would have made them louder
+        out["aec_resets"] = _aec->takeResets();
+        _aecDoubleTalk = 0;
+        _aecMaxUs = 0;
+    }
     out["radio_out_level"] = _audio->radioOutLevel();
     // reply stutter: gaps mid-reply, adaptive jitter buffer, output-loop and agent-loop hold-ups
     out["voice_underruns"] = _audio->voiceUnderruns();

@@ -61,6 +61,7 @@ void AgentController::wake(bool byVoice) {
     // next counts, and it is sent only if there was voice in it.
     _wakeBuffering = true;
     _wakeHeard = byVoice;
+    _wakeVoiced = byVoice ? AGENT_WAKE_CHUNKS : 0;  // the chunks that woke it are speech too
     if (!byVoice) _preroll.clear();
     noteActivity();
     _face->setHint("ตื่นแล้ว", 1200);

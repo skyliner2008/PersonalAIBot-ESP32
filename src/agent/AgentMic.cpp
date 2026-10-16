@@ -35,6 +35,13 @@ void AgentController::sendMic(const int16_t* pcm, size_t n) {
 // takes ~2.5 s and mic audio never waits for a slot: sent in one go, the end of it was dropped. So it
 // goes out as fast as the queue drains; live chunks queue up behind it in the ring (order kept).
 void AgentController::sendPreroll() {
+    // what was said while the session connected counts as speech of this sentence: uncounted, a call
+    // from 20-30 cm (all of it said during the 3-4 s of connecting) ended as "too short", nothing waited
+    // for the answer and the radio rule put the assistant back to sleep before Gemini replied
+    if (_wakeBuffering) {
+        _uttVoiced += _wakeVoiced;
+        _wakeVoiced = 0;
+    }
     _wakeBuffering = false;
     _vadOpen = true;
     _lastVoice = millis();
@@ -58,6 +65,7 @@ void AgentController::beginUtterance(uint32_t now, float level, bool followUp) {
     _uttVoiced = 0;
     _uttPeak = level;
     _uttFollowUp = followUp;
+    _uttTx0 = _gemini.txBytes();
     if (followUp) {
         Serial.printf("[Mic] ฟังต่อ %u วิ หลัง AI ตอบ (ส่งเสียงต่อเนื่อง)\n", (unsigned)(AGENT_FOLLOWUP_MS / 1000));
     } else {
@@ -76,11 +84,24 @@ void AgentController::endUtterance(uint32_t now) {
     _gemini.sendAudioStreamEnd();
     const float sentSec = _uttChunks * (AUDIO_MIC_CHUNK_MS / 1000.0f);
     const float voicedSec = _uttVoiced * (AUDIO_MIC_CHUNK_MS / 1000.0f);
+    {  // what the uplink delivered meanwhile: 16 kHz PCM as base64 JSON needs ~45 KB/s
+        const uint32_t ms = sinceMs(now, _uttStart);
+        const uint32_t kbps = ms >= 1000 ? (_gemini.txBytes() - _uttTx0) / ms : 0;  // bytes/ms = KB/s
+        if (_backlogDropped || (kbps && kbps < 40)) {
+            Serial.printf("[Mic] อัปโหลดได้ %lu KB/s (เสียง 16 kHz ต้องการ ~45) - ทิ้งเสียงค้างส่ง %.1f วิ เพราะเน็ตส่งไม่ทัน\n",
+                          (unsigned long)kbps, _backlogDropped / (float)AUDIO_UPLOAD_RATE);
+        }
+        _backlogDropped = 0;
+    }
     if (_uttVoiced >= 3) {  // real speech: from now on expect an answer
         Serial.printf("[Mic] จบประโยค: ส่ง %.1f วิ (เสียงพูด %.1f วิ, ดังสุด %.3f, ขยาย x%.1f) -> รอ AI ตอบ\n", sentSec,
                       voicedSec, _uttPeak, _agcGain);
         _replyWatchAt = now;
         _heardSinceSend = false;
+        // stay awake for the answer: until audio / a transcript arrives (or checkNoReply gives up), the
+        // radio rule ("idle 6 s -> sleep") must not close the session under Gemini
+        _awaitingReply = true;
+        noteActivity();
     } else if (_uttFollowUp) {
         Serial.println("[Mic] หมดช่วงฟังต่อ (ไม่มีเสียงพูด)");
     } else {
@@ -111,6 +132,7 @@ void AgentController::checkNoReply(uint32_t now) {
     const uint32_t limit = _searchInSetup && _heardSinceSend ? AGENT_NO_REPLY_SEARCH_MS : AGENT_NO_REPLY_WARN_MS;
     if (!_replyWatchAt || sinceMs(now, _replyWatchAt) < limit) return;
     _replyWatchAt = 0;
+    _awaitingReply = false;  // no answer: let sleep / the radio take over again
     if (_heardSinceSend) {
         Serial.printf("[Mic] ⚠ AI ได้ยินแล้ว (มี transcript) แต่ไม่ตอบใน %u วิ - %s\n", (unsigned)(limit / 1000),
                       _activeModel == (uint8_t)LiveModel::Live38 ? "3.8 Live อาจเลือกไม่ตอบ (proactive audio)" : "ลองพูดใหม่");
@@ -143,13 +165,62 @@ void AgentController::handleAudioInput() {
     if (_recActive && (int32_t)(now - _recDeadline) >= 0) finishRecording();
 
     static int16_t chunk[kChunk];
-    for (int iter = 0; iter < 6 && _audio->captureAvailable() >= sizeof(chunk); iter++) {
-        _audio->readCapture((uint8_t*)chunk, sizeof(chunk));
-        const float level = rms(chunk, kChunk);
+    static int16_t refChunk[kChunk];  // what the speaker played during these very samples (DAC loopback)
+    for (int iter = 0; iter < 6 && _audio->captureSamples() >= kChunk; iter++) {
+        float refLevel = 0.0f;
+        _audio->readCapture(chunk, kChunk, refLevel, refChunk);
+        if (_pairRecActive) recordPairs(chunk, refChunk, kChunk);
+        // the reference is taken before the codec volume (measured: always 0.129 for the test tone, the
+        // mic echo 0.002 at volume 30 and 0.31 at 90): a volume change scales the echo by the known gain
+        const int vol = _audio->volume();
+        if (vol != _wakeVolume) {
+            if (_wakeVolume >= 0) {
+                _radioSettle.arm(now, 2500);
+                if (_wakeVolume > 0 && vol > 0) {  // 0.5 dB per codec step: carry what was learned over
+                    const float g = powf(10.0f, (ES8311::volumeDb(vol) - ES8311::volumeDb(_wakeVolume)) / 20.0f);
+                    _echoGate.scaleCoupling(g);
+                    if (_aec) _aec->scale(g);
+                } else {
+                    _echoGate.relearn();
+                    if (_aec) _aec->reset();
+                }
+            }
+            _wakeVolume = vol;
+        }
+        // the mic gain (ES8311 ADC, 6 dB a step) scales the echo the same way: "set micgain 6" during a
+        // test left the filter 2x off - it fell back to passing the mic through and the radio woke it
+        const int mg = _audio->micGain();
+        if (mg != _aecMicGain) {
+            if (_aecMicGain >= 0) {
+                _radioSettle.arm(now, 2500);
+                const float g = powf(2.0f, (float)(mg - _aecMicGain));
+                _echoGate.scaleCoupling(g);
+                if (_aec) _aec->scale(g);
+            }
+            _aecMicGain = mg;
+        }
+        const float rawLevel = rms(chunk, kChunk);  // before the echo is removed (a saturated mic)
+        // Echo removal (util/EchoCanceller.h): with the DAC loopback the speaker's sound is subtracted
+        // from the mic - 27 dB measured with the radio. Everything below (wake, VAD, what Gemini hears)
+        // then works on the room + the user only. Nothing playing = the mic passes through unchanged.
+        const bool aecOn = _aec && _audio->hasEchoRef();
+        if (aecOn) {
+            const uint32_t t0 = micros();
+            _aec->process(chunk, refChunk, chunk, kChunk, _radioSettle.active(now));
+            const uint32_t us = micros() - t0;
+            if (us > _aecMaxUs) _aecMaxUs = us;
+            if (_aec->doubleTalk()) _aecDoubleTalk++;
+        }
+        const float level = aecOn ? rms(chunk, kChunk) : rawLevel;
         _threshold = _noise.threshold();
         // follows the background; a level that never pauses for 10 s is background too (a fan switched
-        // on used to count as speech for ever). Not while the radio sounds: its echo estimate handles it.
-        const bool voice = _noise.update(level, !_audio->radioSounding());
+        // on used to count as speech for ever). Not while the radio sounds without echo removal: the
+        // echo estimate handles it then.
+        // a chunk the canceller passed through raw / that clipped carries the speaker (radio), not the room:
+        // it neither moves the noise floor nor counts as voice (at micgain 6 such chunks kept the mic open
+        // and the radio was streamed to the AI for a minute)
+        const bool echoUnreliable = aecOn && gRadio.active() && (_aec->bypassed() || _aec->clipped());
+        const bool voice = !echoUnreliable && _noise.update(level, aecOn || !_audio->radioSounding());
         if (voice) {
             _lastVoice = now;
             noteActivity();
@@ -159,44 +230,52 @@ void AgentController::handleAudioInput() {
         if (_sleeping) {  // only listen for a wake-up
             _preroll.push(chunk, kChunk);
             _preroll.trimTo(AUDIO_UPLOAD_RATE * 3 / 2);  // 1.5 s before the wake-up (the start of the words)
-            // Radio on: the speaker leaks into the mic. The board knows what it plays, so it learns
-            // how much of the radio reaches the mic (coupling = mic level / radio level on music-only
-            // chunks) and wakes only on sound clearly above that expected leak, held twice as long.
-            // A tap always works.
+            // Radio on: the speaker leaks into the mic. With the DAC loopback that echo is subtracted above
+            // and the residual is judged like a quiet room. Without it (AUDIO_ECHO_REF 0) the level is
+            // compared with the expected leak (util/EchoWakeGate.h), held twice as long. A tap always works.
             const bool radioOn = _audio->radioSounding();
-            // a station change starts a new stream (silence, then full level): relearn the echo first -
+            // a station change starts a new stream (silence, then full level): settle (learn) first -
             // a tap on the next station woke the assistant "by voice"
             if (radioOn && !_radioWasSounding) _radioSettle.arm(now, 2500);
             _radioWasSounding = radioOn;
-            // the volume is set in the codec, after radioOutLevel: a louder speaker leaks more than the
-            // learned coupling expects ("+" on the radio screen woke it "by voice") - relearn
-            const int vol = _audio->volume();
-            if (vol != _wakeVolume) {
-                if (_wakeVolume >= 0) _radioSettle.arm(now, 2500);
-                _wakeVolume = vol;
-            }
-            bool loud = voice;
-            if (radioOn) {
+            const bool settling = _radioSettle.active(now);
+            // the strict rules follow the radio SESSION: a stream that runs dry for a moment (seen on a
+            // hotspot) used to drop to the plain voice threshold, and the room's own sound woke it
+            const bool radioSession = gRadio.active();
+            bool loud;
+            if (aecOn) {
+                // a mic saturated by the speaker (volume 85+) carries no voice; never while still learning
+                // a chunk passed through raw (filter off) is the radio itself: never a wake vote.
+                // What is left of the radio grows with its echo (speaker/mic distortion, worse at a higher
+                // mic gain: 0.17 -> 0.03 left at micgain 6), a fixed floor let it through - compare with the
+                // echo just removed: music alone leaves 10-20 % of it, a voice is about as loud or louder
+                const float echoLevel = _aec->echoRms();
+                loud = voice && !settling && !(radioSession && (rawLevel > 0.35f || _aec->clipped())) && !_aec->bypassed() &&
+                       (!radioSession || (level > AEC_WAKE_MIN_LEVEL && level > AEC_WAKE_ECHO_RATIO * echoLevel));
+            } else {
                 const float ref = _audio->radioOutLevel();
-                _radioRef += (ref - _radioRef) * 0.3f;  // smooth: the acoustic path lags a few chunks
-                const bool settling = _radioSettle.active(now);
-                const float expected = _coupling * _radioRef;
-                // + an absolute floor: between songs the expected leak is tiny and the radio's own
-                // 0.005-0.008 got through (woke the assistant with no one talking); speech near the
-                // board measures 0.05-0.12
-                loud = !settling && _coupling > 0 && level > _threshold && level > expected * RADIO_WAKE_FACTOR &&
-                       level > RADIO_WAKE_MIN_LEVEL;
-                if (!loud && _radioRef > 0.003f) {
-                    const float ratio = level / _radioRef;
-                    _coupling = _coupling <= 0 ? ratio : _coupling + (ratio - _coupling) * (settling ? 0.2f : 0.03f);
-                }
+                loud = _echoGate.update(level, ref, _threshold, radioSession, settling, _noise.noise());
             }
             _wakeVotes = loud ? _wakeVotes + 1 : 0;
-            if (_wakeVotes >= (radioOn ? AGENT_WAKE_CHUNKS * 2 : AGENT_WAKE_CHUNKS)) {
-                if (radioOn) {  // why it woke over the radio (tune RADIO_WAKE_* from real logs)
-                    Serial.printf("[Mic] ปลุกด้วยเสียงขณะวิทยุเล่น: ระดับ %.3f, คาดว่าเสียงวิทยุรั่ว %.3f (x%.1f), เกณฑ์ %.3f\n",
-                                  level, _coupling * _radioRef, _coupling * _radioRef > 0 ? level / (_coupling * _radioRef) : 0.0f,
-                                  _threshold);
+            _wakeHistory = (uint8_t)((_wakeHistory << 1) | (loud ? 1 : 0));  // last 8 chunks (320 ms)
+            bool wakeNow;
+            if (radioSession && aecOn) {  // speech has gaps between syllables: N of the last 8, not N in a row
+                wakeNow = __builtin_popcount(_wakeHistory) >= AEC_WAKE_VOTES;
+            } else {
+                wakeNow = _wakeVotes >= (radioSession ? AGENT_WAKE_CHUNKS * 2 : AGENT_WAKE_CHUNKS);
+            }
+            if (wakeNow) {
+                _wakeHistory = 0;
+                if (radioSession) {  // why it woke over the radio (tune from real logs)
+                    if (aecOn) {
+                        Serial.printf("[Mic] ปลุกด้วยเสียงขณะวิทยุเล่น: หลังตัดเสียงสะท้อน %.3f (ไมค์ %.3f, เสียงสะท้อนที่ตัดออก %.3f = x%.1f, เกณฑ์ %.3f)\n",
+                                      level, rawLevel, _aec->echoRms(),
+                                      _aec->echoRms() > 0 ? level / _aec->echoRms() : 0.0f, _threshold);
+                    } else {
+                        const float expected = _echoGate.expected();
+                        Serial.printf("[Mic] ปลุกด้วยเสียงขณะวิทยุเล่น: ระดับ %.3f, คาดว่าเสียงวิทยุรั่ว %.3f (x%.1f), เกณฑ์ %.3f\n",
+                                      level, expected, expected > 0 ? level / expected : 0.0f, _threshold);
+                    }
                 }
                 wake(true);
             }
@@ -206,7 +285,10 @@ void AgentController::handleAudioInput() {
         if (!_gemini.isReady()) {  // connecting: keep what the user is saying
             _preroll.push(chunk, kChunk);
             _preroll.trimTo(_wakeBuffering ? kWakeBufferSamples : kPrerollSamples);
-            if (voice) _wakeHeard = true;
+            if (voice) {
+                _wakeHeard = true;
+                if (_wakeBuffering && _wakeVoiced < 255) _wakeVoiced++;  // counted when the backlog is sent
+            }
             recordChunk(chunk, kChunk, voice, false);
             continue;
         }
@@ -246,7 +328,15 @@ void AgentController::handleAudioInput() {
                 _replyWatchAt = 0;  // still talking
             }
             if (_prerollDraining) {  // the wake-up backlog is still going out: this chunk goes behind it
-                _preroll.push(chunk, kChunk);
+                // An uplink slower than the audio (a phone hotspot: 26-48 KB/s for ~45 needed) never emptied
+                // the backlog when every live chunk was appended: the mic streamed for 115 s, the radio stayed
+                // ducked. Silence adds nothing to say: only voice (and short gaps inside words) goes behind it,
+                // so the backlog drains and the words in it - usually the command - are kept.
+                if (voice || sinceMs(now, _lastVoice) < 300) _preroll.push(chunk, kChunk);
+                if (_preroll.count > kMaxBacklog) {  // still too far behind: the oldest audio goes first
+                    _backlogDropped += _preroll.count - kMaxBacklog;
+                    _preroll.trimTo(kMaxBacklog);
+                }
                 drainPreroll();
             } else {
                 sendMic(chunk, kChunk);
@@ -254,9 +344,12 @@ void AgentController::handleAudioInput() {
             sent = true;
             const bool followUp = _followUp.active(now);
             const bool silentFollowUp = _uttFollowUp && _uttVoiced == 0;
-            // never end while the backlog is still queued: audioStreamEnd would land before the words
-            if (!_prerollDraining &&
-                (silentFollowUp ? !followUp : sinceMs(now, _lastVoice) > AGENT_VAD_HANGOVER_MS)) {
+            // not while the backlog still goes out (audioStreamEnd would land before the words) - unless
+            // the link cannot deliver it: 8 s after the hang-over (6 s of backlog at ~0.7x real time), the
+            // rest is dropped
+            const bool hangoverDone = sinceMs(now, _lastVoice) > AGENT_VAD_HANGOVER_MS;
+            const bool backlogGivenUp = sinceMs(now, _lastVoice) > AGENT_VAD_HANGOVER_MS + 8000;
+            if ((!_prerollDraining || backlogGivenUp) && (silentFollowUp ? !followUp : hangoverDone)) {
                 endUtterance(now);
             }
             if (voice) _followUp.cancel();  // the user is speaking: the normal hang-over decides the end
@@ -271,7 +364,33 @@ void AgentController::handleAudioInput() {
 
 // ---- Diagnostic recording: exactly what the AGC would upload, 16 kHz mono, with VAD flags ----
 
+// recref: raw mic + echo reference, interleaved 16 kHz, dumped as "RECPAIRS <rate> <bytes>" + PCM + END
+// (measuring how much of the speaker's echo an adaptive filter removes - wiki 14)
+void AgentController::recordPairs(const int16_t* mic, const int16_t* ref, size_t n) {
+    for (size_t i = 0; i < n && _pairRecLen + 2 <= _pairRec.size(); i++) {
+        _pairRec[_pairRecLen++] = mic[i];
+        _pairRec[_pairRecLen++] = ref[i];
+    }
+    if (_pairRecLen + 2 > _pairRec.size()) {
+        _pairRecActive = false;
+        Serial.printf("RECPAIRS %u %u\n", (unsigned)AUDIO_UPLOAD_RATE, (unsigned)(_pairRecLen * 2));
+        Serial.write((const uint8_t*)_pairRec.data(), _pairRecLen * 2);
+        Serial.print("\nEND\n");
+        _pairRec.clear();
+        _pairRec.shrink_to_fit();
+    }
+}
+
 void AgentController::startRecording(uint8_t sec) {
+    if (_recRequestPairs) {
+        if (sec < 1) sec = 1;
+        if (sec > 20) sec = 20;
+        _pairRec.assign((size_t)sec * AUDIO_UPLOAD_RATE * 2, 0);
+        _pairRecLen = 0;
+        _pairRecActive = true;
+        Serial.printf("[Mic] อัดไมค์ + เสียงอ้างอิง %u วิ (RECPAIRS)\n", (unsigned)sec);
+        return;
+    }
     if (sec < 1) sec = 1;
     if (sec > AGENT_MIC_RECORD_MAX_S) sec = AGENT_MIC_RECORD_MAX_S;
     _rec.assign((size_t)sec * AUDIO_UPLOAD_RATE, 0);

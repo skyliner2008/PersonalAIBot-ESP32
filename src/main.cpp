@@ -473,6 +473,7 @@ static void handleConsoleLine(String line) {
         Serial.println("tool <name> [json] | say <u|a|s> <text> | expr <emotion> | sleep | powersave | wake | screenshot | radio [<n>|<url> [name]|stop]");
         Serial.println("ask <text> (type to the assistant) | mute (toggle mic) | retry | new (fresh session) | memclear <facts|history>");
         Serial.println("rec [sec] (record what the mic sends to Gemini: RECINFO <json> + RECORD <rate> <bytes> + PCM + END)");
+        Serial.println("recref [sec] (raw mic + echo reference, interleaved: RECPAIRS <rate> <bytes> + PCM + END)");
         Serial.println("ui tap x y | ui long x y | ui drag x0 y0 x1 y1 | ui open <menu|wifi|apikey|agent|user|profile|voice|info>");
         Serial.println("ui type <text> | ui back | ui home");
         Serial.println("set <ssid|pass|key|agent|user|voice|profile|personality|gender|eye|model|thinking|textmodel|");
@@ -522,6 +523,8 @@ static void handleConsoleLine(String line) {
         agent.retrySearch();
     } else if (cmd == "rec") {
         agent.requestRecording((uint8_t)(rest.isEmpty() ? 5 : rest.toInt()));  // reply: RECINFO + RECORD
+    } else if (cmd == "recref") {  // raw mic + echo reference (reply: RECPAIRS <rate> <bytes> + PCM + END)
+        agent.requestRecording((uint8_t)(rest.isEmpty() ? 10 : rest.toInt()), true);
     } else if (cmd == "ask") {
         Serial.println(agent.ask(rest.c_str()) ? "OK ask" : "ERR ask: empty or queue full");
     } else if (cmd == "keymode") {
@@ -552,9 +555,24 @@ static void handleConsoleLine(String line) {
                       (unsigned long)audio.inBlocks(), audio.rawLevelLeft(), audio.rawLevelRight(),
                       audio.micOnRight() ? "R" : "L", audio.micLevel(), audio.isPlaying());
     } else if (cmd == "tone") {
-        int hz = 1000, ms = 500;
-        sscanf(rest.c_str(), "%d %d", &hz, &ms);
-        audio.playTone((uint16_t)hz, (uint16_t)ms);
+        int hz = 1000, ms = 500, amp = 6000;  // tone [hz] [ms] [amplitude 1-32000]
+        sscanf(rest.c_str(), "%d %d %d", &hz, &ms, &amp);
+        audio.playTone((uint16_t)hz, (uint16_t)ms, (int16_t)constrain(amp, 1, 32000));
+    } else if (cmd == "radiotone") {  // radiotone [hz] [ms] [amp]: a tone through the radio path (the mic
+                                      // stays open, unlike "tone"): speaker linearity / echo tests with recref
+        int hz = 200, ms = 2000, amp = 12000;
+        sscanf(rest.c_str(), "%d %d %d", &hz, &ms, &amp);
+        amp = constrain(amp, 1, 32000);
+        static int16_t block[480];
+        const size_t total = (size_t)AUDIO_I2S_RATE * (size_t)constrain(ms, 100, 3500) / 1000;
+        for (size_t done = 0; done < total;) {
+            const size_t n = total - done < 480 ? total - done : 480;
+            for (size_t i = 0; i < n; i++) {
+                block[i] = (int16_t)(amp * sinf(2.0f * (float)M_PI * hz * (float)(done + i) / AUDIO_I2S_RATE));
+            }
+            done += audio.writeRadio(block, n);
+            if (audio.radioFree() < 480) delay(5);
+        }
     } else if (cmd == "mic") {
         const int sec = rest.isEmpty() ? 3 : rest.toInt();
         float peak = 0;
