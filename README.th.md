@@ -7,7 +7,7 @@
 **คุยเสียงด้วย Gemini Live** · **ความจำระยะยาวในตัวเครื่อง** · **42 tools พร้อมการ์ดกราฟิกบนจอ** · **แอปคู่หูบน PC**
 
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
-[![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
+[![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%203.3.12%20%28IDF%205.5%29-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
 [![Firmware](https://img.shields.io/badge/firmware-v3.5.0-3ddc84)](src/app/AppConfig.h)
 [![Tests](https://img.shields.io/badge/host%20tests-1%2C555%20checks%20passing-3ddc84)](host_tests/)
@@ -132,6 +132,7 @@ python tools/pc_app/esp32_ai_studio.py
 | แตะ 🎤 (มุมซ้ายบน) | ปิด/เปิดไมค์ |
 | แตะจอหรือกด BOOT ขณะ AI พูด | หยุดพูด |
 | แตะจอขณะพัก / หยุดเชื่อมต่อ | ปลุก / ต่อใหม่ทันที |
+| พูด **"Hi ESP"** ขณะพัก (branch `feature/esp-sr`) | คำปลุกออฟไลน์ (ESP-SR WakeNet หลังตัดเสียงสะท้อนของเรา ใช้ได้ขณะวิทยุเล่น) — เมนู ⚙ "ปลุกด้วยเสียง" / Studio / `set wake level\|word\|both`, `set wakeword hiesp\|jarvis`, `set wakethreshold 0.5` |
 | กดค้างบนจอ 1.5 วิ | เริ่มบทสนทนาใหม่ (ความจำระยะยาวยังอยู่) |
 | เงียบ 3 นาที → พัก (ตาหลับ) ต่ออีก 5 นาที → **นาฬิกาหรี่แสง** | พูดหรือแตะเพื่อปลุก: จอสว่างเหมือนเดิม + ตาลืม (ตั้งเวลาได้ที่เมนู ⚙ / Studio / สั่งด้วยเสียง) |
 | "ลดเสียงลงหน่อย", "เพิ่มความสว่าง", "พักหน้าจอ", "ปิดไมค์" | ปรับเสียง/แสงขึ้นลง เข้าโหมดนาฬิกาทันที ปิดไมค์ด้วยเสียงได้ — **เปิด**ไมค์ได้เฉพาะปุ่ม 🎤 บนจอ (ปิดไว้แล้วรีบูตก็ยังปิดอยู่) |
@@ -230,7 +231,7 @@ flowchart LR
 host_tests\run_tests.bat
 ```
 
-40 ชุดทดสอบ · 1,663 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
+40 ชุดทดสอบ · 1,667 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ หรือ clang++)
 
 ## 📁 โครงสร้างโปรเจกต์

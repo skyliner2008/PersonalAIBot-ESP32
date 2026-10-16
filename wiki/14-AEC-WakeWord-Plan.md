@@ -2,7 +2,7 @@
 tags: [aec, wakeword, esp-sr, plan, esp32-ai]
 created: 2026-10-16
 updated: 2026-10-16
-status: plan
+status: in-progress
 ---
 
 # 14 — แผน: AEC + คำปลุกออฟไลน์ด้วย ESP-SR
@@ -49,14 +49,39 @@ status: plan
    = ได้ผลหลักของเฟส 2 (ปลุกด้วยเสียงตอนลำโพงดัง + ไม่ส่งเสียงลำโพงให้ Gemini) โดยไม่ต้องย้ายแกน · เฟส 2 ยังคุ้มสำหรับคำปลุก (WakeNet) และพูดแทรก AI
 2. **เฟส 1 — spike ย้ายแกน (branch แยก):** `platform = pioarduino stable` build เฟิร์มแวร์ปัจจุบัน (ยังไม่มี SR) แก้ compile, ทดสอบทุกฟีเจอร์บนบอร์ด, วัด RAM/flash/ความเสถียร Live 1 ชม.
    **ผ่านเมื่อ:** ทุก host test + เสียงไม่กระตุก + ไม่รีบูต + RAM ภายในว่าง ≥ 100 KB
+   **ผล 2026-10-16 (branch `feature/esp-sr`, pioarduino 55.03.312 = Arduino 3.3.12 / IDF 5.5.5, T060):**
+   - compile แก้ 2 จุด (mbedtls 3, `esp_mac.h`) · firmware 2.0 MB (30.6 %), static DRAM 96 KB · rollback ของ bootloader เปิดอยู่ · **esp-sr มากับ framework แล้ว** (AFE, WakeNet, `CONFIG_SR_WN_WN9_HIESP`)
+   - RAM ภายในหาย ~35 KB → stack 3 task ไป PSRAM (`system/PsramTask.h`) → **บูต 102 KB, ใช้งาน 88–101, ต่ำสุด 59–83** (เท่า IDF 4) · คำสั่ง `mem`
+   - host tests ✓ · Live/tools/OTA check/วิทยุ + AEC ✓ · ไม่รีบูต · เจอและแก้: ตื่นเองตอนหยุดวิทยุ, สตรีมค้างช่วงเริ่ม
+   - ยังไม่ได้: ทดสอบ Live ต่อเนื่อง 1 ชม. · เสียงจริงจากผู้ใช้ (ปลุก/สั่งงาน) บน IDF 5
 3. **เฟส 2 — AFE + คำปลุก:** partition ใหม่ (app 2 × 4 MB, model ~1 MB, LittleFS) · input "MR" · WakeNet `jarvis` (+ `hiesp` สำรอง) · ตั้งค่าในเมนู: วิธีปลุก (คำปลุก / ระดับเสียงแบบเดิม)
    **ผ่านเมื่อ:** ตื่นจาก "Jarvis" ≥ 9/10 ที่ 1–2 ม. (สำเนียงไทย), ไม่ตื่นเองจากวิทยุ 8 ชม., RAM ภายในว่าง ≥ 25 KB
+   **2a (2026-10-16, กำลังทำ):**
+   - `partitions_sr.csv`: nvs/otadata ที่เดิม (ค่าที่ตั้งไว้ไม่หาย) · app 2 × **5 MB** (firmware 3.4 MB — esp-dl ~0.9 MB มากับ AFE) · `model` 3.25 MB · LittleFS 2.6 MB (ย้ายที่ = ข้อมูลบน LittleFS หาย, SD ไม่กระทบ)
+   - `tools/pio_sr_model.py` แฟลช `srmodels.bin` ลง `model` ทุกครั้งที่ upload ทาง USB (offset อ่านจากตาราง) · ใช้ `models/srmodels.bin` ถ้ามี ไม่งั้นใช้ชุดที่มากับ framework
+     (esp-sr 2.5.3: **`wn9_hiesp` "Hi ESP"** + vadnet1 + mn7_en — ยังไม่มี Jarvis ต้องแพ็กเองจาก repo esp-sr)
+   - `audio/WakeWord`: AFE "MR" (AEC + WakeNet, ไม่มี NS/VAD/AGC, MORE_PSRAM, task AFE **core 1**) ป้อนไมค์ดิบ + ref **เฉพาะตอนหลับ** แบบไม่บล็อก (stream buffer → task `wakefeed`, T062) · task `wakeword` (stack PSRAM) รอ `fetch()`
+     · ไม่มี partition `model` = ปิดเอง ปลุกด้วยระดับเสียงเหมือนเดิม
+   - ตั้งค่า `wakeMode` (NVS `wakemode`): 0 ระดับเสียง (เดิม), 1 คำปลุกอย่างเดียว, 2 ทั้งสองแบบ (ค่าเริ่มต้น) · `set wake level|word|both` · diag `wake_mode`, `wake_word`, `wake_word_heard`
+   - static DRAM +14 KB จาก esp-sr (`sigmoid_table` 5.6 KB, runtime ของ esp-dl 5 KB, `subband_filter_coef` 3 KB)
+   - **"Jarvis":** `models/srmodels.bin` (568 KB) = `wn9_jarvis_tts` + `wn9_hiesp` จาก github.com/espressif/esp-sr (master — ไฟล์ "Hi ESP" ตรงกับชุดของ 2.5.3 ทุกไบต์)
+     แพ็กด้วย `tools/pack_sr_models.py` (เขียนเองตามรูปแบบของ `pack_model.py`) · ที่มาใน `models/README.md`
+   - **AFE กิน RAM ภายใน ~30–36 KB** → ครั้งแรกเหลือ 7 KB (เรียก `begin()` ซ้ำ = AFE 2 ชุด → Wi-Fi ต่อไม่ได้ จอดับ, T061) · แก้: AFE ชุดเดียว + สร้างเฉพาะ `wakeMode != 0`
+     + ไม่ยอมเปิดถ้าเหลือ < 50 KB · หา RAM คืน: stack `webTools` ไป PSRAM (เมื่อข้อมูลอยู่บน SD), buffer อ่าน frame ของ Gemini 4 KB + การ์ดของ webTools 3 KB ไป PSRAM,
+     stack `agent` 12 → 9 KB, `ui` 10 → 8 KB (จากค่าที่ไม่เคยใช้ใน soak 1 ชม.)
+   - **วัดบนบอร์ด (AFE + Jarvis ทำงาน):** บูต 62 KB · หลับ + วิทยุ 53 KB · **ต่ำสุด 34 KB** (เกณฑ์ ≥ 25) · หลับขณะวิทยุ 2.5 นาที ไม่ตื่นเอง (`wake_word_heard` 0), ERLE ของเรา 10–34 dB
+   - เมนูบนจอ "ปลุกด้วยเสียง (แตะ)" + ESP32-AI Studio (ช่อง "ปลุกด้วยเสียง") ✓
+   - **ผลกับเสียงผู้ใช้ (T064):** "Jarvis" (โมเดล TTS) ไม่จับเสียงคนไทยเลย → ค่าเริ่มต้น **"Hi ESP"** + ความไว **0.50** (NVS) + WakeNet รับเสียงหลัง **AEC ของเรา**
+     (AFE "M", RAM 23 KB) → วิทยุเพิ่งเปิด 2/3, เพิ่งเปลี่ยนสถานี 3/3 · AEC ของ AFE ต้องรอ ~1 นาทีหลังสตรีมเริ่ม (0/3)
+   - ยังไม่ได้: ทดสอบตื่นเองจากวิทยุนานๆ ที่ 0.5, คำปลุกภาษาไทย "จาวิส" (ต้องเทรนโมเดลเอง/จ้าง Espressif), factory bin ของ release ต้องรวม `srmodels.bin` (`make_release.py`)
 4. **เฟส 3 — พูดแทรก (barge-in):** ส่งเสียงหลัง AEC ระหว่าง AI พูด (gate ด้วย VAD ของ AFE) · ทดสอบว่า Gemini ไม่ขัดตัวเองจากเสียงสะท้อนที่เหลือ · ตัวเลือกเปิด/ปิดได้
 5. **เฟส 4 — release 4.0.0:** factory bin (แฟลช USB ครั้งเดียว เพราะ partition เปลี่ยน) · OTA ตามปกติหลังจากนั้น · wiki/README
 
 ## ความเสี่ยง
 > **งบ RAM ภายในล่าสุด (v3.5.1, ไม่มีวิทยุ):** ว่าง 90 KB, ต่ำสุด 76 KB (v3.4.x: 102 / 94) — ส่วนต่างคือ stack 10 KB ของ task `ota` (v3.5.0) + buffer คู่ไมค์/อ้างอิง ~6 KB (v3.5.1)
 > → ก่อนเฟส 2: สร้าง task `ota` เฉพาะตอนใช้, ย้าย buffer static ไป PSRAM
+> **บน IDF 5 (T060):** บูต 102 KB, ใช้งาน 88–101, ต่ำสุด 59 (TLS 3 ช่องพร้อมกัน: Gemini + วิทยุ https + OTA) — ยังย้ายได้อีก: stack `ota` 10 KB (ใช้ต่อเมื่อเรียก),
+> `ui` 10 KB / `agent` 12 KB เหลือว่าง 7–9 KB (ลดขนาดได้) · AFE + WakeNet ต้องการ ~76 KB
 - **RAM ภายใน** (AFE + WakeNet ~76 KB บน IDF 5 ที่กินมากกว่าเดิม) — ถ้าไม่พอ: ปิด NS, ใช้ LOW_COST + MORE_PSRAM, ย้าย buffer ของเราไป PSRAM
 - โค้ด Live client ที่จูนกับ IDF 4.4 อาจมีพฤติกรรมต่างใน IDF 5 (TLS/transport)
 - "Jarvis" กับสำเนียงไทย — ต้องลองจริง; คำปลุกไทยมีค่าใช้จ่าย

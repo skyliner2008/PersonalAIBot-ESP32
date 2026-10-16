@@ -334,6 +334,16 @@ void AgentController::fillDiagnostics(JsonObject out) {
         _aecDoubleTalk = 0;
         _aecMaxUs = 0;
     }
+    // what wakes it by voice (0 loudness, 1 wake word, 2 both) and the ESP-SR wake word engine (wiki 14)
+    out["wake_mode"] = _cfg.wakeMode;
+    out["wake_word"] = _wakeWord.ready() ? _wakeWord.model() : "";
+    if (_wakeWord.ready()) {
+        out["wake_word_heard"] = _wakeWord.detections();
+        out["wake_word_dbfs"] = _wakeWord.lastVolumeDb();
+        out["wake_word_dropped"] = _wakeWord.dropped();
+        out["wake_word_peak_dbfs"] = _wakeWord.takePeakDb();  // loudest since the last diag
+        out["wake_word_threshold"] = _wakeWord.threshold();    // 0 = the model's default  // samples: the AFE fell behind (should stay 0)
+    }
     out["radio_out_level"] = _audio->radioOutLevel();
     // reply stutter: gaps mid-reply, adaptive jitter buffer, output-loop and agent-loop hold-ups
     out["voice_underruns"] = _audio->voiceUnderruns();

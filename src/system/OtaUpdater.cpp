@@ -88,7 +88,7 @@ struct ImageWriter {
         if (!buf) return fail("หน่วยความจำไม่พอ");
         mbedtls_sha256_context ctx;
         mbedtls_sha256_init(&ctx);
-        mbedtls_sha256_starts_ret(&ctx, 0);
+        mbedtls_sha256_starts(&ctx, 0);
         ota::MarkerScanner marker;
         esp_ota_handle_t h = 0;
         bool begun = false, ok = false;
@@ -128,7 +128,7 @@ struct ImageWriter {
                 }
                 begun = true;
             }
-            mbedtls_sha256_update_ret(&ctx, buf, fill);
+            mbedtls_sha256_update(&ctx, buf, fill);
             marker.feed(buf, fill);
             if (begun && esp_ota_write(h, buf, fill) != ESP_OK) {
                 fail("เขียนแฟลชไม่สำเร็จ");
@@ -142,7 +142,7 @@ struct ImageWriter {
         }
         {
             uint8_t digest[32];
-            mbedtls_sha256_finish_ret(&ctx, digest);
+            mbedtls_sha256_finish(&ctx, digest);
             toHex(digest, sizeof(digest), sha);
         }
         if (!dryRun) {

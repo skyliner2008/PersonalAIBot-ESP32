@@ -28,6 +28,7 @@
 #include "../app/AppConfig.h"
 #include "../app/Settings.h"
 #include "../audio/AudioManager.h"
+#include "../audio/WakeWord.h"
 #include "../memory/AsyncFileSink.h"
 #include "../memory/EpisodicLog.h"
 #include "../memory/MemoryStore.h"
@@ -66,6 +67,14 @@ public:
     bool powerSave() const { return _powerSave; }
     /** Send a typed message to the assistant (serial "ask" / PC app chat). Thread-safe. */
     bool ask(const char* text);
+    /** The ESP-SR wake word engine (console `wakeword`: status, threshold). */
+    WakeWord& wakeWord() { return _wakeWord; }
+    /** Self-test: for `ms` the wake word hears the speaker too (no half duplex, no echo reference). */
+    void wakeWordTest(uint32_t ms) {
+        _wordTestUntil = millis() + ms;
+        _wordTest = true;
+        _wakeWord.reset();
+    }
     /** Diagnostic: how the Live client passes the key (URL ?key= or x-goog-api-key header). */
     void setKeyInHeader(bool on) { post(on ? CMD_KEY_HEADER : CMD_KEY_QUERY); }
     /** Diagnostic: 0 = full setup, 1 = without Google Search, 2 = minimal (model + audio only). */
@@ -264,6 +273,11 @@ private:
     // echo removal on the DAC loopback (util/EchoCanceller.h): ~5 KB, allocated in PSRAM by begin()
     echo::Canceller* _aec = nullptr;
     uint32_t _aecMaxUs = 0, _aecDoubleTalk = 0;  // diag (reset on read)
+    // offline wake word (ESP-SR AFE + WakeNet, audio/WakeWord.h): fed the raw mic + reference while asleep
+    WakeWord _wakeWord;
+    bool _wordFeeding = false;
+    volatile bool _wordTest = false;  // wakeWordTest()
+    volatile uint32_t _wordTestUntil = 0;
     // radio echo estimate for waking by voice over music without the loopback (util/EchoWakeGate.h)
     echo::WakeGate _echoGate{echo::WakeGate::Params{RADIO_WAKE_FACTOR, RADIO_WAKE_MIN_LEVEL, ECHO_REVERB_DECAY, 0.003f}};
     deadline::Timer _radioSettle;  // the radio (re)started or the volume changed: relearn its echo first
@@ -281,6 +295,7 @@ private:
     uint8_t _wakeVoiced = 0;        // voiced chunks in the wake buffer (added to the sentence when it is sent)
     bool _wakeHeard = false;       // voice in the wake buffer (a tap wake with silence sends nothing)
     bool _radioWasSounding = false;   // asleep: the radio (re)started -> relearn its echo before waking
+    bool _radioSessionWas = false;    // asleep: the radio stopped / changed station -> its tail is not a voice
     int _wakeVolume = -1;             // speaker volume the radio echo was learned at
     bool _freshAfterRadio = false;    // play_radio: next wake starts a new session (no replay of it)
     PcmRing _preroll;

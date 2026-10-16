@@ -56,6 +56,9 @@ void AgentController::wake(bool byVoice) {
     if (!_sleeping) return;
     leavePowerSave();
     _sleeping = false;
+    // a "sleep" asked while already asleep stayed pending and put it straight back to sleep on the next
+    // wake (the wake word woke it and it slept in the same second)
+    _sleepPending = false;
     // Keep what is said while the session connects (2-4 s) and replay it once ready - also after a
     // tap: users start talking right away and lost their first words. After a tap only what comes
     // next counts, and it is sent only if there was voice in it.

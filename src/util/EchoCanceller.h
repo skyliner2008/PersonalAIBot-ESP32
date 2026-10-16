@@ -117,7 +117,8 @@ public:
         _adapted = false;
         _bypassed = false;
         _echoRms = 0.0f;
-        if (!anyRef && _idle) {  // nothing played for a whole filter length: the mic is the residual
+        _passthrough = !anyRef && _idle;
+        if (_passthrough) {  // nothing played for a whole filter length: the mic is the residual
             if (out != mic) memcpy(out, mic, n * sizeof(int16_t));
             return n ? sqrtf(rawAcc / n) : 0.0f;
         }
@@ -209,7 +210,10 @@ public:
         return res;
     }
 
+    /** High-passed mic level of the last chunk (the same band as the residual - compare levels with it). */
     float micRms() const { return _micRms; }
+    /** Nothing was playing: the last chunk went out raw (not high-passed). */
+    bool passthrough() const { return _passthrough; }
     float refRms() const { return _refRms; }
     float residualFloor() const { return _floor; }
     bool doubleTalk() const { return _doubleTalk; }
@@ -239,7 +243,7 @@ private:
     float _energy = 0.0f;     // sum of squares over the window (NLMS normalisation)
     float _floor = 0.0f;      // residual RMS on adapted chunks (the double-talk yardstick)
     float _micRms = 0.0f, _refRms = 0.0f, _echoRms = 0.0f;
-    bool _doubleTalk = false, _adapted = false, _idle = true, _bypassed = false, _clipped = false;
+    bool _doubleTalk = false, _adapted = false, _idle = true, _bypassed = false, _clipped = false, _passthrough = true;
     int _dtRun = 0, _badRun = 0;
     uint32_t _bypasses = 0, _resets = 0;
 

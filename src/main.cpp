@@ -15,6 +15,7 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
+#include <esp_memory_utils.h>
 #include <mbedtls/platform.h>
 
 #include "agent/AgentController.h"
@@ -298,6 +299,9 @@ static void printConfig() {
     d["consolidate"] = s.consolidate;
     d["search"] = s.googleSearch;
     d["micgain"] = s.micGain;
+    d["wake"] = s.wakeMode;  // 0 loudness, 1 wake word, 2 both
+    d["wakeword"] = s.wakeWord;  // 0 Jarvis, 1 Hi ESP (at boot)
+    d["wakethreshold"] = s.wakeThreshold;  // x100
     d["finance"] = s.financeTools;
     d["secretsSealed"] = gSettings.secretsSealed();      // AES-GCM on flash (SecretBox)
     d["secretsMigratedAtBoot"] = gSettings.migratedAtBoot();
@@ -381,6 +385,31 @@ static void printWifiScan() {
     printTagged("WIFISCAN", d);
 }
 
+// Internal RAM budget (wiki 14: ESP-SR needs headroom) and every task's stack: where it lives and how
+// much of it was never touched (high-water mark).
+static void printMemory() {
+    JsonDocument d;
+    d["internal_free_kb"] = heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
+    d["internal_min_kb"] = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024;
+    d["internal_largest_kb"] = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024;
+    d["psram_free_kb"] = heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024;
+    const UBaseType_t n = uxTaskGetNumberOfTasks();
+    TaskStatus_t* tasks = (TaskStatus_t*)heap_caps_malloc((n + 4) * sizeof(TaskStatus_t), MALLOC_CAP_SPIRAM);
+    if (tasks) {
+        const UBaseType_t got = uxTaskGetSystemState(tasks, n + 4, nullptr);
+        JsonArray a = d["tasks"].to<JsonArray>();
+        for (UBaseType_t i = 0; i < got; i++) {
+            JsonObject o = a.add<JsonObject>();
+            o["name"] = tasks[i].pcTaskName;
+            o["prio"] = tasks[i].uxCurrentPriority;
+            o["unused"] = tasks[i].usStackHighWaterMark;  // bytes (IDF: StackType_t is uint8_t)
+            o["psram"] = esp_ptr_external_ram(tasks[i].pxStackBase);
+        }
+        heap_caps_free(tasks);
+    }
+    printTagged("MEM", d);
+}
+
 static int indexOrFind(const String& v, int (*find)(const char*)) {
     if (v.length() && isDigit(v[0])) return v.toInt();
     return find(v.c_str());
@@ -391,7 +420,7 @@ static bool handleSet(const String& field, const String& value) {
     static const char* const kFields[] = {"ssid", "pass", "key", "agent", "user", "voice", "profile",
                                           "personality", "gender", "eye", "model", "thinking", "textmodel",
                                           "volume", "brightness", "sleep", "clock", "dimlevel", "rotation", "invert", "consolidate",
-                                          "search", "micgain", "touch", "finance"};
+                                          "search", "micgain", "touch", "finance", "wake", "wakeword", "wakethreshold"};
     bool known = false;
     for (const char* f : kFields) known |= field == f;
     if (!known) return false;
@@ -442,6 +471,9 @@ static bool handleSet(const String& field, const String& value) {
         else if (field == "search") d.googleSearch = on;
         else if (field == "micgain") d.micGain = (uint8_t)constrain(value.toInt(), 0, 7);
         else if (field == "finance") d.financeTools = on;
+        else if (field == "wakethreshold") d.wakeThreshold = (uint8_t)constrain(value.toFloat() < 1.0f ? value.toFloat() * 100.0f + 0.5f : value.toFloat(), 40, 99);
+        else if (field == "wakeword") d.wakeWord = value == "jarvis" || value == "0" ? 0 : 1;  // applied at boot
+        else if (field == "wake") d.wakeMode = value == "level" ? 0 : value == "word" ? 1 : value == "both" ? 2 : (uint8_t)constrain(value.toInt(), 0, 2);
         else if (field == "touch") d.touchMap = (uint8_t)constrain(value.toInt(), 0, 7);
     });
     if (field == "search" && on) agent.retrySearch();  // try Google Search again now, not in 6 h
@@ -477,10 +509,10 @@ static void handleConsoleLine(String line) {
         Serial.println("ui tap x y | ui long x y | ui drag x0 y0 x1 y1 | ui open <menu|wifi|apikey|agent|user|profile|voice|info>");
         Serial.println("ui type <text> | ui back | ui home");
         Serial.println("set <ssid|pass|key|agent|user|voice|profile|personality|gender|eye|model|thinking|textmodel|");
-        Serial.println("     volume|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance> <value>");
+        Serial.println("     volume|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|wake(level|word|both)|wakeword(hiesp|jarvis, reboot)|wakethreshold(0.40-0.99)> <value>");
         Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
         Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min|searchonly> | searchretry");
-        Serial.println("time <unix-epoch> (set clock offline) | reboot");
+        Serial.println("time <unix-epoch> (set clock offline) | mem (internal RAM + task stacks) | wakeword [threshold x | test [sec]] | reboot");
         Serial.println("ota (status: OTA <json>) | ota check | ota install | ota rollback | ota fetch <https-url> | ota selftest");
         Serial.println("radio list: radiolist | radioadd name|url|genre | radioedit <n> name|url|genre | radiodel <n> | radiomove <from> <to> | radioreset | radio <n>");
     } else if (cmd == "config") {
@@ -496,6 +528,28 @@ static void handleConsoleLine(String line) {
         printTagged("DIAG", agent.runTool("_diag", "{}", r) ? r : String("{\"error\":\"busy\"}"));
     } else if (cmd == "wifiscan") {
         printWifiScan();
+    } else if (cmd == "wakeword") {  // wakeword [threshold <0.4-0.9999>] -> WAKEWORD <json>
+        WakeWord& w = agent.wakeWord();
+        if (rest.startsWith("test")) {  // the speaker into the wake word for N s (then: ask it to say "Jarvis")
+            const int sec = rest.length() > 5 ? rest.substring(5).toInt() : 20;
+            agent.wakeWordTest((uint32_t)constrain(sec, 3, 120) * 1000u);
+            Serial.println("OK wakeword test");
+        } else if (rest.startsWith("threshold ")) {
+            const float t = rest.substring(10).toFloat();
+            Serial.println(w.setThreshold(t) ? "OK wakeword threshold" : "ERR wakeword threshold (0.4-0.9999, engine running?)");
+        }
+        JsonDocument d;
+        d["ready"] = w.ready();
+        d["model"] = w.model();
+        d["mode"] = gSettings.get().wakeMode;
+        d["heard"] = w.detections();
+        d["dropped"] = w.dropped();
+        d["threshold"] = w.threshold();
+        d["last_dbfs"] = w.lastVolumeDb();
+        d["peak_dbfs"] = w.takePeakDb();
+        printTagged("WAKEWORD", d);
+    } else if (cmd == "mem") {
+        printMemory();
     } else if (cmd == "ota") {  // firmware update from GitHub Releases (see system/OtaUpdater.h)
         const int sp = rest.indexOf(' ');
         const String sub = sp < 0 ? rest : rest.substring(0, sp);
@@ -827,7 +881,7 @@ void setup() {
 
     if (audio.i2sReady()) audio.startTasks();
     agent.startTask();
-    xTaskCreatePinnedToCore(uiTask, "ui", 10240, nullptr, 3, nullptr, 1);
+    xTaskCreatePinnedToCore(uiTask, "ui", 8192, nullptr, 3, nullptr, 1);  // 1-hour soak: 7.4 of 10 KB never used
     xTaskCreatePinnedToCore(ledTask, "led", 3072, nullptr, 1, nullptr, 0);
 
     audio.playTone(660, 90, 3000);

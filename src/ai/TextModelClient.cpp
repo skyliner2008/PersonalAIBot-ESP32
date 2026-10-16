@@ -10,6 +10,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 
+#include "../system/PsramTask.h"
 #include "../util/JsonAlloc.h"
 #include "GoogleRootCA.h"
 
@@ -17,7 +18,7 @@ bool TextModelClient::begin() {
     _requests = xQueueCreate(2, sizeof(Request));
     _results = xQueueCreate(2, sizeof(Result));
     if (!_requests || !_results) return false;
-    return xTaskCreatePinnedToCore(taskEntry, "textModel", 8192, this, 1, nullptr, 1) == pdPASS;  // core 1: see WebTools
+    return startPsramTask(taskEntry, "textModel", 8192, this, 1, nullptr, 1);  // core 1: see WebTools
 }
 
 void TextModelClient::setApiKey(const char* key) {

@@ -7,6 +7,7 @@
 
 #include <esp_efuse.h>
 #include <esp_efuse_table.h>
+#include <esp_mac.h>  // IDF 5: esp_efuse_mac_get_default moved here
 #include <esp_random.h>
 #include <esp_system.h>
 #include <mbedtls/gcm.h>
@@ -32,11 +33,11 @@ bool begin() {
 
     mbedtls_sha256_context sha;
     mbedtls_sha256_init(&sha);
-    bool ok = mbedtls_sha256_starts_ret(&sha, 0) == 0 &&
-              mbedtls_sha256_update_ret(&sha, (const uint8_t*)kLabel, sizeof(kLabel) - 1) == 0 &&
-              mbedtls_sha256_update_ret(&sha, mac, sizeof(mac)) == 0 &&
-              mbedtls_sha256_update_ret(&sha, uid, sizeof(uid)) == 0 &&
-              mbedtls_sha256_finish_ret(&sha, gKey) == 0;
+    bool ok = mbedtls_sha256_starts(&sha, 0) == 0 &&
+              mbedtls_sha256_update(&sha, (const uint8_t*)kLabel, sizeof(kLabel) - 1) == 0 &&
+              mbedtls_sha256_update(&sha, mac, sizeof(mac)) == 0 &&
+              mbedtls_sha256_update(&sha, uid, sizeof(uid)) == 0 &&
+              mbedtls_sha256_finish(&sha, gKey) == 0;
     mbedtls_sha256_free(&sha);
     gReady = ok;
     return ok;

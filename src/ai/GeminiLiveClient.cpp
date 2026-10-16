@@ -17,6 +17,7 @@
 #include "../util/Base64.h"
 #include "../util/JsonAlloc.h"
 #include "../util/JsonFrame.h"
+#include "../system/PsramTask.h"
 #include "../util/PsramAlloc.h"
 #include "GoogleRootCA.h"
 
@@ -32,6 +33,7 @@ constexpr uint32_t kDeadLinkMs = 45000;           // nothing received (not even 
 constexpr uint32_t kCloseWaitMs = 1500;           // for the server's close reply
 constexpr uint32_t kMaxBackoffMs = 15000;
 constexpr uint32_t kIoStack = 10240;              // TLS records need ~6 KB
+constexpr size_t kReadBuf = 4096;                  // WebSocket frame reads (ioLoop)
 
 // "12.5s" -> 12500 ms (google.protobuf.Duration JSON form)
 uint32_t parseDurationMs(const char* s) {
@@ -59,7 +61,7 @@ bool GeminiLiveClient::begin(GeminiListener* listener) {
     _wst = esp_transport_ws_init(_ssl);
     if (!_wst) return false;
     esp_transport_set_default_port(_wst, GEMINI_PORT);
-    return xTaskCreatePinnedToCore(ioEntry, "geminiIO", kIoStack, this, 5, &_io, tskNO_AFFINITY) == pdPASS;
+    return startPsramTask(ioEntry, "geminiIO", kIoStack, this, 5, &_io, tskNO_AFFINITY);
 }
 
 bool GeminiLiveClient::configure(const char* apiKey) {
@@ -369,7 +371,8 @@ int GeminiLiveClient::readFrame(char* buf, size_t cap) {
 }
 
 void GeminiLiveClient::ioLoop() {
-    static char rbuf[4096];
+    // 4 KB frame buffer in PSRAM (internal RAM is kept for Wi-Fi, TLS and the wake word - wiki 14)
+    char* const rbuf = (char*)psramMalloc(kReadBuf);  // the task never ends
     for (;;) {
         if (!_want || _restartReq) {
             if (_linkUp) closeLink(true, _restartReq);  // restart: the agent expects a Disconnected
@@ -408,7 +411,7 @@ void GeminiLiveClient::ioLoop() {
         }
         if (pr > 0) {
             const uint32_t t0 = millis();
-            const int r = readFrame(rbuf, sizeof(rbuf));
+            const int r = readFrame(rbuf, kReadBuf);
             const uint32_t took = millis() - t0;
             if (took > _slowReadMs) _slowReadMs = took;
             if (took > _turnReadMs) _turnReadMs = took;  // diag: a frame trickling in holds up the sends

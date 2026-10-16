@@ -1299,6 +1299,20 @@ TEST(echo_canceller) {
     std::vector<int16_t> zeros(N, 0), quiet(N);
     for (size_t i = 0; i < N; i++) quiet[i] = (int16_t)(i % 50);
     aec.process(quiet.data(), zeros.data(), out.data(), N, false);
+    CHECK(!aec.passthrough());  // the first silent chunk still flushes the echo history
     aec.process(quiet.data(), zeros.data(), out.data(), N, false);
     CHECK(memcmp(out.data(), quiet.data(), N * 2) == 0);
+    CHECK(aec.passthrough());
+    // ...but its level is still measured in the residual's band: room hum (here 50 Hz) passed out raw
+    // must not read louder than it did while the radio played (it woke the board when the radio stopped)
+    std::vector<int16_t> hum(N);
+    for (int rep = 0; rep < 20; rep++) {
+        for (size_t i = 0; i < N; i++) hum[i] = (int16_t)(3000.0f * sinf(2.0f * 3.14159265f * 50.0f * (rep * N + i) / 16000.0f));
+        aec.process(hum.data(), zeros.data(), out.data(), N, false);
+    }
+    float humRaw = 0.0f;
+    for (size_t i = 0; i < N; i++) humRaw += (hum[i] / 32768.0f) * (hum[i] / 32768.0f);
+    humRaw = sqrtf(humRaw / N);
+    CHECK(aec.passthrough());
+    CHECK(aec.micRms() < humRaw * 0.1f);
 }

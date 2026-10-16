@@ -6,8 +6,12 @@
 #include "WebTools.h"
 
 #include "WebToolsCommon.h"
+#include "../system/PsramTask.h"
 
 #include <ArduinoJson.h>
+#include <esp_heap_caps.h>
+
+#include <new>
 #include <HTTPClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -599,7 +603,11 @@ bool WebTools::begin(const char* storageDir) {
     if (!_jobs || !_results) return false;
     // core 1: TLS handshakes + big JSON are CPU-heavy bursts; core 0 keeps audio + radio + Wi-Fi
     // (the idle task of core 0 is watchdog-checked: a long burst there next to the radio resets the board)
-    return xTaskCreatePinnedToCore(taskEntry, "webTools", 12288, this, 2, nullptr, 1) == pdPASS;
+    // notes / price alerts are files in the agent dir: on LittleFS that is a flash write, which needs an
+    // internal stack; on the SD card (or no storage) the 12 KB stack can live in PSRAM (system/PsramTask.h)
+    const bool writesFlash = strncmp(_dir, "/littlefs", 9) == 0;
+    if (writesFlash) return xTaskCreatePinnedToCore(taskEntry, "webTools", 12288, this, 2, nullptr, 1) == pdPASS;
+    return startPsramTask(taskEntry, "webTools", 12288, this, 2, nullptr, 1);
 }
 
 bool WebTools::submit(const char* id, const char* name, const char* argsJson, uint32_t tag) {
@@ -624,7 +632,9 @@ bool WebTools::poll(Result& out) { return _results && xQueueReceive(_results, &o
 void WebTools::taskEntry(void* self) { static_cast<WebTools*>(self)->loop(); }
 
 void WebTools::loop() {
-    static CardData card;  // ~2 KB: not on the task stack
+    // ~3 KB: not on the task stack, and not in internal RAM either (wiki 14: the wake word needs it)
+    void* cardMem = heap_caps_malloc(sizeof(CardData), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    CardData& card = *new (cardMem ? cardMem : malloc(sizeof(CardData))) CardData();  // the task never ends
     const ToolEnv env{_dir};
     uint32_t nextAlertCheck = millis() + 30000;
     bool alertsKnown = hasPriceAlerts(env);

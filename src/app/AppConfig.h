@@ -51,6 +51,7 @@
                                                 // (with the 250 Hz high-pass the radio leaves 0.03-0.1 of it, rare chunks
                                                 // 0.7: at 0.4 one false wake in 5.5 min, at 0.8 none; a caller ~1+)
 #define AEC_WAKE_VOTES          6               // radio on: voiced residual in this many of the last 8 chunks
+#define WAKE_WORD_OWN_AEC       1               // ESP-SR WakeNet gets our echo removal's output ("M"); 0 = the AFE's AEC ("MR", T064)
 #define ECHO_REVERB_DECAY       0.6f          // per 40-ms chunk: the room keeps sounding ~0.3 s after the music drops
 #define RADIO_WAKE_FACTOR       3.0f            // while the radio plays, wake on sound this many times the expected radio echo
 #define RADIO_WAKE_MIN_LEVEL    0.02f           // ... and at least this loud (mic RMS; speech ~0.05-0.12, radio leak ~0.005-0.01)

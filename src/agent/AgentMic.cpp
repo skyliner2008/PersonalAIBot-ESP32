@@ -146,8 +146,16 @@ void AgentController::checkNoReply(uint32_t now) {
 void AgentController::handleAudioInput() {
     const uint32_t now = millis();
     const bool speaking = _audio->isPlaying() || _audio->msSincePlayback() < AGENT_ECHO_TAIL_MS;
-    // Power save (dim clock): the mic is off - only a tap wakes it (user's choice); asleep it stays on
-    const bool allow = _configOk && !_muted && !_powerSave && !(AGENT_HALF_DUPLEX && speaking);
+    // Power save (dim clock): the mic is off - only a tap wakes it (user's choice); asleep it stays on.
+    // With the wake word only (wiki 14) it stays on there too: nothing but the word can wake it, and the
+    // clock is where the board spends most of its time (the user called "Jarvis" at the clock: nothing)
+    const bool wordOnly = _cfg.wakeMode == 1 && _wakeWord.ready();
+    if (_wordTest && deadline::reached(now, _wordTestUntil)) {
+        _wordTest = false;
+        Serial.printf("[Wake] self-test over: heard %u time(s) in total\n", (unsigned)_wakeWord.detections());
+    }
+    const bool wordTest = _wordTest && _wakeWord.ready();
+    const bool allow = wordTest || (_configOk && !_muted && (!_powerSave || wordOnly) && !(AGENT_HALF_DUPLEX && speaking));
     if (allow != _gateAllowed) {
         _audio->setCaptureEnabled(allow);
         _gateAllowed = allow;
@@ -170,6 +178,16 @@ void AgentController::handleAudioInput() {
         float refLevel = 0.0f;
         _audio->readCapture(chunk, kChunk, refLevel, refChunk);
         if (_pairRecActive) recordPairs(chunk, refChunk, kChunk);
+        if (wordTest) {  // self-test: only the wake word gets this audio (the speaker included, no reference)
+            _wakeWord.feed(chunk, nullptr, kChunk);
+            continue;
+        }
+        // wake word (ESP-SR): the raw mic + reference, before our own echo removal changes the chunk.
+        // Only while asleep - awake, the session listens itself (and the AFE would cost CPU for nothing)
+        const bool feedWord = _sleeping && _cfg.wakeMode != 0 && _wakeWord.ready();
+        if (feedWord && !_wordFeeding) _wakeWord.reset();  // no old audio: it starts listening now
+        _wordFeeding = feedWord;
+        if (feedWord && !_wakeWord.ownAec()) _wakeWord.feed(chunk, refChunk, kChunk);  // "MR": the AFE removes the echo
         // the reference is taken before the codec volume (measured: always 0.129 for the test tone, the
         // mic echo 0.002 at volume 30 and 0.31 at 90): a volume change scales the echo by the known gain
         const int vol = _audio->volume();
@@ -211,7 +229,13 @@ void AgentController::handleAudioInput() {
             if (us > _aecMaxUs) _aecMaxUs = us;
             if (_aec->doubleTalk()) _aecDoubleTalk++;
         }
-        const float level = aecOn ? rms(chunk, kChunk) : rawLevel;
+        // always the high-passed band with the canceller: nothing playing sends the mic out raw, and its
+        // room hum (< 250 Hz) jumped the level over a noise floor learned on the radio's residual - the
+        // radio stopping / changing station woke the assistant "by voice" every time
+        const float level = aecOn ? (_aec->passthrough() ? _aec->micRms() : rms(chunk, kChunk)) : rawLevel;
+        // "M": WakeNet hears what is left after our echo removal - it relearns as soon as a stream starts
+        // (forced while settling), where the AFE's own AEC took about a minute of radio (T064)
+        if (feedWord && _wakeWord.ownAec()) _wakeWord.feed(chunk, nullptr, kChunk);
         _threshold = _noise.threshold();
         // follows the background; a level that never pauses for 10 s is background too (a fan switched
         // on used to count as speech for ever). Not while the radio sounds without echo removal: the
@@ -238,10 +262,14 @@ void AgentController::handleAudioInput() {
             // a tap on the next station woke the assistant "by voice"
             if (radioOn && !_radioWasSounding) _radioSettle.arm(now, 2500);
             _radioWasSounding = radioOn;
-            const bool settling = _radioSettle.active(now);
             // the strict rules follow the radio SESSION: a stream that runs dry for a moment (seen on a
             // hotspot) used to drop to the plain voice threshold, and the room's own sound woke it
             const bool radioSession = gRadio.active();
+            // the session ending ("radio stop", or the gap of a station change) left the last of the
+            // radio in the room under the plain rule: it woke the assistant "by voice" every time
+            if (!radioSession && _radioSessionWas) _radioSettle.arm(now, 1500);
+            _radioSessionWas = radioSession;
+            const bool settling = _radioSettle.active(now);
             bool loud;
             if (aecOn) {
                 // a mic saturated by the speaker (volume 85+) carries no voice; never while still learning
@@ -264,19 +292,26 @@ void AgentController::handleAudioInput() {
             } else {
                 wakeNow = _wakeVotes >= (radioSession ? AGENT_WAKE_CHUNKS * 2 : AGENT_WAKE_CHUNKS);
             }
+            // wake word mode: loudness alone no longer wakes it (the radio, the TV, a cough); "both" keeps
+            // either. Without the model partition the setting falls back to loudness.
+            if (_cfg.wakeMode == 1 && _wakeWord.ready()) wakeNow = false;
+            const bool byWord = _wordFeeding && _wakeWord.takeDetection();
+            if (byWord) {
+                Serial.printf("[Mic] ปลุกด้วยคำปลุก (%s)%s\n", _wakeWord.model(), radioSession ? " ขณะวิทยุเล่น" : "");
+                wakeNow = true;
+            } else if (wakeNow && radioSession) {  // why it woke over the radio (tune from real logs)
+                if (aecOn) {
+                    Serial.printf("[Mic] ปลุกด้วยเสียงขณะวิทยุเล่น: หลังตัดเสียงสะท้อน %.3f (ไมค์ %.3f, เสียงสะท้อนที่ตัดออก %.3f = x%.1f, เกณฑ์ %.3f)\n",
+                                  level, rawLevel, _aec->echoRms(),
+                                  _aec->echoRms() > 0 ? level / _aec->echoRms() : 0.0f, _threshold);
+                } else {
+                    const float expected = _echoGate.expected();
+                    Serial.printf("[Mic] ปลุกด้วยเสียงขณะวิทยุเล่น: ระดับ %.3f, คาดว่าเสียงวิทยุรั่ว %.3f (x%.1f), เกณฑ์ %.3f\n",
+                                  level, expected, expected > 0 ? level / expected : 0.0f, _threshold);
+                }
+            }
             if (wakeNow) {
                 _wakeHistory = 0;
-                if (radioSession) {  // why it woke over the radio (tune from real logs)
-                    if (aecOn) {
-                        Serial.printf("[Mic] ปลุกด้วยเสียงขณะวิทยุเล่น: หลังตัดเสียงสะท้อน %.3f (ไมค์ %.3f, เสียงสะท้อนที่ตัดออก %.3f = x%.1f, เกณฑ์ %.3f)\n",
-                                      level, rawLevel, _aec->echoRms(),
-                                      _aec->echoRms() > 0 ? level / _aec->echoRms() : 0.0f, _threshold);
-                    } else {
-                        const float expected = _echoGate.expected();
-                        Serial.printf("[Mic] ปลุกด้วยเสียงขณะวิทยุเล่น: ระดับ %.3f, คาดว่าเสียงวิทยุรั่ว %.3f (x%.1f), เกณฑ์ %.3f\n",
-                                      level, expected, expected > 0 ? level / expected : 0.0f, _threshold);
-                    }
-                }
                 wake(true);
             }
             recordChunk(chunk, kChunk, voice, false);

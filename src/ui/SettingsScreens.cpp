@@ -490,6 +490,13 @@ void buildMenu(ListScreen& l) {
             gMenu.rebuild();
         });
     }
+    {  // what wakes it by voice while asleep (wiki 14): the wake word needs the "model" partition
+        static const char* const kWake[] = {"ระดับเสียง", "คำปลุก", "คำปลุก + ระดับเสียง"};
+        l.add("ปลุกด้วยเสียง (แตะ)", kWake[s.wakeMode > 2 ? 2 : s.wakeMode], []() {
+            gSettings.update([](SettingsData& d) { d.wakeMode = (uint8_t)((d.wakeMode + 1) % 3); });
+            gMenu.rebuild();
+        });
+    }
     l.addSubmenu("พักเมื่อเงียบ", sleepLabel(s.sleepMinutes), openSleep);
     {
         static char clockLabel[24];

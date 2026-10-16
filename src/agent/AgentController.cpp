@@ -57,6 +57,11 @@ bool AgentController::begin(AudioManager* audio, FaceScreen* face, Storage* stor
     _infoLock = xSemaphoreCreateMutex();
     _preroll.init(kWakeBufferSamples);
     if (void* mem = psramMalloc(sizeof(echo::Canceller))) _aec = new (mem) echo::Canceller();  // internal RAM is scarce
+    // ~30 KB of internal RAM: only when the wake word is wanted (needs the "model" partition; without
+    // it loudness wakes it, as before). Choosing it later (`set wake`, menu) starts it then.
+    if (gSettings.get().wakeMode != 0 && _wakeWord.begin(gSettings.get().wakeWord ? "hiesp" : "jarvis", WAKE_WORD_OWN_AEC)) {
+        _wakeWord.setThreshold(gSettings.get().wakeThreshold / 100.0f);
+    }
     {  // a confirmed Search quota outlives the reboot (else every boot hits it again)
         Preferences rt;
         if (rt.begin("rt", false)) {  // read-write: creates the namespace on first boot (no NOT_FOUND log)
@@ -98,7 +103,9 @@ bool AgentController::begin(AudioManager* audio, FaceScreen* face, Storage* stor
     return true;
 }
 
-void AgentController::startTask() { xTaskCreatePinnedToCore(taskEntry, "agent", 12288, this, 4, nullptr, 1); }
+// 9 KB: `mem` over a 1-hour soak with tools, radio and sessions showed 9.2 of 12 KB never touched
+// (internal RAM goes to the wake word - wiki 14). Writes flash (settings, LittleFS): stays internal.
+void AgentController::startTask() { xTaskCreatePinnedToCore(taskEntry, "agent", 9216, this, 4, nullptr, 1); }
 
 void AgentController::taskEntry(void* self) { static_cast<AgentController*>(self)->loop(); }
 
@@ -172,6 +179,10 @@ void AgentController::applySettings(bool initial) {
 
     if (initial || n.volume != _cfg.volume) _audio->setVolume(n.volume);
     if (initial || n.micGain != _cfg.micGain) _audio->setMicGain(n.micGain);
+    if (!initial && n.wakeMode != 0 && _cfg.wakeMode == 0) _wakeWord.begin(n.wakeWord ? "hiesp" : "jarvis", WAKE_WORD_OWN_AEC);
+    if (_wakeWord.ready() && (initial || n.wakeThreshold != _cfg.wakeThreshold || (n.wakeMode != 0 && _cfg.wakeMode == 0))) {
+        _wakeWord.setThreshold(n.wakeThreshold / 100.0f);
+    }
     if ((initial || n.brightness != _cfg.brightness) && !_powerSave) gUi.setBrightness(n.brightness);
     if (_powerSave && n.dimBrightness != _cfg.dimBrightness) gUi.setBrightness(n.dimBrightness);
     if (initial || n.eyeColor != _cfg.eyeColor) _face->setEyeColor(eyeColor565(n.eyeColor));

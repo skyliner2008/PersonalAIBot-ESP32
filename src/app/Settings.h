@@ -39,6 +39,12 @@ struct SettingsData {
     bool financeTools = true;      // declare the market / finance tools (they cost tokens every turn)
     uint8_t micGain = 5;           // ES8311 ADC scale step 0-7 (x6 dB); 5 = 30 dB, chosen by the user (normal voice at ~40 cm)
     bool micMuted = false;         // mic off survives reboots: only the screen button (or Studio) turns it back on
+    uint8_t wakeMode = 2;          // asleep, what wakes it by voice: 0 loudness (as before), 1 wake word (ESP-SR), 2 both
+                                   // (no model partition = loudness only - wiki 14)
+    uint8_t wakeWord = 1;          // which word: 0 "Jarvis" (TTS-trained: missed real Thai voices, T064), 1 "Hi ESP"
+                                   // (trained on recorded people) - applied at boot
+    uint8_t wakeThreshold = 50;    // WakeNet threshold x100 (40-99). The model's 0.63 missed every call in a Thai
+                                   // accent; 0.50 woke 3/3 over the radio (T064)
     char radioName[64] = "";       // last Internet radio station (name in the station list)
     uint8_t rotation = 1;          // 1 or 3 (landscape, flipped)
     bool lcdInvert = true;         // IPS ILI9341V shows inverted colours unless INVON is sent

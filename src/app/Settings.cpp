@@ -199,6 +199,11 @@ void Settings::load() {
     if (d.dimBrightness < 1 || d.dimBrightness > 60) d.dimBrightness = 8;
     d.micGain = p.getUChar("mgain", d.micGain);
     d.micMuted = p.getBool("muted", d.micMuted);
+    d.wakeMode = p.getUChar("wakemode", d.wakeMode);
+    if (d.wakeMode > 2) d.wakeMode = 2;
+    d.wakeWord = p.getUChar("wakeword", d.wakeWord) ? 1 : 0;
+    d.wakeThreshold = p.getUChar("wakethr", d.wakeThreshold);
+    if (d.wakeThreshold < 40 || d.wakeThreshold > 99) d.wakeThreshold = 50;
     if (p.isKey("radioname")) p.getString("radioname", d.radioName, sizeof(d.radioName));
     d.financeTools = p.getBool("fintools", d.financeTools);
     if (d.micGain > 7) d.micGain = 7;
@@ -331,6 +336,9 @@ void Settings::save(const SettingsData& d) {
     p.putUChar("dimbri", d.dimBrightness);
     p.putUChar("mgain", d.micGain);
     p.putBool("muted", d.micMuted);
+    p.putUChar("wakemode", d.wakeMode);
+    p.putUChar("wakeword", d.wakeWord);
+    p.putUChar("wakethr", d.wakeThreshold);
     p.putString("radioname", d.radioName);
     p.putBool("fintools", d.financeTools);
     p.putUChar("rot", d.rotation);

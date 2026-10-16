@@ -64,6 +64,8 @@ MONO = ("Consolas", 10)
 
 EMOTIONS = ["neutral", "happy", "excited", "love", "sad", "worried", "angry", "surprised", "sleepy",
             "thinking", "curious", "confused", "shy", "wink"]
+# set wake 0|1|2 (firmware Settings::wakeMode)
+WAKE_MODES = ["ระดับเสียง (แบบเดิม)", "คำปลุกอย่างเดียว", "คำปลุก + ระดับเสียง"]
 
 TAG_RE = re.compile(r"^(CONFIG|OPTIONS|TOOLS|DIAG|WIFISCAN|APITEST|RECINFO|RADIOLIST|TOOL|OTA)\s+(.*)$")
 SECRET_RE = re.compile(r"(key=)[^&\s\"]+")
@@ -948,6 +950,14 @@ class Studio:
         self._scale(df, "ความไวไมค์ (0-7)", self.micgain_var, 0, 7, lambda: self.send(f"set micgain {self.micgain_var.get()}"))
         ttk.Label(df, text="ต้องพูดใกล้บอร์ด = เพิ่มค่า • เสียงแตก/รับเสียงรอบข้างมากไป = ลดค่า (ทีละ 6 dB)",
                   style="Dim.TLabel").pack(anchor="w")
+        # what wakes it by voice while asleep (0 loudness, 1 wake word, 2 both) - wiki 14
+        self.wake_var = tk.StringVar()
+        self.wake_box = self._combo(df, "ปลุกด้วยเสียง", self.wake_var, 24)
+        self.wake_box["values"] = WAKE_MODES
+        self.wake_box.bind("<<ComboboxSelected>>",
+                           lambda e: self.send(f"set wake {max(0, self.wake_box.current())}"))
+        ttk.Label(df, text="คำปลุก = ESP-SR ในตัวบอร์ด (ต้องมี partition model) • เสียงวิทยุ/ทีวีไม่ปลุก",
+                  style="Dim.TLabel").pack(anchor="w")
         row = ttk.Frame(df)
         row.pack(fill="x", pady=2)
         ttk.Label(row, text="พักเมื่อเงียบ (นาที)", width=18).pack(side="left")
@@ -1059,6 +1069,7 @@ class Studio:
         self.volume_var.set(int(c.get("volume", 70)))
         self.bright_var.set(int(c.get("brightness", 80)))
         self.micgain_var.set(int(c.get("micgain", 5)))
+        self._set_combo(self.wake_box, int(c.get("wake", 0)))
         self.sleep_var.set(int(c.get("sleep", 3)))
         self.clock_var.set(int(c.get("clock", 5)))
         self.dim_var.set(int(c.get("dimlevel", 8)))
@@ -1114,6 +1125,7 @@ class Studio:
         v["volume"] = str(self.volume_var.get())
         v["brightness"] = str(self.bright_var.get())
         v["micgain"] = str(self.micgain_var.get())
+        v["wake"] = str(max(0, self.wake_box.current()))
         v["sleep"] = str(self.sleep_var.get())
         try:
             v["clock"] = str(max(0, min(120, int(self.clock_var.get()))))
@@ -1234,7 +1246,7 @@ class Studio:
                     "thinking": int(s.get("thinking", 0)), "textmodel": int(s.get("textmodel", 0)),
                     "search": s.get("search") == "1", "consolidate": s.get("consolidate") == "1",
                     "volume": int(s.get("volume", 70)), "brightness": int(s.get("brightness", 80)),
-                    "micgain": int(s.get("micgain", 5)),
+                    "micgain": int(s.get("micgain", 5)), "wake": int(s.get("wake", 2)),
                     "sleep": int(s.get("sleep", 3)), "rotation": int(s.get("rotation", 1)),
                     "clock": int(s.get("clock", 5)), "dimlevel": int(s.get("dimlevel", 8)),
                     "finance": s.get("finance", "1") == "1"})

@@ -13,6 +13,7 @@
 #include <esp_heap_caps.h>
 #include <mp3dec.h>
 
+#include "../system/PsramTask.h"
 #include "../util/RadioResampler.h"
 #include "../util/Utf8.h"
 #include "AudioManager.h"
@@ -24,7 +25,13 @@ namespace {
 constexpr size_t kInBuf = 16 * 1024;     // compressed bytes waiting for the decoder
 constexpr size_t kPcmMax = 4096;         // HE-AAC: 2048 samples x 2 channels per frame
 constexpr size_t kOutMax = 4608;         // resampled mono samples per frame (upsampling worst case)
-constexpr uint32_t kStallMs = 12000;     // no stream data this long -> reconnect
+// no stream data this long -> reconnect. The speaker holds ~4 s: 12 s left 8 s of silence. Seen on a phone
+// hotspot (IDF 5): one TCP window (5760 bytes) arrived, then nothing on an open socket until the timeout.
+constexpr uint32_t kStallMs = 5000;
+// ...and it happened only right after connecting (one Icecast host, 3 times in 20 connections): before the
+// first 16 KB a 2 s pause already means a stuck start - nothing is buffered to cover it
+constexpr uint32_t kStartStallMs = 2000;
+constexpr uint32_t kStartBytes = 16 * 1024;
 constexpr int kMaxRetries = 4;
 
 struct Guard {
@@ -77,7 +84,7 @@ void tis620ToUtf8(const uint8_t* s, size_t n, char* out, size_t cap) {
 bool RadioPlayer::begin(AudioManager* audio) {
     _audio = audio;
     _lock = xSemaphoreCreateMutex();
-    return _lock && xTaskCreatePinnedToCore(taskEntry, "radio", 16384, this, 4, &_task, 0) == pdPASS;
+    return _lock && startPsramTask(taskEntry, "radio", 16384, this, 4, &_task, 0);
 }
 
 bool RadioPlayer::play(const char* url, const char* name) {
@@ -146,7 +153,9 @@ void RadioPlayer::loop() {
             continue;
         }
         const uint32_t gen = _gen;
+        const uint32_t t0 = millis();
         const bool played = session(gen);
+        const bool ranLong = millis() - t0 > 10000;
         if (!_want || gen != _gen) {  // stopped or switched station: start over at once
             retries = 0;
             continue;
@@ -159,8 +168,11 @@ void RadioPlayer::loop() {
             continue;
         }
         _state = State::Connecting;
-        Serial.printf("[Radio] Reconnecting (%d/%d) in %d s\n", retries, kMaxRetries, retries * 2);
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(retries * 2000));  // play()/stop() cut the wait short
+        // a stream that played a while and broke: back at once, the speaker still plays what is buffered
+        // (one that keeps dropping right after starting waits as before - no hammering the server)
+        const uint32_t waitMs = played && ranLong ? 300 : (uint32_t)retries * 2000;
+        Serial.printf("[Radio] Reconnecting (%d/%d) in %lu ms\n", retries, kMaxRetries, (unsigned long)waitMs);
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(waitMs));  // play()/stop() cut the wait short
     }
 }
 
@@ -258,7 +270,9 @@ bool RadioPlayer::session(uint32_t gen) {
     int lockRate = 0, lockCh = 0, mismatch = 0;  // format of the stream once established
     size_t fill = 0;           // bytes in `in`
     int untilMeta = metaint;   // audio bytes before the next ICY metadata block
-    uint32_t lastData = millis();
+    const uint32_t connectedAt = millis();
+    uint32_t lastData = connectedAt;
+    uint32_t totalBytes = 0;   // stream bytes read (a stall report says when the data stopped)
     bool played = false;
     char meta[256 * 16 + 1];
 
@@ -335,6 +349,7 @@ bool RadioPlayer::session(uint32_t gen) {
             }
             if (got > 0) {
                 fill += got;
+                totalBytes += (uint32_t)got;
                 lastData = millis();
                 if (metaint) {
                     untilMeta -= got;
@@ -359,8 +374,14 @@ bool RadioPlayer::session(uint32_t gen) {
                 setError("stream ended");
                 break;
             }
-            if (millis() - lastData > kStallMs) {
+            const bool stuckStart = totalBytes > 0 && totalBytes < kStartBytes;  // (a slow first byte is not)
+            if (millis() - lastData > (stuckStart ? kStartStallMs : kStallMs)) {
                 setError("stream stalled");
+                Serial.printf("[Radio] Stalled: %lu bytes, data stopped %lu ms after connecting, %s, %u bytes undecoded, "
+                              "%u ms buffered\n",
+                              (unsigned long)totalBytes, (unsigned long)(lastData - connectedAt),
+                              stream->connected() ? "socket open" : "socket closed", (unsigned)fill,
+                              (unsigned)(_audio->radioBuffered() / 24));
                 break;
             }
         }

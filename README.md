@@ -7,7 +7,7 @@
 **Gemini Live voice** · **on-device long-term memory** · **42 tools with on-screen cards** · **PC companion app**
 
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
-[![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
+[![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%203.3.12%20%28IDF%205.5%29-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
 [![Firmware](https://img.shields.io/badge/firmware-v3.5.0-3ddc84)](src/app/AppConfig.h)
 [![Tests](https://img.shields.io/badge/host%20tests-1%2C555%20checks%20passing-3ddc84)](host_tests/)
@@ -132,6 +132,7 @@ On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio 
 | Tap 🎤 (top-left) | Mute / unmute the mic |
 | Tap the screen or press BOOT while it speaks | Stop talking (barge-in) |
 | Tap while asleep / paused | Wake up / reconnect immediately |
+| Say **"Hi ESP"** while asleep (branch `feature/esp-sr`) | Offline wake word (ESP-SR WakeNet after our echo removal, works over the radio) — ⚙ menu "ปลุกด้วยเสียง" / Studio / `set wake level\|word\|both`, `set wakeword hiesp\|jarvis`, `set wakethreshold 0.5` |
 | Long-press the screen 1.5 s | Fresh conversation (long-term memory stays) |
 | Silent for 3 min → asleep (closed eyes); 5 more min → **dim clock** | Speak or tap to wake: full brightness + eyes open (times: ⚙ menu / Studio / by voice) |
 | "turn it down a bit", "brighter", "rest the screen", "mute the mic" | Volume / brightness up-down, dim clock right away, mic off by voice — turning the mic **on** is only possible with the 🎤 button (the mute survives reboots) |
@@ -229,7 +230,7 @@ Portable modules (memory, tools, scheduler, tasks, personas, model fallback, cal
 host_tests\run_tests.bat
 ```
 
-40 suites · 1,663 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+40 suites · 1,667 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
 
 ## 📁 Project layout

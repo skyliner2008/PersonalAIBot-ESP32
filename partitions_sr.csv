@@ -1,0 +1,13 @@
+# ESP32-AI partition table with an ESP-SR "model" partition (wiki 14, phase 2) - 16 MB flash
+# nvs / otadata keep the offsets of default_16MB.csv: settings and the encrypted secrets survive the change.
+# app 2 x 5 MB: the firmware is 3.4 MB with ESP-SR (esp-dl alone ~0.9 MB). model 3.25 MB holds the pack that
+# comes with the framework or our own. The LittleFS partition ("spiffs") moves and shrinks to 2.6 MB:
+# memory kept on it (boards without an SD card) starts empty.
+# Name,   Type, SubType,  Offset,   Size,     Flags
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xe000,   0x2000,
+app0,     app,  ota_0,    0x10000,  0x500000,
+app1,     app,  ota_1,    0x510000, 0x500000,
+model,    data, spiffs,   0xA10000, 0x340000,
+spiffs,   data, spiffs,   0xD50000, 0x2A0000,
+coredump, data, coredump, 0xFF0000, 0x10000,

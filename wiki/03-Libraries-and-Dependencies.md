@@ -15,7 +15,7 @@ status: done
 
 | Library | Version (pinned) | ใช้ทำอะไร |
 |---|---|---|
-| **Platform** `espressif32` | 7.1.3 | Arduino-ESP32 **2.0.17** (ESP-IDF 4.4) |
+| **Platform** pioarduino `platform-espressif32` | 55.03.312 | Arduino-ESP32 **3.3.12** (ESP-IDF 5.5.5) — branch `feature/esp-sr` (เฟส 1 ของ [[14-AEC-WakeWord-Plan]]); `main` ยังเป็น `espressif32 @ 7.1.3` = Arduino 2.0.17 / IDF 4.4 |
 | `lovyan03/LovyanGFX` | 1.2.33 | จอ ILI9341V, sprite, ฟอนต์ VLW ภาษาไทย |
 | `bblanchon/ArduinoJson` | 7.4.3 | JSON ของ Gemini (allocator ใน PSRAM), ไฟล์ความจำ JSONL |
 | `adafruit/Adafruit NeoPixel` | 1.15.5 | WS2812 LED (GPIO 42) |
@@ -37,6 +37,10 @@ status: done
 | `WiFi`, `Preferences` (NVS), `configTzTime` (SNTP) | การเชื่อมต่อ, volume, นาฬิกา UTC+7 |
 
 > `driver/i2s.h` ใน IDF 4.4 ยังเป็น API หลัก (ไม่มี deprecation warning); ถ้าย้ายไป Arduino-ESP32 3.x ควรเปลี่ยนเป็น `ESP_I2S`/`i2s_std`
+>
+> **บน IDF 5.5 (branch `feature/esp-sr`):** `driver/i2s.h` ยังใช้ได้ (มี warning deprecated) · mbedtls 3: `mbedtls_sha256_*_ret` → `mbedtls_sha256_*` ·
+> `esp_efuse_mac_get_default` ย้ายไป `<esp_mac.h>` · RAM ภายในหายไป ~35 KB → stack ของ `geminiIO` / `textModel` / `radio` อยู่ใน PSRAM
+> (`system/PsramTask.h`, task ที่ไม่เขียน flash เอง) · package `framework-arduinoespressif32` ของ pioarduino **ทับ**ของ 2.0.17 — สลับกลับ `main` ต้องดาวน์โหลดใหม่ (~11 นาที)
 
 ---
 
@@ -44,7 +48,8 @@ status: done
 
 ```ini
 [env:esp32s3]
-platform = espressif32 @ 7.1.3
+platform = https://github.com/pioarduino/platform-espressif32/releases/download/55.03.312/platform-espressif32.zip
+; main: platform = espressif32 @ 7.1.3
 board = esp32-s3-devkitc-1
 framework = arduino
 board_build.flash_mode = qio
