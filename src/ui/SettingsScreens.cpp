@@ -11,7 +11,9 @@
 #include <vector>
 
 #include "../agent/Personas.h"
+#include "../app/AppConfig.h"
 #include "../app/Settings.h"
+#include "../system/OtaUpdater.h"
 #include "../util/TextWrap.h"
 #include "KeyboardScreen.h"
 #include "ListScreen.h"
@@ -25,6 +27,7 @@ ListScreen gPicker;
 ListScreen gSubPicker;
 ListScreen gWifi;
 ListScreen gMemory;
+ListScreen gUpdate;
 ConfirmScreen gConfirm;
 InfoScreen gInfo;
 CalibrationScreen gCalibration;
@@ -351,6 +354,62 @@ void openWifi() {
 // Memory
 // ------------------------------------------------------------
 
+// Firmware update from GitHub Releases (system/OtaUpdater): settings, memory and the SD card stay
+void openUpdate() {
+    gUpdate.setup("อัปเดตเฟิร์มแวร์", [](ListScreen& l) {
+        l.add("เวอร์ชันปัจจุบัน", FIRMWARE_VERSION, nullptr);
+        const OtaUpdater::State st = gOta.state();
+        const String latest = gOta.latest();
+        switch (st) {
+            case OtaUpdater::State::Checking:
+                l.add("กำลังตรวจสอบ...", "", nullptr);
+                break;
+            case OtaUpdater::State::UpToDate:
+                l.add("เป็นเวอร์ชันล่าสุดแล้ว", latest.length() ? "ล่าสุด v" + latest : "", nullptr);
+                break;
+            case OtaUpdater::State::Available:
+                l.add("ติดตั้ง v" + latest, "ค่าที่ตั้งไว้และความจำอยู่ครบ", []() {
+                    gConfirm.ask("อัปเดตเฟิร์มแวร์",
+                                 "ดาวน์โหลดและติดตั้งตอนนี้? ใช้เวลา 1-3 นาที ห้ามปิดเครื่อง ถ้าเวอร์ชันใหม่มีปัญหาจะกลับเป็นเวอร์ชันเดิมเอง",
+                                 "ติดตั้ง", []() { gOta.requestInstall(); });
+                }).valueColor = ui::OK;
+                break;
+            case OtaUpdater::State::Downloading:
+                l.add("กำลังดาวน์โหลด " + String(gOta.progress()) + "%", "ห้ามปิดเครื่อง", nullptr);
+                break;
+            case OtaUpdater::State::Ready:
+                l.add("ติดตั้งแล้ว กำลังรีสตาร์ท...", "", nullptr);
+                break;
+            case OtaUpdater::State::Error:
+                l.add("ไม่สำเร็จ", gOta.error(), nullptr).valueColor = ui::WARN;
+                break;
+            default:
+                break;
+        }
+        if (!gOta.busy() && st != OtaUpdater::State::Available) {
+            l.add("ตรวจหาเวอร์ชันใหม่", "จาก GitHub", []() {
+                gOta.requestCheck();
+                gUpdate.rebuild();
+            });
+        }
+        if (gOta.pendingVerify()) l.add("กำลังยืนยันเวอร์ชันใหม่", "ใช้งานปกติ 1 นาที", nullptr);
+    });
+    // follow the updater (state / download percentage) while the page is open
+    gUpdate.onTick = [](ListScreen& l, uint32_t now) {
+        static uint32_t last = 0;
+        static uint8_t seenState = 255, seenPct = 255;
+        if (now - last < 300) return;
+        last = now;
+        const uint8_t s = (uint8_t)gOta.state(), p = gOta.progress();
+        if (s != seenState || p != seenPct) {
+            seenState = s;
+            seenPct = p;
+            l.rebuild();
+        }
+    };
+    gUi.push(&gUpdate);
+}
+
 void openMemory() {
     gMemory.setup("ความจำ", [](ListScreen& l) {
         l.add("ล้างความจำระยะยาว", "facts + graph", []() {
@@ -484,6 +543,13 @@ void buildMenu(ListScreen& l) {
         gUi.popToRoot();
     });
     l.addSubmenu("ข้อมูลระบบ", "", []() { gUi.push(&gInfo); });
+    {
+        const OtaUpdater::State os = gOta.state();
+        String v = "v" FIRMWARE_VERSION;
+        if (os == OtaUpdater::State::Available) v = "มี v" + gOta.latest();
+        ListScreen::Item& up = l.addSubmenu("อัปเดตเฟิร์มแวร์", v, openUpdate);
+        if (os == OtaUpdater::State::Available) up.valueColor = ui::OK;
+    }
     l.add("รีสตาร์ทเครื่อง", "", []() {
         gConfirm.ask("รีสตาร์ท", "รีสตาร์ทเครื่องตอนนี้?", "รีสตาร์ท", []() {
             if (gUi.host()) gUi.host()->uiRestart();  // closes the Live session first
@@ -682,6 +748,7 @@ bool openPage(const char* page) {
     else if (!strcmp(page, "profile")) openProfiles();
     else if (!strcmp(page, "voice")) openVoices();
     else if (!strcmp(page, "info")) gUi.push(&gInfo);
+    else if (!strcmp(page, "update")) openUpdate();
     else if (!strcmp(page, "calibrate")) openCalibration();
     else if (!strcmp(page, "agent") || !strcmp(page, "user") || !strcmp(page, "apikey")) {
         openMenu();

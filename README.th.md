@@ -9,7 +9,7 @@
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
-[![Firmware](https://img.shields.io/badge/firmware-v3.4.4-3ddc84)](src/app/AppConfig.h)
+[![Firmware](https://img.shields.io/badge/firmware-v3.5.0-3ddc84)](src/app/AppConfig.h)
 [![Tests](https://img.shields.io/badge/host%20tests-1%2C555%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -77,9 +77,11 @@
    (ถ้าหาบอร์ดไม่เจอ: กด **BOOT** ค้าง → แตะ **RESET** → ปล่อย BOOT แล้วกด Connect ใหม่)
 3. ช่อง Flash Address ใส่ **`0x0`** → เลือกไฟล์ `.bin` → **Program** เสร็จแล้วกด **RESET** ที่บอร์ด
 
-ใช้ command line ก็ได้: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.4.4-factory.bin`
+ใช้ command line ก็ได้: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.5.0-factory.bin`
 
 > ไฟล์ factory เริ่มที่ `0x0` จึง**ล้างค่าตั้งค่าเดิมในบอร์ด**ไปด้วย (ติดตั้งใหม่สะอาด)
+>
+> **บอร์ดเป็น v3.5.0 ขึ้นไปแล้ว?** อัปเดตผ่าน Wi-Fi ได้เลย: เมนูตั้งค่า → **อัปเดตเฟิร์มแวร์** บอร์ดดาวน์โหลดไฟล์ `-app.bin` ของ release ล่าสุด ตรวจ (sha256, header, เวอร์ชัน) แล้วติดตั้ง โดย**ค่าที่ตั้งไว้และความจำอยู่ครบ** ถ้าเวอร์ชันใหม่เปิดไม่ผ่านจะกลับเป็นเวอร์ชันเดิมเอง — ดู [wiki 13](wiki/13-OTA-Update.md)
 
 ### ทางเลือก B — build จากซอร์สโค้ด
 
@@ -228,7 +230,7 @@ flowchart LR
 host_tests\run_tests.bat
 ```
 
-36 ชุดทดสอบ · 1,596 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
+38 ชุดทดสอบ · 1,630 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ หรือ clang++)
 
 ## 📁 โครงสร้างโปรเจกต์
@@ -260,6 +262,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 | [09 โปรไฟล์ & tools](wiki/09-Assistant-Profiles-and-Tools.md) · [11 Tools ข้อมูล & การ์ด](wiki/11-Data-Tools-and-Cards.md) | ผู้ช่วยทำอะไรได้บ้าง |
 | [10 PC Studio](wiki/10-PC-Studio-App.md) · [07 บันทึกการแก้ปัญหา](wiki/07-Troubleshooting-Log.md) | เครื่องมือ และปัญหาที่แก้แล้ว 40+ เรื่อง |
 | [12 วิทยุออนไลน์](wiki/12-Internet-Radio.md) | สตรีม, ผสม/ลดเสียง, ปลุกด้วยเสียงขณะเปิดเพลง |
+| [13 อัปเดตเฟิร์มแวร์ (OTA)](wiki/13-OTA-Update.md) | ผ่าน Wi-Fi จาก GitHub Releases, ตรวจไฟล์, กลับเวอร์ชันเดิมอัตโนมัติ |
 
 ## 🔒 ความปลอดภัย & ความเป็นส่วนตัว
 
@@ -282,7 +285,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 - **Fork & build:** `pio run` build ได้จาก clone ใหม่โดยไม่ต้องมี `secrets.h` — ค่าตั้งค่าอยู่ใน NVS (`src/app/Settings.*`) key ของคุณจึงไม่เข้าไปอยู่ในซอร์สโค้ด
 - **เพิ่ม tool:** ประกาศใน `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`) tool ที่ใช้เน็ตใส่ใน `src/agent/WebToolsExtra.cpp` และวาด `CardData` (ดู [wiki/11](wiki/11-Data-Tools-and-Cards.md))
 - **ทดสอบไม่ต้องมีบอร์ด:** `host_tests\run_tests.bat` — บนบอร์ดเรียก tool ทุกตัวได้จากแท็บ 🧰 ใน Studio หรือ serial (`tool <name> {json}`)
-- **ออก Release:** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py` สคริปต์จะ build ไฟล์ factory (`tools/make_release.py`) สร้าง Release แบบร่าง แนบ `.bin` + `.sha256` เผยแพร่ แล้วดาวน์โหลดกลับมาเทียบ sha256 โดยรัน host tests ก่อนเผยแพร่เสมอ (`--skip-tests` ใช้เฉพาะเครื่องที่ไม่มี compiler) — Release ของ repo นี้เป็นแบบ **immutable** เผยแพร่แล้วแก้ไฟล์หรือใช้ชื่อ tag ซ้ำไม่ได้ ทุกครั้งต้องใช้เลขเวอร์ชันใหม่ (`--dry-run` = ตรวจอย่างเดียว)
+- **ออก Release:** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py` สคริปต์จะ build ไฟล์ factory (`tools/make_release.py`) สร้าง Release แบบร่าง แนบไฟล์ factory และไฟล์ OTA `-app.bin` (พร้อม `.sha256`) เผยแพร่ แล้วดาวน์โหลดกลับมาเทียบ sha256 โดยรัน host tests ก่อนเผยแพร่เสมอ (`--skip-tests` ใช้เฉพาะเครื่องที่ไม่มี compiler) — Release ของ repo นี้เป็นแบบ **immutable** เผยแพร่แล้วแก้ไฟล์หรือใช้ชื่อ tag ซ้ำไม่ได้ ทุกครั้งต้องใช้เลขเวอร์ชันใหม่ (`--dry-run` = ตรวจอย่างเดียว)
 - **CI:** [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml) ทำแบบเดียวกันบน GitHub Actions แต่ตอนนี้ตั้งเป็นกดรันเองเท่านั้น (*Actions → Firmware → Run workflow*) และ job ออก release จะรอ job host-tests ผ่านก่อน — `tools/make_release.py` ไม่ยอมทำงานถ้า `include/secrets.h` มีค่าจริง และสแกนไฟล์หาสิ่งที่หน้าตาเหมือน API key
 - **เอกสาร:** โฟลเดอร์ `wiki/` เป็น Obsidian vault — ปัญหาที่แก้ได้ช่วยบันทึกใน [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md)
 

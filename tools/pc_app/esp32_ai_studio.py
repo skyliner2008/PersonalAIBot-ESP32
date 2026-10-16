@@ -65,7 +65,7 @@ MONO = ("Consolas", 10)
 EMOTIONS = ["neutral", "happy", "excited", "love", "sad", "worried", "angry", "surprised", "sleepy",
             "thinking", "curious", "confused", "shy", "wink"]
 
-TAG_RE = re.compile(r"^(CONFIG|OPTIONS|TOOLS|DIAG|WIFISCAN|APITEST|RECINFO|RADIOLIST|TOOL)\s+(.*)$")
+TAG_RE = re.compile(r"^(CONFIG|OPTIONS|TOOLS|DIAG|WIFISCAN|APITEST|RECINFO|RADIOLIST|TOOL|OTA)\s+(.*)$")
 SECRET_RE = re.compile(r"(key=)[^&\s\"]+")
 
 
@@ -659,6 +659,8 @@ class Studio:
             self.show_apitest(data)
         elif tag == "RECINFO":
             self.rec_info = data
+        elif tag == "OTA":
+            self.show_ota(data if isinstance(data, dict) else {})
         elif tag == "RADIOLIST":
             self.show_radio_list(data)
             if data.get("error"):
@@ -1928,10 +1930,42 @@ class Studio:
                    if hasattr(os, "startfile") else None).pack(side="left", padx=6)
         self.fw_status = ttk.Label(bar, text="", style="Dim.TLabel")
         self.fw_status.pack(side="left", padx=10)
+        # over-the-air: the board downloads the latest GitHub release itself (settings + memory stay)
+        ota = ttk.Frame(tab)
+        ota.pack(fill="x", pady=(0, 6))
+        ttk.Label(ota, text="อัปเดตผ่าน Wi-Fi (GitHub Releases):").pack(side="left")
+        ttk.Button(ota, text="🔍 ตรวจเวอร์ชันใหม่", command=lambda: self.send("ota check")).pack(side="left", padx=6)
+        ttk.Button(ota, text="⬇ ติดตั้งบนบอร์ด", command=self.ota_install).pack(side="left")
+        ttk.Button(ota, text="↩ กลับเวอร์ชันก่อน", command=lambda: messagebox.askyesno(
+            APP_TITLE, "บูตเฟิร์มแวร์ในอีกช่อง (เวอร์ชันก่อนอัปเดตล่าสุด)? บอร์ดจะรีสตาร์ท") and self.send("ota rollback")
+        ).pack(side="left", padx=6)
+        self.ota_status = ttk.Label(ota, text="", style="Dim.TLabel")
+        self.ota_status.pack(side="left", padx=10)
         frame, self.fw_out = with_scroll(tab, styled_text, height=24, wrap="char")
         frame.pack(fill="both", expand=True)
         self.fw_out.tag_configure("err", foreground=ERR)
         self.fw_out.tag_configure("ok", foreground=OK)
+
+    def ota_install(self):
+        if not self.link.connected:
+            messagebox.showwarning(APP_TITLE, "ยังไม่ได้เชื่อมต่อบอร์ด")
+            return
+        if messagebox.askyesno(APP_TITLE, "ให้บอร์ดดาวน์โหลดและติดตั้งเฟิร์มแวร์ล่าสุดจาก GitHub?\n"
+                                          "ค่าที่ตั้งไว้และความจำอยู่ครบ • ใช้เวลา 1-3 นาที ห้ามถอดสาย\n"
+                                          "(กด 'ตรวจเวอร์ชันใหม่' ก่อน)"):
+            self.send("ota install")
+
+    def show_ota(self, d: dict):
+        state = d.get("state", "")
+        text = {"checking": "กำลังตรวจ...", "up_to_date": f"ล่าสุดแล้ว (v{d.get('current')})",
+                "available": f"มี v{d.get('latest')} (บอร์ด v{d.get('current')})",
+                "downloading": f"กำลังดาวน์โหลด {d.get('progress', 0)}%", "ready": "ติดตั้งแล้ว กำลังรีสตาร์ท",
+                "error": f"ไม่สำเร็จ: {d.get('error', '')}"}.get(state, f"v{d.get('current')} ({d.get('partition')})")
+        if d.get("pending_verify"):
+            text += " • กำลังยืนยันเวอร์ชันใหม่"
+        self.ota_status.configure(text=text, foreground=ERR if state == "error" else (OK if state == "available" else DIM))
+        if state in ("checking", "downloading"):
+            self.root.after(1500, lambda: self.send("ota", echo=False))
 
     def run_fw(self, args, kind):
         if self.fw_busy:

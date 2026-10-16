@@ -78,8 +78,9 @@ def notes(ver: str) -> str:
 4. Enter your own Wi-Fi + Gemini API key on the device — or put `ai-setup.txt` on the SD card ([template](https://github.com/{REPO}/blob/main/tools/sd_card/ai-setup.txt)).
    ใส่ Wi-Fi + Gemini API key ของคุณบนบอร์ด หรือวาง `ai-setup.txt` ไว้ในการ์ด SD
 
-> The factory image starts at 0x0 and resets saved settings. To update and keep them, build from source (`pio run -t upload`).
-> ไฟล์ factory ล้างค่าตั้งค่าเดิม ถ้าต้องการอัปเดตโดยเก็บค่าเดิมให้ build จากซอร์ส
+> The factory image starts at 0x0 and resets saved settings. A board on v3.5.0 or later updates itself and keeps its
+> settings and memory: Settings → อัปเดตเฟิร์มแวร์ (it downloads the `-app.bin` below).
+> ไฟล์ factory ล้างค่าตั้งค่าเดิม — บอร์ดที่เป็น v3.5.0 ขึ้นไปอัปเดตเองผ่านเมนู "อัปเดตเฟิร์มแวร์" ได้ ค่าตั้งค่าและความจำอยู่ครบ
 >
 > No passwords or API keys are included in this image. / ไฟล์นี้ไม่มีรหัสหรือ API key ใดๆ
 """
@@ -112,8 +113,10 @@ def main() -> None:
                  else ["bash", str(ROOT / "host_tests" / "run_tests.sh")])
         if subprocess.run(tests, cwd=ROOT).returncode != 0:
             sys.exit("Host unit tests failed: nothing was published (--skip-tests only if no compiler is installed).")
-    files =[ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-factory.bin",
-             ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-factory.bin.sha256"]
+    files = [ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-factory.bin",
+             ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-factory.bin.sha256",
+             ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-app.bin",  # what boards download to update themselves
+             ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-app.bin.sha256"]
     for f in files:
         if not f.exists():
             sys.exit(f"missing {f}")
@@ -136,7 +139,7 @@ def main() -> None:
         sys.exit(f"publish failed: {st} {pub}")
     print(f"3/3 published: {pub['html_url']}")
 
-    url = next(a["browser_download_url"] for a in pub["assets"] if a["name"].endswith(".bin"))
+    url = next(a["browser_download_url"] for a in pub["assets"] if a["name"].endswith("-factory.bin"))
     with urllib.request.urlopen(url, timeout=300) as r:
         remote = hashlib.sha256(r.read()).hexdigest()
     local = hashlib.sha256(files[0].read_bytes()).hexdigest()

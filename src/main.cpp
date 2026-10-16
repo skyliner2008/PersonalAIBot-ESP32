@@ -28,6 +28,7 @@
 #include "display/TouchFT6336.h"
 #include "pins_config.h"
 #include "system/I2cBus.h"
+#include "system/OtaUpdater.h"
 #include "system/Storage.h"
 #include "ui/CardScreen.h"
 #include "ui/FaceScreen.h"
@@ -479,6 +480,7 @@ static void handleConsoleLine(String line) {
         Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
         Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min|searchonly> | searchretry");
         Serial.println("time <unix-epoch> (set clock offline) | reboot");
+        Serial.println("ota (status: OTA <json>) | ota check | ota install | ota rollback | ota fetch <https-url> | ota selftest");
         Serial.println("radio list: radiolist | radioadd name|url|genre | radioedit <n> name|url|genre | radiodel <n> | radiomove <from> <to> | radioreset | radio <n>");
     } else if (cmd == "config") {
         printConfig();
@@ -493,6 +495,29 @@ static void handleConsoleLine(String line) {
         printTagged("DIAG", agent.runTool("_diag", "{}", r) ? r : String("{\"error\":\"busy\"}"));
     } else if (cmd == "wifiscan") {
         printWifiScan();
+    } else if (cmd == "ota") {  // firmware update from GitHub Releases (see system/OtaUpdater.h)
+        const int sp = rest.indexOf(' ');
+        const String sub = sp < 0 ? rest : rest.substring(0, sp);
+        const String arg = sp < 0 ? String() : rest.substring(sp + 1);
+        bool ok = true;
+        String why;
+        if (sub == "check") ok = gOta.requestCheck();
+        else if (sub == "install") ok = gOta.requestInstall();
+        else if (sub == "fetch") ok = gOta.requestFetch(arg.c_str());
+        else if (sub == "selftest") ok = gOta.requestSelfTest();
+        else if (sub == "rollback") {
+            ok = gOta.rollbackNow(why);
+            if (ok) agent.uiRestart();  // clean close, then boot the other slot
+        } else if (sub.length()) {
+            Serial.println("ota [check|install|rollback|fetch <url>|selftest]");
+            return;
+        }
+        if (!ok) Serial.printf("ERR ota %s%s%s\n", sub.c_str(), why.length() ? ": " : " (busy / nothing to install)", why.c_str());
+        JsonDocument d;
+        gOta.describe(d.to<JsonObject>());
+        String s;
+        serializeJson(d, s);
+        printTagged("OTA", s);
     } else if (cmd == "searchretry") {
         agent.retrySearch();
     } else if (cmd == "rec") {
@@ -771,6 +796,16 @@ void setup() {
     gStations.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // radio_stations.json
     gRadio.begin(&audio);  // Internet radio task (idle until play_radio)
     agent.begin(&audio, &gFace, &storage);
+
+    // Firmware updates from GitHub Releases: quiet the assistant for the download, restart through the
+    // agent (clean Live close + memory flush), report on the face. Also confirms / reports a fresh update.
+    gOta.onPrepare = []() {
+        gRadio.stop();
+        agent.requestSleepNow();
+    };
+    gOta.onReboot = []() { agent.uiRestart(); };
+    gOta.onNotice = [](const char* text, uint32_t holdMs) { gFace.setSystemText(text, holdMs); };
+    gOta.begin();
 
     if (audio.i2sReady()) audio.startTasks();
     agent.startTask();

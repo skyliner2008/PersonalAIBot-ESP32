@@ -991,3 +991,93 @@ TEST(episodic_reload_and_scan_budget) {
         CHECK_EQ(searched, 1);
     }
 }
+
+// ============================================================
+// v3.5.0: OTA logic (versions, GitHub release JSON, sha256 lines, image header, firmware marker)
+// ============================================================
+
+#include <fstream>
+#include <iterator>
+
+#include "util/OtaLogic.h"
+
+TEST(ota_versions_and_release) {
+    int v[3];
+    CHECK(ota::parseVersion("v3.5.0", v) && v[0] == 3 && v[1] == 5 && v[2] == 0);
+    CHECK(ota::parseVersion("3.4", v) && v[1] == 4 && v[2] == 0);
+    CHECK(!ota::parseVersion("3.5.0-rc1", v));
+    CHECK(!ota::parseVersion("latest", v));
+    CHECK(!ota::parseVersion("1.2.3.4", v));
+    CHECK(ota::compareVersions("v3.5.0", "3.4.4") > 0);
+    CHECK(ota::compareVersions("v3.4.10", "3.4.9") > 0);  // numeric, not text
+    CHECK(ota::compareVersions("v3.4.4", "3.4.4") == 0);
+    CHECK(ota::compareVersions("v3.4.3", "3.4.4") < 0);
+    CHECK(ota::compareVersions("garbage", "3.4.4") == 0);  // never "upgrade" to junk
+
+    char sha[65];
+    const std::string line = "5FB956D3D7E5430AFF8BD5ED00184ACA4175207A4B86CC5CBF18B19BD28818AF  PersonalAIBot-ESP32-v3.5.0-app.bin\n";
+    CHECK(ota::parseSha256(line.c_str(), line.size(), sha));
+    CHECK(std::string(sha) == "5fb956d3d7e5430aff8bd5ed00184aca4175207a4b86cc5cbf18b19bd28818af");
+    CHECK(!ota::parseSha256("abc123", 6, sha));
+    const std::string longer = std::string(65, 'a');
+    CHECK(!ota::parseSha256(longer.c_str(), longer.size(), sha));
+
+    const char* json =
+        "{\"tag_name\":\"v3.5.0\",\"draft\":false,\"prerelease\":false,\"body\":\"notes ...\",\"assets\":["
+        "{\"name\":\"PersonalAIBot-ESP32-v3.5.0-factory.bin\",\"size\":1900000,"
+        "\"browser_download_url\":\"https://github.com/o/r/releases/download/v3.5.0/PersonalAIBot-ESP32-v3.5.0-factory.bin\"},"
+        "{\"name\":\"PersonalAIBot-ESP32-v3.5.0-app.bin\",\"size\":1862400,"
+        "\"browser_download_url\":\"https://github.com/o/r/releases/download/v3.5.0/PersonalAIBot-ESP32-v3.5.0-app.bin\"},"
+        "{\"name\":\"PersonalAIBot-ESP32-v3.5.0-app.bin.sha256\",\"size\":100,"
+        "\"browser_download_url\":\"https://github.com/o/r/releases/download/v3.5.0/PersonalAIBot-ESP32-v3.5.0-app.bin.sha256\"}]}";
+    ota::Release r;
+    CHECK(ota::parseRelease(json, strlen(json), r));
+    CHECK(std::string(r.tag) == "v3.5.0");
+    CHECK(std::string(r.appUrl).find("-app.bin") != std::string::npos && std::string(r.appUrl).find("sha256") == std::string::npos);
+    CHECK(std::string(r.shaUrl).find("-app.bin.sha256") != std::string::npos);
+    CHECK_EQ(r.appSize, 1862400u);
+
+    const char* old = "{\"tag_name\":\"v3.4.4\",\"assets\":[{\"name\":\"x-factory.bin\",\"browser_download_url\":\"https://a/b\"}]}";
+    CHECK(!ota::parseRelease(old, strlen(old), r));
+    CHECK(std::string(r.tag) == "v3.4.4");  // still known: "up to date" vs "no app image" is decided from it
+    const char* pre = "{\"tag_name\":\"v9.0.0\",\"prerelease\":true,\"assets\":[]}";
+    CHECK(!ota::parseRelease(pre, strlen(pre), r));
+    CHECK(!ota::parseRelease("not json", 8, r));
+}
+
+TEST(ota_image_checks) {
+    uint8_t h[40] = {};
+    CHECK(ota::checkImageHeader(h, 10, 9) != nullptr);
+    h[0] = 0xE9;
+    h[12] = 9;
+    h[32] = 0x32, h[33] = 0x54, h[34] = 0xCD, h[35] = 0xAB;
+    CHECK(ota::checkImageHeader(h, sizeof(h), 9) == nullptr);
+    CHECK(ota::checkImageHeader(h, sizeof(h), 5) != nullptr);  // other chip
+    h[32] = 0;
+    CHECK(ota::checkImageHeader(h, sizeof(h), 9) != nullptr);
+
+    // marker split across chunks; the scanner's own constant (prefix + NUL) is not a match
+    const std::string blob = std::string("xxPAB-ESP32-FW:") + '\0' + "yyPAB-ESPAB-ESP32-FW:3.5.0" + '\0' + "zz";
+    for (size_t chunk : {1, 3, 7, 64}) {
+        ota::MarkerScanner m;
+        for (size_t i = 0; i < blob.size(); i += chunk) {
+            m.feed((const uint8_t*)blob.data() + i, std::min(chunk, blob.size() - i));
+        }
+        CHECK(m.found() && std::string(m.version()) == "3.5.0");
+    }
+    ota::MarkerScanner none;
+    const std::string junk = "PAB-ESP32-FW:abc";
+    none.feed((const uint8_t*)junk.data(), junk.size());
+    CHECK(!none.found());
+
+    // the real firmware image (built by "pio run"): header + marker = AppConfig's version
+    std::ifstream f(std::string(fs::current_path().string()) + "/.pio/build/esp32s3/firmware.bin", std::ios::binary);
+    if (f) {
+        const std::vector<uint8_t> img((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        CHECK(ota::checkImageHeader(img.data(), img.size(), 9) == nullptr);
+        ota::MarkerScanner m;
+        for (size_t i = 0; i < img.size(); i += 4096) m.feed(img.data() + i, std::min<size_t>(4096, img.size() - i));
+        CHECK(m.found());
+        printf("    firmware.bin: %u KB, marker v%s\n", (unsigned)(img.size() / 1024), m.version());
+    }
+}

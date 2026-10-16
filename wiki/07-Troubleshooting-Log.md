@@ -110,6 +110,18 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T055: OTA — Arduino ยืนยันเฟิร์มแวร์ใหม่เองตอนบูต + CA ของ GitHub ไม่อยู่ในชุดเดิม
+
+**วันที่:** 2026-10-16 · ระหว่างทำ OTA (v3.5.0, [[13-OTA-Update]])
+1. **rollback จะไม่เคยเกิด:** bootloader ของ Arduino-ESP32 2.0.17 เปิด `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` แต่ `initArduino()` เรียก
+   `esp_ota_mark_app_valid_cancel_rollback()` ทันทีที่บูตถ้า `verifyRollbackLater()` (weak, C linkage) คืน `false`
+   → เฟิร์มแวร์ที่พังหลังบูตไปแล้วจะถูกนับว่า "ใช้ได้" → override เป็น `extern "C" bool verifyRollbackLater() { return true; }` แล้วยืนยันเองหลังทำงาน 60 วิ + agent heartbeat
+   (ตรวจด้วย objdump: เหลือสัญลักษณ์เดียว คืนค่า 1)
+2. **api.github.com ต่อไม่ได้ด้วย CA ชุดเดิม:** github.com ใช้ chain Sectigo E46 → USERTrust ECC (ไม่มีใน `WEB_ROOT_CA_PEM`) · ไฟล์ release redirect ไป
+   release-assets.githubusercontent.com (ISRG Root X1) → ชุดใหม่ `OTA_ROOT_CA_PEM` ใน `gen_root_ca.py` (ไม่แตะชุดเดิม)
+3. ข้อความ error ภาษาไทยถูกตัดกลางตัวอักษร (บัฟเฟอร์ 96 ไบต์) → 192 + ตัดตามขอบ UTF-8
+**ทดสอบบนบอร์ด:** check / fetch (sha256 ตรงกับ release v3.4.4) / selftest สลับช่อง + ยืนยัน / selftest + รีเซ็ตที่ 12 วิ → กลับช่องเดิม
+
 ## T054: AI ทัก "เรื่องทริปโตเกียว" เกือบทุกครั้ง ทั้งที่ผู้ใช้ไม่เคยคุย
 
 **วันที่:** 2026-10-16 · **ผู้ใช้:** "รีบูตแล้วพูดสวัสดี AI จะตอบเรื่องทริปโตเกียวเกือบ 90%"

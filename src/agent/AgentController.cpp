@@ -233,6 +233,7 @@ void AgentController::loop() {
         // the assistant's voice reaches the speaker through this loop (_gemini.poll): a step that
         // blocks for longer than the jitter buffer makes the reply stutter - time each one
         const uint32_t loopStart = millis();
+        gOta.heartbeat();  // a fresh firmware update is confirmed only while this loop runs
         uint32_t mark = loopStart, slowMs = 0;
         const char* slow = "";
         auto lap = [&](const char* name) {

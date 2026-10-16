@@ -73,7 +73,7 @@
 ## 3. เฟิร์มแวร์และหน่วยความจำ
 
 - Platform `espressif32 @ 7.1.3` (Arduino-ESP32 2.0.17 / IDF 4.4), C++17
-- Partition `default_16MB.csv`: app 6.25 MB × 2 (OTA) + LittleFS 3.4 MB
+- Partition `default_16MB.csv`: app 6.25 MB × 2 (OTA) + LittleFS 3.4 MB · v3.5.0: OTA จาก GitHub Releases (`OtaUpdater`, ตรวจ sha256/header/marker, ยืนยันหลัง 60 วิ ไม่งั้น bootloader rollback — wiki 13)
 - Firmware 1.24 MB (18.9%), static RAM 17.8%
 
 | ส่วน | ที่อยู่ | ขนาด |

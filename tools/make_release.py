@@ -3,6 +3,10 @@
 Build a single "factory" firmware image for a GitHub release.
 
     python tools/make_release.py            -> dist/PersonalAIBot-ESP32-v<ver>-factory.bin (+ .sha256)
+                                               dist/PersonalAIBot-ESP32-v<ver>-app.bin     (+ .sha256)
+
+The app image (the application alone, for the next OTA slot) is what a board downloads when it
+updates itself (src/system/OtaUpdater.cpp): its settings and memory stay.
 
 The image (bootloader + partition table + boot_app0 + app, merged at 0x0) can be flashed by anyone
 without PlatformIO, e.g. with https://espressif.github.io/esptool-js/ (offset 0x0) or
@@ -68,13 +72,19 @@ def main() -> None:
                     "0x0", str(BUILD / "bootloader.bin"), "0x8000", str(BUILD / "partitions.bin"),
                     "0xe000", str(boot_app0), "0x10000", str(BUILD / "firmware.bin")], check=True)
 
-    data = out.read_bytes()
-    if KEY_RE.search(data):
-        out.unlink()
-        sys.exit("An API-key-like string was found in the image - release deleted. Check include/secrets.h.")
-    digest = hashlib.sha256(data).hexdigest()
-    (out.parent / (out.name + ".sha256")).write_text(f"{digest}  {out.name}\n", encoding="ascii")
-    print(f"\nOK  {out}  ({len(data) / 1024:.0f} KB)\nsha256 {digest}\nNo secrets found in the image.")
+    app = DIST / f"PersonalAIBot-ESP32-v{version()}-app.bin"  # over-the-air updates (keeps settings)
+    shutil.copyfile(BUILD / "firmware.bin", app)
+
+    for image in (out, app):
+        data = image.read_bytes()
+        if KEY_RE.search(data):
+            out.unlink(missing_ok=True)
+            app.unlink(missing_ok=True)
+            sys.exit("An API-key-like string was found in the image - release deleted. Check include/secrets.h.")
+        digest = hashlib.sha256(data).hexdigest()
+        (image.parent / (image.name + ".sha256")).write_text(f"{digest}  {image.name}\n", encoding="ascii")
+        print(f"\nOK  {image}  ({len(data) / 1024:.0f} KB)\nsha256 {digest}")
+    print("No secrets found in the image.")
 
 
 if __name__ == "__main__":

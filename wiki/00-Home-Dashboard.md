@@ -10,7 +10,7 @@ status: in-progress
 > **Project:** Personal AI Agent on ES3C28P (ESP32-S3 2.8" IPS LCD)
 > **Goal:** คุยด้วยเสียงภาษาไทยแบบ real-time กับ Gemini 3.8 Live + **ความจำระยะยาวแบบ standalone ในตัวเครื่อง**
 > **Board:** ES3C28P — ESP32-S3-N16R8 + ILI9341V + ES8311 + FT6336G + MicroSD
-> **Firmware:** v3.4.4 (2026-10-16) — กันความจำผิด (ทริปโตเกียวจากเสียงวิทยุ), new session ไม่ resume ของเก่า • v3.4.3: แก้จากรีวิวรอบ 2 (เสียงช่วงปลุกหาย, VAD ค้างเมื่อพัดลมเปิด, millis() วนกลับ 49.7 วัน, แจ้งเตือนที่พลาด) • v3.4.2: UTF-8 โน้ต, บัฟเฟอร์ไมค์ 8 วิ, reboot, ล็อก settings • วิทยุ: พักทันทีหลังเปิด, จำสถานีล่าสุด, ปุ่ม ⏻ ปิด, แตะปลุกพูดได้ทันที • ผู้ช่วยส่วนตัว + ดวงตา + เมนูทัช + auto fallback (รวม Google Search) + ปุ่มไมค์ + วิทยุออนไลน์ + PC Studio app • host tests 36 ชุด / 1,596 checks
+> **Firmware:** v3.5.0 (2026-10-16) — **อัปเดตผ่าน Wi-Fi (OTA) จาก GitHub Releases + rollback อัตโนมัติ** • v3.4.4: กันความจำผิด (ทริปโตเกียวจากเสียงวิทยุ), new session ไม่ resume ของเก่า • v3.4.3: แก้จากรีวิวรอบ 2 (เสียงช่วงปลุกหาย, VAD ค้างเมื่อพัดลมเปิด, millis() วนกลับ 49.7 วัน, แจ้งเตือนที่พลาด) • v3.4.2: UTF-8 โน้ต, บัฟเฟอร์ไมค์ 8 วิ, reboot, ล็อก settings • วิทยุ: พักทันทีหลังเปิด, จำสถานีล่าสุด, ปุ่ม ⏻ ปิด, แตะปลุกพูดได้ทันที • ผู้ช่วยส่วนตัว + ดวงตา + เมนูทัช + auto fallback (รวม Google Search) + ปุ่มไมค์ + วิทยุออนไลน์ + PC Studio app • host tests 38 ชุด / 1,630 checks
 
 ---
 
@@ -25,11 +25,12 @@ status: in-progress
 | 04 | [[04-System-Architecture]] | Tasks, audio pipeline, derived state, memory map | ✅ v2 |
 | 05 | [[05-Gemini-Live-API-Protocol]] | WSS/TLS, setup, tools, resumption, goAway | ✅ v2 |
 | 06 | [[06-Avatar-and-Thai-UI]] | ดวงตาเด้งดึง 14 อารมณ์ (แนวนอน) + ฟอนต์ไทย + touch calibration | ✅ Verified on board |
-| 07 | [[07-Troubleshooting-Log]] | ปัญหาจริงที่พบและวิธีแก้ (T013–T054) | ✅ |
+| 07 | [[07-Troubleshooting-Log]] | ปัญหาจริงที่พบและวิธีแก้ (T013–T055) | ✅ |
 | 08 | [[08-Long-Term-Memory-GraphRAG]] | ความจำระยะยาว standalone: BM25 + Knowledge Graph | ✅ Implemented |
 | 09 | [[09-Assistant-Profiles-and-Tools]] | โปรไฟล์เสียง/นิสัย, เมนูทัช + คีย์บอร์ดไทย, 37+ tools, งบโทเคน, auto fallback, ทดสอบ API key | ✅ v3.1 |
 | 12 | [[12-Internet-Radio]] | วิทยุออนไลน์: รายการสถานีไทยที่ล็อกไว้ (แก้ใน Studio), หน้าจอแบบแอปวิทยุ (แตะกลางจอ = สั่ง AI), AI เลือกสถานีให้, Helix MP3/AAC, ลดเสียงตอนคุย | ✅ ทดสอบบนบอร์ดแล้ว |
 | 11 | [[11-Data-Tools-and-Cards]] | tools ข้อมูลสด + การ์ดกราฟิก: อากาศ/PM2.5, ราคาน้ำมัน, TradingView, ค่าเงิน, ข่าว + พอร์ตจาก PersonalAIBot: เครื่องคิดเลข, แปลงหน่วย, เวลาโลก, Wikipedia, โน้ต, วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, แจ้งเตือนราคา (TradingView อ่านอย่างเดียว — ไม่มี MT5 ตั้งแต่ v3.4) | ✅ v3.4 |
+| 13 | [[13-OTA-Update]] | อัปเดตเฟิร์มแวร์ผ่าน Wi-Fi จาก GitHub Releases: ตรวจ sha256 + header + marker เวอร์ชัน, ค่าที่ตั้งไว้/ความจำอยู่ครบ, rollback อัตโนมัติ (ยืนยันหลังทำงาน 60 วิ), เมนู + console + Studio | ✅ ทดสอบบนบอร์ดแล้ว |
 | 10 | [[10-PC-Studio-App]] | แอป PC: ตั้งค่า, เครื่องมือ, debug log สด, แชทพิมพ์, จอเสมือน + แตะจากระยะไกล, build/upload | ✅ v3.1 |
 
 ---
@@ -149,6 +150,7 @@ ESP32-AI/
 | 2026-10-16 | **Release v3.4.3** — งานแก้จากรีวิวรอบ 2 (T053) ทดสอบบนบอร์ดผ่าน serial แล้ว | [[07-Troubleshooting-Log#T053 รีวิวรอบ 2 — เสียงช่วงปลุกหาย, VAD ค้างเมื่อพัดลมเปิด, millis() วนกลับ 49.7 วัน + บัคเล็ก]] |
 | 2026-10-16 | **AI ทัก "ทริปโตเกียว" ทั้งที่ไม่เคยคุย:** ความจำผิดจากเสียงวิทยุ (importance 4 = อยู่ใน prompt ทุก session) + วงวนผ่านบทสนทนาล่าสุด → ลบ, ความจำจากตัวจัดระเบียบ ≤ 3, prompt ห้ามยกเรื่องเก่าตอนทัก • แก้ `new` แล้วได้ resumed session | [[07-Troubleshooting-Log#T054 AI ทัก "เรื่องทริปโตเกียว" เกือบทุกครั้ง ทั้งที่ผู้ใช้ไม่เคยคุย]] |
 | 2026-10-16 | **Release v3.4.4** — กันความจำผิด + new session (T054) · ลบความจำขยะบนบอร์ด (#5 #8 #9 #11) เหลือ 3 ข้อ | [[07-Troubleshooting-Log#T054 AI ทัก "เรื่องทริปโตเกียว" เกือบทุกครั้ง ทั้งที่ผู้ใช้ไม่เคยคุย]] |
+| 2026-10-16 | **v3.5.0: อัปเดตเฟิร์มแวร์ผ่าน Wi-Fi (OTA)** จาก GitHub Releases — เขียนเฉพาะอีกช่องเฟิร์มแวร์ (ค่าที่ตั้งไว้/ความจำ/SD อยู่ครบ), ตรวจ header ESP32-S3 + marker `PAB-ESP32-FW:<ver>` + sha256 + `esp_ota_end`, ยืนยันหลังทำงาน 60 วิ (ไม่งั้น bootloader กลับเวอร์ชันเดิม — ต้อง override `verifyRollbackLater()` ของ Arduino), CA ของ GitHub (USERTrust/Sectigo) + Let's Encrypt, เช็กวันละครั้งแค่แจ้ง, เมนู/console/Studio, release แนบ `-app.bin` • ทดสอบบนบอร์ด: check, fetch (sha ตรง), สลับช่อง+ยืนยัน, rollback • host tests 38 ชุด / 1,630 checks | [[13-OTA-Update]] · [[07-Troubleshooting-Log#T055 OTA — Arduino ยืนยันเฟิร์มแวร์ใหม่เองตอนบูต + CA ของ GitHub ไม่อยู่ในชุดเดิม]] |
 | 2026-10-15 | **วิทยุ v3.3.0: รายการสถานี + หน้าจอแบบแอปวิทยุ** — เลิกค้น Radio Browser ออนไลน์ (ช้า/ล้ม/URL ขยะ) → 16 สถานีไทยที่ทดสอบแล้ว เก็บใน SD (`agent/radio_stations.json`) • AI เห็นรายการใน prompt เลือกตามชื่อ/เลข/แนว • หน้าจอวิทยุ: แผงกลางแตะ = สั่ง AI, แถบสถานีเลื่อนได้, ⏮ − + ⏭, เปิดเองเมื่อวิทยุเล่น, หลบให้โหมดนาฬิกา • Studio แท็บ 📻 วิทยุ (เพิ่ม/แก้/ลบ/เรียง/ทดสอบ URL) • ทดสอบบนบอร์ดแล้ว | [[12-Internet-Radio#รายการสถานี (ล็อกไว้ — ไม่ค้นออนไลน์)]] · [[10-PC-Studio-App]] |
 | 2026-10-15 | **ทดสอบวิทยุบนบอร์ด**: แก้ chunked transfer (เสียงสะดุด), watchdog รีบูต (ย้าย webTools/textModel ไป core 1), ตื่นเองเพราะเสียงวิทยุ (ประมาณเสียงสะท้อนจากระดับที่ส่งออก), การ์ดค้างทับนาฬิกา | [[12-Internet-Radio#ทดสอบบนบอร์ด (2026-10-15)]] · [[07-Troubleshooting-Log#T043 บอร์ดรีบูต task_wdt IDLE0 ขณะเปิดวิทยุ + เรียก tool ออนไลน์]] |
 | 2026-10-15 | **Internet Radio เฟส 1**: `play_radio`/`stop_radio`, ตัวเล่นสตรีม + Helix (RPSL, ไม่ใช้ส่วน GPL), mixer + ducking 12%, ปลุกด้วยเสียงต้องดังกว่าวิทยุ 2 เท่า, ชื่อสถานี/เพลงบนจอและนาฬิกา, host test resampler — build/บูตผ่าน รอ Wi-Fi ทดสอบสตรีม | [[12-Internet-Radio]] |

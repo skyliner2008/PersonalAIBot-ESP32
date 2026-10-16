@@ -59,6 +59,8 @@ public:
     void retrySearch() { post(CMD_SEARCH_RETRY); }
     /** Console / test: sleep now and switch to the dim clock face. */
     void requestPowerSave() { post(CMD_POWER_SAVE); }
+    /** Firmware update: sleep now (Live session closed) so the download has the link to itself. */
+    void requestSleepNow() { post(CMD_SLEEP); }
     bool powerSave() const { return _powerSave; }
     /** Send a typed message to the assistant (serial "ask" / PC app chat). Thread-safe. */
     bool ask(const char* text);

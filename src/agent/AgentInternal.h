@@ -16,6 +16,7 @@
 #include "../app/AppConfig.h"
 #include "../audio/RadioPlayer.h"
 #include "../audio/RadioStations.h"
+#include "../system/OtaUpdater.h"
 #include "../ui/FaceScreen.h"
 #include "../ui/UiManager.h"
 #include "../util/Deadline.h"

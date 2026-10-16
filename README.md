@@ -9,7 +9,7 @@
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%202.0.17-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
-[![Firmware](https://img.shields.io/badge/firmware-v3.4.4-3ddc84)](src/app/AppConfig.h)
+[![Firmware](https://img.shields.io/badge/firmware-v3.5.0-3ddc84)](src/app/AppConfig.h)
 [![Tests](https://img.shields.io/badge/host%20tests-1%2C555%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -78,9 +78,11 @@ Pinout, board photos and connector guide → [wiki/01-Hardware-ES3C28P-Pinout.md
    (if it is not found: hold **BOOT**, tap **RESET**, release BOOT, then connect again).
 3. Flash address **`0x0`** → choose the `.bin` file → **Program**. When it finishes, press **RESET**.
 
-Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.4.4-factory.bin`
+Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v3.5.0-factory.bin`
 
 > The factory image starts at `0x0`, so it also **clears saved settings** on that board (a clean install).
+>
+> **Already running v3.5.0 or later?** Update over Wi-Fi instead: Settings → **อัปเดตเฟิร์มแวร์** (firmware update). The board downloads the latest release's `-app.bin`, checks it (sha256, image header, version marker) and keeps your settings and memory; if the new version fails to start properly it goes back to the old one by itself. See [wiki 13](wiki/13-OTA-Update.md).
 
 ### Option B — build from source
 
@@ -227,7 +229,7 @@ Portable modules (memory, tools, scheduler, tasks, personas, model fallback, cal
 host_tests\run_tests.bat
 ```
 
-36 suites · 1,596 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+38 suites · 1,630 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
 
 ## 📁 Project layout
@@ -259,6 +261,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 | [09 Profiles & tools](wiki/09-Assistant-Profiles-and-Tools.md) · [11 Data tools & cards](wiki/11-Data-Tools-and-Cards.md) | What the assistant can do |
 | [10 PC Studio](wiki/10-PC-Studio-App.md) · [07 Troubleshooting log](wiki/07-Troubleshooting-Log.md) | Tools and 40+ solved problems |
 | [12 Internet radio](wiki/12-Internet-Radio.md) | Streaming, mixing/ducking, voice wake over music |
+| [13 Firmware update (OTA)](wiki/13-OTA-Update.md) | Over Wi-Fi from GitHub Releases, verified, automatic rollback |
 
 ## 🔒 Security & privacy
 
@@ -281,7 +284,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 - **Fork & build:** `pio run` builds from a clean clone — no `secrets.h` needed. Settings live in NVS (`src/app/Settings.*`), so your own keys never touch the source tree.
 - **Add a tool:** declare it in `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`); network tools go in `src/agent/WebToolsExtra.cpp` and draw a `CardData` (see [wiki/11](wiki/11-Data-Tools-and-Cards.md)).
 - **Test without a board:** `host_tests\run_tests.bat`; on a board, every tool can be called from the Studio's 🧰 tab or the serial console (`tool <name> {json}`).
-- **Publishing a release:** bump `FIRMWARE_VERSION` in `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py`. The script builds the factory image (`tools/make_release.py`), creates the GitHub Release as a draft, uploads `.bin` + `.sha256`, publishes it and re-downloads it to check the sha256. The host tests run before anything is published (`--skip-tests` only on a PC without a compiler). Releases here are **immutable**: a published version can never get new files or reuse its tag, so every release needs a new version number. (`--dry-run` only checks.)
+- **Publishing a release:** bump `FIRMWARE_VERSION` in `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py`. The script builds the factory image (`tools/make_release.py`), creates the GitHub Release as a draft, uploads the factory image and the OTA `-app.bin` (each with a `.sha256`), publishes it and re-downloads it to check the sha256. The host tests run before anything is published (`--skip-tests` only on a PC without a compiler). Releases here are **immutable**: a published version can never get new files or reuse its tag, so every release needs a new version number. (`--dry-run` only checks.)
 - **CI:** [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml) does the same on GitHub Actions but is manual-only for now (*Actions → Firmware → Run workflow*); the release job waits for the host-tests job. `tools/make_release.py` refuses to run while `include/secrets.h` holds real values and scans the image for API-key-like strings.
 - **Docs:** the `wiki/` folder is an Obsidian vault; please add problems you solve to [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md).
 

@@ -92,7 +92,8 @@ void AgentController::handleConnectivity() {
         _holdUntil = 0;
         _face->setSystemText("", 1);
     }
-    const bool wanted = up && _configOk && !_sleeping && !_fatalError && !_holdUntil;
+    // (a firmware download keeps the session closed: the link, the RAM and no wake-up mid-install)
+    const bool wanted = up && _configOk && !_sleeping && !_fatalError && !_holdUntil && !gOta.installing();
     if (wanted && !_gemini.started()) _gemini.start();
 
     if (_reconnectPending && !_audio->isPlaying() && _gemini.started()) {
