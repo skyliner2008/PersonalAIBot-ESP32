@@ -333,8 +333,12 @@ void OtaUpdater::fail(const char* fmt, ...) {
 }
 
 void OtaUpdater::notice(const char* text, uint32_t holdMs) {
-    Serial.printf("[OTA] %s\n", text);
-    if (onNotice) onNotice(text, holdMs);
+    char safe[192];  // never a half character on the screen / in the log, whatever cut the text
+    const size_t n = utf8::completeLength(text, utf8::clampToBoundary(text, strlen(text), sizeof(safe) - 1));
+    memcpy(safe, text, n);
+    safe[n] = '\0';
+    Serial.printf("[OTA] %s\n", safe);
+    if (onNotice) onNotice(safe, holdMs);
 }
 
 // ============================================================
@@ -375,7 +379,7 @@ void OtaUpdater::confirmIfHealthy() {
         p.remove("part");
         p.end();
     }
-    char msg[96];
+    char msg[192];  // Thai text: 3 bytes a character
     snprintf(msg, sizeof(msg), "อัปเดตเป็น v%s เรียบร้อย", FIRMWARE_VERSION);
     _state = State::Idle;
     notice(msg, 6000);
@@ -433,7 +437,7 @@ void OtaUpdater::runCheck() {
         return;
     }
     _state = State::Available;
-    char msg[120];
+    char msg[192];  // Thai text: 3 bytes a character
     snprintf(msg, sizeof(msg), "มีเฟิร์มแวร์ใหม่ %s • เมนูตั้งค่า > อัปเดตเฟิร์มแวร์", r.tag);
     Serial.printf("[OTA] Update available: %s (%lu KB)\n", r.tag, (unsigned long)(r.appSize / 1024));
     if (silent) notice(msg, 15000);
@@ -468,7 +472,7 @@ void OtaUpdater::runInstall() {
         fail("ดาวน์โหลดไม่ได้ (HTTP %d, %d bytes)", code, len);
         return;
     }
-    char msg[96];
+    char msg[192];  // Thai text: 3 bytes a character
     snprintf(msg, sizeof(msg), "กำลังอัปเดตเป็น v%s ... ห้ามปิดเครื่อง", ver);
     notice(msg, 0);
     Serial.printf("[OTA] Downloading %s (%d bytes)\n", r.tag, len);
