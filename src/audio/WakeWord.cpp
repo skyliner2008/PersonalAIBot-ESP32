@@ -19,6 +19,9 @@
 namespace {
 constexpr size_t kMinInternalLeft = 50 * 1024;  // after the AFE is created (boot, before Wi-Fi / TLS)
 constexpr uint32_t kRefractoryMs = 2000;          // detections closer than this are the same call
+// AFE + feed + fetch tasks share core 1 with the agent (priority 4): at 5 they starved it for a steady
+// 1.34 s on every wake (the AFE working through its ring at once) - the agent loop must come first
+constexpr UBaseType_t kTaskPriority = 3;
 const esp_afe_sr_iface_t* iface(const void* p) { return static_cast<const esp_afe_sr_iface_t*>(p); }
 }  // namespace
 
@@ -53,7 +56,7 @@ bool WakeWord::begin(const char* prefer, bool ownAec) {
     cfg->agc_init = false;
     cfg->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;  // internal RAM is the scarce resource (wiki 14)
     cfg->afe_perferred_core = 1;  // asleep, core 1 is nearly idle; core 0 has the radio decoder + audio + Wi-Fi
-    cfg->afe_perferred_priority = 5;
+    cfg->afe_perferred_priority = kTaskPriority;  // below the agent (4) on core 1, see kTaskPriority
     cfg = afe_config_check(cfg);
     const esp_afe_sr_iface_t* h = esp_afe_handle_from_config(cfg);
     esp_afe_sr_data_t* afe = h ? h->create_from_config(cfg) : nullptr;
@@ -88,8 +91,8 @@ bool WakeWord::begin(const char* prefer, bool ownAec) {
     _iface = h;
     _afe = afe;
     // both tasks only block (in the AFE / the queue) and never touch the flash: PSRAM stacks
-    if (!startPsramTask(feedEntry, "wakefeed", 4096, this, 5, nullptr, 1) ||
-        !startPsramTask(fetchEntry, "wakeword", 6144, this, 5, nullptr, 1)) {
+    if (!startPsramTask(feedEntry, "wakefeed", 4096, this, kTaskPriority, nullptr, 1) ||
+        !startPsramTask(fetchEntry, "wakeword", 6144, this, kTaskPriority, nullptr, 1)) {
         Serial.println("[Wake] no task");  // (a started task would use a freed AFE: never seen, keep it simple)
         _afe = nullptr;
         return false;
