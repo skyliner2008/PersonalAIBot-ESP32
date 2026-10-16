@@ -56,18 +56,20 @@ bool parseTurnLine(char* line, size_t len, Turn& out) {
     return true;
 }
 
-// Calls fn(line, len) for every non-empty line of the file.
+// Calls fn(line, len) for every non-empty line of the file. Returns the bytes read.
 template <class Fn>
-void forEachLine(const char* path, Fn fn) {
+size_t forEachLine(const char* path, Fn fn) {
     FILE* f = fopen(path, "rb");
-    if (!f) return;
+    if (!f) return 0;
     char* buf = (char*)psramMalloc(kLineBufferSize);
     if (!buf) {
         fclose(f);
-        return;
+        return 0;
     }
+    size_t total = 0;
     while (fgets(buf, (int)kLineBufferSize, f)) {
         size_t n = strlen(buf);
+        total += n;
         const bool complete = n > 0 && buf[n - 1] == '\n';
         if (!complete && !feof(f)) {
             int c;
@@ -80,6 +82,7 @@ void forEachLine(const char* path, Fn fn) {
     }
     psramFree(buf);
     fclose(f);
+    return total;
 }
 
 // Parses "YYYY-MM-DD.jsonl"; returns false for other names.
@@ -126,6 +129,7 @@ bool EpisodicLog::open(const char* dir, AppendSink* sink, uint32_t now) {
     _dir = dir ? dir : "";
     _sink = sink;
     _working.clear();
+    _appended = 0;
     if (_dir.empty()) return false;
 
     char path[160];
@@ -139,6 +143,30 @@ bool EpisodicLog::open(const char* dir, AppendSink* sink, uint32_t now) {
         loadTail(path, _opt.workingTurns);
     }
     return true;
+}
+
+void EpisodicLog::reloadDays(uint32_t now) {
+    if (_dir.empty() || now < timefmt::kMinValidEpoch) return;
+    const size_t keep = std::min(_appended, _working.size());
+    std::vector<Turn> fresh(_working.end() - (long)keep, _working.end());
+    _working.clear();
+    char path[160];
+    for (int d = 1; d >= 0; d--) {  // yesterday, then today
+        filePathFor(now - (uint32_t)d * 86400u, path, sizeof(path));
+        loadTail(path, _opt.workingTurns);
+    }
+    for (Turn& t : fresh) {  // said since open(): after the files (a turn already flushed is there)
+        bool dup = false;
+        for (const Turn& w : _working) {
+            if (w.ts == t.ts && w.role == t.role && w.text == t.text) {
+                dup = true;
+                break;
+            }
+        }
+        if (dup) continue;
+        _working.push_back(std::move(t));
+        if (_working.size() > _opt.workingTurns) _working.pop_front();
+    }
 }
 
 void EpisodicLog::append(char role, const char* text, uint32_t ts) {
@@ -164,6 +192,7 @@ void EpisodicLog::append(char role, const char* text, uint32_t ts) {
 
     _working.push_back(std::move(t));
     while (_working.size() > _opt.workingTurns) _working.pop_front();
+    _appended++;
 }
 
 size_t EpisodicLog::recent(size_t n, std::vector<Turn>& out) const {
@@ -174,8 +203,9 @@ size_t EpisodicLog::recent(size_t n, std::vector<Turn>& out) const {
 }
 
 size_t EpisodicLog::search(const char* query, int daysBack, size_t limit, uint32_t now,
-                           std::vector<Turn>& out) const {
+                           std::vector<Turn>& out, int* daysScanned) const {
     out.clear();
+    if (daysScanned) *daysScanned = 0;
     if (limit == 0) return 0;
 
     features::HashSet q;
@@ -207,8 +237,9 @@ size_t EpisodicLog::search(const char* query, int daysBack, size_t limit, uint32
     };
 
     char path[160];
+    size_t scanned = 0;
     auto scanFile = [&](const char* p) {
-        forEachLine(p, [&](char* line, size_t len) {
+        scanned += forEachLine(p, [&](char* line, size_t len) {
             Turn t;
             if (parseTurnLine(line, len, t)) consider(t);
         });
@@ -216,8 +247,10 @@ size_t EpisodicLog::search(const char* query, int daysBack, size_t limit, uint32
 
     if (now >= timefmt::kMinValidEpoch) {
         for (int d = 0; d < daysBack; d++) {
+            if (d > 0 && scanned >= _opt.maxScanBytes) break;  // enough read: the agent loop is waiting
             filePathFor(now - (uint32_t)d * 86400u, path, sizeof(path));
             scanFile(path);
+            if (daysScanned) *daysScanned = d + 1;
         }
     }
     filePathFor(0, path, sizeof(path));  // turns recorded before the clock was synced

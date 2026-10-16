@@ -504,6 +504,10 @@ class Studio:
             self.send("reboot")
 
     # ---------------------------------------------------------- event pump
+    def call_in_ui(self, fn, *args, **kwargs):
+        """Run fn on the Tk main loop (worker threads must not call root.after or widgets directly)."""
+        self.events.put(("call", lambda: fn(*args, **kwargs)))
+
     def _pump(self):
         try:
             for _ in range(400):
@@ -519,7 +523,9 @@ class Studio:
 
     def _dispatch(self, ev):
         kind = ev[0]
-        if kind == "line":
+        if kind == "call":  # from a worker thread: Tk may only be touched from the main loop
+            ev[1](*ev[2:])
+        elif kind == "line":
             self.handle_line(ev[1], ev[2])
         elif kind == "shot":
             self._shot_retries = 0
@@ -1787,7 +1793,7 @@ class Studio:
                 color = OK if ok else WARN
             except Exception as e:  # noqa: BLE001 - any network error goes to the label
                 msg, color = f"❌ เปิดไม่ได้: {e}", ERR
-            self.root.after(0, lambda: self.radio_test_label.configure(text=msg, foreground=color))
+            self.call_in_ui(self.radio_test_label.configure, text=msg, foreground=color)
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -1965,11 +1971,11 @@ class Studio:
                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 for raw in p.stdout:
                     line = raw.decode("utf-8", "replace").rstrip()
-                    self.root.after(0, self._fw_line, line)
+                    self.call_in_ui(self._fw_line, line)
                 rc = p.wait()
             except OSError as e:
-                self.root.after(0, self._fw_line, f"ERROR: {e}")
-            self.root.after(0, self._fw_done, kind, rc, reopen_port)
+                self.call_in_ui(self._fw_line, f"ERROR: {e}")
+            self.call_in_ui(self._fw_done, kind, rc, reopen_port)
 
         threading.Thread(target=worker, daemon=True).start()
 

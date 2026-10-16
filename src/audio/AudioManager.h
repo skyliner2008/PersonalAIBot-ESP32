@@ -52,6 +52,12 @@ public:
 
     // ---- Playback (24 kHz, 16-bit mono PCM) ----
     size_t writePlayback(const uint8_t* pcm, size_t bytes);
+    /** The assistant's voice: more is on its way, so an end-of-turn flag left by a tone (playTone
+     *  flushes) no longer holds - else the reply started below the jitter buffer and stuttered. */
+    size_t writeVoice(const uint8_t* pcm, size_t bytes) {
+        _flush = false;
+        return writePlayback(pcm, bytes);
+    }
     void clearPlayback();
     /** No more audio for this turn: play the remaining tail even below the prebuffer. */
     void flushPlayback() { _flush = true; }

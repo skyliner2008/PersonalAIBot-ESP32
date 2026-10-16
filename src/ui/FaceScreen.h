@@ -20,6 +20,7 @@
 
 #include <functional>
 
+#include "../util/Deadline.h"
 #include "Emotion.h"
 #include "Eyes.h"
 #include "UiManager.h"
@@ -65,12 +66,13 @@ private:
     static constexpr size_t kTextCap = 512;
     char _text[kTextCap] = "";
     char _role = 's';
-    uint32_t _textUntil = 0;
+    deadline::Timer _textTimer;   // subtitle shown until it runs out ...
+    bool _textForever = false;    // ... or for good (setSystemText with holdMs 0: errors, setup hints)
     bool _textDirty = false;
     char _hint[96] = "";
-    uint32_t _hintUntil = 0;
+    deadline::Timer _hintTimer;
     Emotion _expr = Emotion::Neutral;
-    uint32_t _exprUntil = 0;
+    deadline::Timer _exprTimer;
     uint32_t _now = 0;
 
     // Layout cache (UI task)

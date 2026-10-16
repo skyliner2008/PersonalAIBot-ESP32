@@ -205,7 +205,7 @@ get_device_status • set_expression • configure_assistant • list_assistant_
 
 ### งบโทเคนและ auto fallback (v3)
 - Live API คิดโทเคนบริบททั้งหมดทุก turn → `contextWindowCompression` trigger 12k → target 5k, local VAD ส่งเฉพาะเสียงพูด, auto-sleep ปิด session
-- v3.1 ไมค์ (hybrid VAD): pre-roll 600 ms, เกณฑ์ max(0.004, noise×2.5), hangover 1.5 วิ, ฟังต่อ 6 วิหลัง AI ตอบ, AGC ≤ ×6 (เป้า RMS 0.08),
+- v3.1 ไมค์ (hybrid VAD): pre-roll 600 ms, เกณฑ์ max(0.004, noise×2.5) (v3.4.3: ดังต่อเนื่อง 10 วิ = เสียงพื้นหลัง noise ไต่ขึ้น), hangover 1.5 วิ, ฟังต่อ 6 วิหลัง AI ตอบ, AGC ≤ ×6 (เป้า RMS 0.08),
   server `automaticActivityDetection` start HIGH / end LOW, เลือกช่อง mic เฉพาะตอนลำโพงเงียบ, log `[Mic]` + คำสั่ง `rec` อัดเสียงที่ส่งจริง
 - ModelFallback: quota → พัก 10-120 นาที, unavailable → 5 นาที, not found → 24 ชม., หลุดก่อน ready 3 ครั้ง → 2 นาที; API key ผิดไม่สลับ
 - v3.1: quota ขณะ setup มี Google Search → ลองโมเดลเดิมโดยไม่มี Search (v3.4: `search::Gate` ตัดสินจาก session ที่ไม่มี Search — ใช้ได้ = ปิด Search 6→48 ชม. จำข้ามรีบูต, quota เหมือนกัน = ไม่ใช่ Search; T045/T048) · ทุกโมเดล cool-down → agent หยุดพัก (hold)

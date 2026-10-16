@@ -856,3 +856,135 @@ TEST(utf8_complete_length) {
     CHECK_EQ(cut, (size_t)39);
     CHECK_EQ(utf8::completeLength(th.c_str(), cut), cut);
 }
+
+// ============================================================
+// v3.4.3: millis() wrap, VAD noise floor, transcript scaffolding, episodic reload / scan budget
+// ============================================================
+
+#include "util/Deadline.h"
+
+TEST(deadline_wrap) {
+    const uint32_t nearWrap = 0xFFFFFF00u;
+    const uint32_t at = nearWrap + 1000;      // wraps past 0
+    CHECK(!deadline::reached(nearWrap, at));  // `now >= at` got this right ...
+    CHECK(deadline::reached(at, at));
+    CHECK(deadline::reached(at + 5, at));
+    // the old bug: a deadline set just before the wrap that did not overflow itself
+    const uint32_t justBefore = 0xFFFFFF00u + 200;  // 0xFFFFFFC8
+    const uint32_t afterWrap = 5;                   // millis() went round
+    CHECK(!(afterWrap >= justBefore));              // `now >= deadline`: stuck for 49.7 days
+    CHECK(deadline::reached(afterWrap, justBefore));
+
+    CHECK_EQ(deadline::elapsed(1000, 400), 600u);
+    CHECK_EQ(deadline::elapsed(1000, 1003), 0u);                 // stamped just after `now`
+    CHECK_EQ(deadline::elapsed(5, 0xFFFFFFF0u), 21u);            // across the wrap
+    const uint32_t day = 86400000u;
+    CHECK_EQ(deadline::elapsed(30 * day, 2 * day), 28 * day);    // 28 days ago is not "just now"
+
+    deadline::Timer t;
+    CHECK(!t.active(0));
+    t.arm(nearWrap, 6000);
+    CHECK(t.active(nearWrap + 100));
+    CHECK_EQ(t.remaining(nearWrap + 1000), 5000u);
+    CHECK(!t.active(nearWrap + 6000));
+    CHECK(!t.active(nearWrap + 6000 + 25 * day));  // never reads stale (a signed check flips at 24.8 days)
+    t.arm(100, 600);
+    t.cancel();
+    CHECK(!t.active(200));
+    // "0 = off" on a board up for more than 24.8 days: the old follow-up check read it as active
+    const uint32_t uptime = 25 * day;
+    CHECK((int32_t)(0u - uptime) > 0);
+}
+
+#include "util/NoiseFloor.h"
+
+TEST(vad_noise_floor) {
+    const uint32_t riseAfter = 10000 / 40;
+    {  // a fan switched on: loud steady background stops counting as speech
+        vad::NoiseFloor nf(0.002f, 0.004f, 2.5f, riseAfter);
+        for (int i = 0; i < 100; i++) nf.update(0.002f, true);
+        CHECK(!nf.update(0.002f, true));
+        int voiced = 0, i = 0;
+        for (; i < 2000; i++) {
+            if (!nf.update(0.03f, true)) break;
+            voiced++;
+        }
+        CHECK(voiced >= (int)riseAfter);  // not before 10 s ...
+        CHECK(i < 2000);                  // ... but it does end
+        CHECK(!nf.update(0.03f, true));
+        CHECK(nf.update(0.12f, true));    // speech over the fan still counts
+    }
+    {  // speech with pauses never raises the floor
+        vad::NoiseFloor nf(0.002f, 0.004f, 2.5f, riseAfter);
+        for (int i = 0; i < 3000; i++) nf.update(i % 50 < 45 ? 0.08f : 0.002f, true);
+        CHECK(nf.noise() < 0.004f);
+        CHECK(nf.update(0.08f, true));
+    }
+    {  // radio sounding: the old behaviour (echo estimate handles it)
+        vad::NoiseFloor nf(0.002f, 0.004f, 2.5f, riseAfter);
+        for (int i = 0; i < 2000; i++) nf.update(0.03f, false);
+        CHECK(nf.update(0.03f, false));
+        CHECK_EQ(nf.loudRun(), 0u);
+    }
+    vad::NoiseFloor q(0.0f, 0.004f, 2.5f, riseAfter);
+    CHECK(q.threshold() == 0.004f);  // never below the minimum
+}
+
+#include "util/TranscriptClean.h"
+
+TEST(transcript_scaffolding) {
+    std::string out;
+    transcript::stripToolScaffolding("functionreponsetextfunctionสวัสดีค่ะ", out);
+    CHECK(out == "สวัสดีค่ะ");
+    transcript::stripToolScaffolding("FunctionCall ok", out);
+    CHECK(out == " ok");
+    transcript::stripToolScaffolding("a functional dysfunction function", out);
+    CHECK(out == "a functional dysfunction ");  // real words stay (the old rule dropped them)
+    transcript::stripToolScaffolding("text name id", out);
+    CHECK(out == "text name id");  // no "function": not scaffolding
+    transcript::stripToolScaffolding("", out);
+    CHECK(out.empty());
+}
+
+TEST(episodic_reload_and_scan_budget) {
+    const std::string dir = tempDir("epreload");
+    const uint32_t today = 1760432400;  // 2025-10-14 16:00 Bangkok
+    {  // yesterday's file exists from an earlier boot
+        ltm::EpisodicLog log;
+        log.open(dir.c_str(), DirectFileSink::instance(), today);
+        log.append('u', "เมื่อวานคุยเรื่องแมว", today - 86400);
+        log.append('a', "แมวน่ารักครับ", today - 86400 + 5);
+    }
+    {  // boot without a clock: only the undated file, then a turn before SNTP, then the sync
+        ltm::EpisodicLog log;
+        log.open(dir.c_str(), DirectFileSink::instance(), 0);
+        CHECK_EQ(log.workingSize(), (size_t)0);
+        log.append('u', "พูดก่อนนาฬิกาซิงก์", 0);
+        log.append('u', "พูดหลังซิงก์แล้ว", today + 10);
+        log.reloadDays(today);
+        CHECK_EQ(log.workingSize(), (size_t)4);  // yesterday's 2 + this boot's 2 (open() used to drop them)
+        PsString ctx;
+        log.buildRecentContext(ctx, 10, 4096, "u", "a");
+        CHECK(ctx.find("พูดก่อนนาฬิกาซิงก์") != PsString::npos);
+        CHECK(ctx.find("แมวน่ารัก") < ctx.find("พูดหลังซิงก์แล้ว"));
+        CHECK(ctx.find("พูดหลังซิงก์แล้ว") == ctx.rfind("พูดหลังซิงก์แล้ว"));  // already on disk: not twice
+    }
+    {  // a long history: older days are skipped once the read budget is used
+        ltm::EpisodicLog::Options o;
+        o.maxScanBytes = 2000;
+        ltm::EpisodicLog log(o);
+        log.open(dir.c_str(), DirectFileSink::instance(), today);
+        std::string filler(300, 'x');
+        for (int d = 2; d < 20; d++) {
+            for (int k = 0; k < 4; k++) log.append('u', ("วันเก่า " + filler).c_str(), today - (uint32_t)d * 86400u);
+        }
+        log.append('u', "ร้านกาแฟใหม่เปิดวันนี้", today);
+        std::vector<ltm::Turn> turns;
+        int searched = 0;
+        log.search("ร้านกาแฟ", 30, 5, today, turns, &searched);
+        CHECK(!turns.empty() && turns[0].text.find("ร้านกาแฟ") != PsString::npos);
+        CHECK(searched >= 1 && searched < 30);
+        log.search("ร้านกาแฟ", 1, 5, today, turns, &searched);
+        CHECK_EQ(searched, 1);
+    }
+}

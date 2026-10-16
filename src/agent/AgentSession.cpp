@@ -79,7 +79,7 @@ void AgentController::handleConnectivity() {
         timefmt::formatDateTime(nowEpoch(), TIME_UTC_OFFSET_SEC, buf, sizeof(buf));
         Serial.printf("[Time] Synced: %s (UTC+7)\n", buf);
         if (_storage->kind() != StorageKind::None) {
-            _episodes.open(_storage->episodesDir(), &_sink, nowEpoch());
+            _episodes.reloadDays(nowEpoch());  // keeps what was said before the sync (open() dropped it)
             const int keep = _storage->kind() == StorageKind::SdCard ? MEMORY_EPISODE_KEEP_DAYS_SD
                                                                      : MEMORY_EPISODE_KEEP_DAYS_FLASH;
             _episodes.prune(keep, nowEpoch());
@@ -300,6 +300,7 @@ void AgentController::onDisconnected(bool wasReady) {
     flushAgentTurn(!wasReady);
     _awaitingReply = false;
     _vadOpen = false;
+    _prerollDraining = false;  // the queue was dropped with the link
     const bool closeSeen = _closeSeen;
     _closeSeen = false;
     if (wasReady || _sleeping || !_gemini.started()) return;
@@ -556,7 +557,7 @@ void AgentController::onAudio(const int16_t* pcm, size_t samples) {
     _lastAgentAudio = millis();
     markAnswered();
     noteActivity();
-    _audio->writePlayback((const uint8_t*)pcm, samples * 2);
+    _audio->writeVoice((const uint8_t*)pcm, samples * 2);
 }
 
 void AgentController::onInputTranscript(const char* text) {
@@ -570,31 +571,11 @@ void AgentController::onInputTranscript(const char* text) {
     _face->pushTranscript('u', text);
 }
 
-// 3.1 Flash Live sometimes leaks tool-call scaffolding into the output transcription
-// ("functionreponsetextfunctionสวัสดีค่ะ..." after parallel tool calls): drop any run of ASCII
-// letters that contains "function".
-static void stripToolScaffolding(const char* in, String& out) {
-    out = "";
-    const size_t n = strlen(in);
-    size_t i = 0;
-    while (i < n) {
-        if (isalpha((unsigned char)in[i])) {
-            size_t j = i;
-            while (j < n && isalpha((unsigned char)in[j])) j++;
-            const String word = String(in + i).substring(0, j - i);
-            if (word.indexOf("function") < 0) out += word;
-            i = j;
-        } else {
-            out += in[i++];
-        }
-    }
-}
-
 void AgentController::onOutputTranscript(const char* raw) {
     if (_dropAudio) return;
-    String clean;
-    stripToolScaffolding(raw, clean);
-    if (clean.isEmpty()) return;
+    PsString clean;  // 3.1 Flash Live leaks "functionreponsetext..." after parallel tool calls
+    transcript::stripToolScaffolding(raw, clean);
+    if (clean.empty()) return;
     const char* text = clean.c_str();
     if (!_userTurn.empty()) flushUserTurn();
     if (_agentTurn.empty()) _agentTurnTs = nowEpoch();
@@ -662,7 +643,7 @@ void AgentController::onToolCall(JsonArrayConst calls) {
             if (_web.submit(call["id"] | "", name, args.c_str(), _sessionGen)) {
                 Serial.printf("[Tool] %s %s -> fetching...\n", name, args.c_str());
                 _face->setHint("กำลังดึงข้อมูล...", 2500);
-                _toolBusyUntil = millis() + 15000;
+                _toolBusy.arm(millis(), 15000);
                 continue;
             }
         }
@@ -697,8 +678,8 @@ void AgentController::onToolCall(JsonArrayConst calls) {
     }
     if (calls.size() == 1 && !strcmp(calls[0]["name"] | "", "set_expression")) {
         // purely cosmetic: does not count as "thinking"
-    } else if ((int32_t)(_toolBusyUntil - millis()) < 600) {
-        _toolBusyUntil = millis() + 600;
+    } else if (_toolBusy.remaining(millis()) < 600) {
+        _toolBusy.arm(millis(), 600);
     }
     if (responses.size()) {
         if (!_gemini.sendJson(resp)) Serial.println("[Tool] ERROR: failed to send toolResponse");
@@ -713,9 +694,17 @@ void AgentController::handleWebResults() {
     webtools::Result r;
     while (_web.poll(r)) {
         JsonDocument result(JsonPsramAllocator::instance());
-        deserializeJson(result, r.json->c_str());
+        if (deserializeJson(result, r.json->c_str()) || !result.is<JsonObject>()) {
+            // out of memory / cut short: answer with an error rather than an empty response
+            result.clear();
+            result["error"] = "tool result could not be read";
+        }
         if (r.tag == webtools::kAlertTag) {  // a price alert fired in the background
             const char* m = result["message"] | "";
+            if (!*m) {
+                delete r.json;
+                continue;
+            }
             Serial.printf("[Alert] %s\n", m);
             PsString msg = "[แจ้งเตือนราคาจากระบบ] ";
             msg += m;
@@ -752,7 +741,7 @@ void AgentController::handleWebResults() {
             Serial.printf("[Tool] %s result dropped (session changed)\n", r.name);
         }
         if (!ok) _face->setHint("ดึงข้อมูลไม่สำเร็จ", 2000);
-        _toolBusyUntil = millis() + 600;
+        _toolBusy.arm(millis(), 600);
         delete r.json;
     }
 }

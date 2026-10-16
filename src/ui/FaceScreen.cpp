@@ -79,7 +79,8 @@ void FaceScreen::pushTranscript(char role, const char* fragment) {
     }
     memcpy(_text + cur, fragment, add);
     _text[cur + add] = '\0';
-    _textUntil = millis() + 7000;
+    _textTimer.arm(millis(), 7000);
+    _textForever = false;
     _textDirty = true;
 }
 
@@ -87,21 +88,22 @@ void FaceScreen::setSystemText(const char* text, uint32_t holdMs) {
     Guard g(_lock);
     _role = 's';
     copyUtf8(_text, kTextCap, text ? text : "");
-    // holdMs == 0: keep it (≈24 days); the deadline is compared with signed math, so not UINT32_MAX
-    _textUntil = millis() + (holdMs ? holdMs : 0x7FFFFFF0u);
+    // holdMs == 0: keep it until replaced (was a deadline 24.8 days ahead: such errors vanished then)
+    _textForever = holdMs == 0;
+    _textTimer.arm(millis(), holdMs);
     _textDirty = true;
 }
 
 void FaceScreen::setHint(const char* text, uint32_t durationMs) {
     Guard g(_lock);
     copyUtf8(_hint, sizeof(_hint), text ? text : "");
-    _hintUntil = millis() + durationMs;
+    _hintTimer.arm(millis(), durationMs);
 }
 
 void FaceScreen::setExpression(Emotion e, uint32_t holdMs) {
     Guard g(_lock);
     _expr = e;
-    _exprUntil = millis() + holdMs;
+    _exprTimer.arm(millis(), holdMs);
 }
 
 // ============================================================
@@ -138,14 +140,14 @@ void FaceScreen::tick(uint32_t now, float dt) {
     {
         Guard g(_lock);
         expr = _expr;
-        exprActive = (int32_t)(_exprUntil - now) > 0;
+        exprActive = _exprTimer.active(now);
         if (_textDirty) {
             memcpy(_render, _text, kTextCap);
             _renderRole = _role;
             _textDirty = false;
             relayout = true;
         }
-        _subtitleVisible = _render[0] && (int32_t)(_textUntil - now) > 0;
+        _subtitleVisible = _render[0] && (_textForever || _textTimer.active(now));
     }
     if (relayout) layout();
 
@@ -338,7 +340,7 @@ void FaceScreen::draw(LGFX_Sprite& c) {
     {
         Guard g(_lock);
         status = _status;
-        showHint = _hint[0] && (int32_t)(_hintUntil - _now) > 0;
+        showHint = _hint[0] && _hintTimer.active(_now);
         if (showHint) memcpy(hint, _hint, sizeof(hint));
     }
     drawStatus(c, status);

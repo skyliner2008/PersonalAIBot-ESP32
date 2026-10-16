@@ -65,7 +65,7 @@ bool GeminiLiveClient::begin(GeminiListener* listener) {
 bool GeminiLiveClient::configure(const char* apiKey) {
     if (_started) stop();
     _state = GeminiState::Idle;
-    _configured = apiKey && strlen(apiKey) >= 20;
+    _configured = apiKey && strlen(apiKey) > 20;  // same rule as Settings::hasApiKey / the agent's _configOk
     if (!_configured) return false;
 
     xSemaphoreTake(_cfgLock, portMAX_DELAY);
@@ -376,6 +376,10 @@ void GeminiLiveClient::ioLoop() {
             if (!_want) {
                 xSemaphoreGive(_closed);
                 ulTaskNotifyTake(pdTRUE, portMAX_DELAY);  // until start()
+                // connect at once: a back-off deadline from a drop long ago reads as weeks ahead once
+                // the signed difference wraps (after 24.8 days without a failure it never connected)
+                _nextAttempt = millis();
+                _backoffMs = 1000;
                 continue;
             }
             _restartReq = false;

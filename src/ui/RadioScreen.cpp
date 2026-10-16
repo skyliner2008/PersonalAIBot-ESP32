@@ -41,7 +41,7 @@ void RadioScreen::begin(AudioManager* audio) { _audio = audio; }
 void RadioScreen::onEnter() {
     _dragging = _fingerDown = false;
     _pressed = kNone;
-    _nextSettings = 0;
+    _nextSettings = millis();  // due now (0 read as weeks ahead once the uptime passed 24.8 days)
     tick(millis(), 0);
     scrollTo(_current);
 }

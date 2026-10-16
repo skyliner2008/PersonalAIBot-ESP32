@@ -542,7 +542,7 @@ void ConfirmScreen::draw(LGFX_Sprite& c) {
 // InfoScreen
 // ============================================================
 
-void InfoScreen::onEnter() { _next = 0; }
+void InfoScreen::onEnter() { _next = millis(); }  // due now (0 read as weeks ahead after 24.8 days up)
 
 void InfoScreen::onTouch(const TouchEvent& e) {
     if (e.type == TouchEvent::Tap && UiManager::hitBack(e.x, e.y)) gUi.pop();
@@ -550,7 +550,7 @@ void InfoScreen::onTouch(const TouchEvent& e) {
 
 void InfoScreen::tick(uint32_t now, float dt) {
     (void)dt;
-    if (now < _next) return;
+    if ((int32_t)(now - _next) < 0) return;
     _next = now + 1000;
     if (gUi.host()) gUi.host()->uiSystemInfo(_text);
 }

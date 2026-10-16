@@ -449,8 +449,14 @@ bool AgentTools::forgetMemory(JsonObjectConst a, JsonObject r, const char*& e) {
 
 bool AgentTools::recallConversation(JsonObjectConst a, JsonObject r, const char*&) {
     std::vector<ltm::Turn> turns;
-    _episodes.search(a["query"] | "", clampInt(a["days_back"] | 7, 1, 90), 6, _device.nowEpoch(), turns);
+    const int daysBack = clampInt(a["days_back"] | 7, 1, 90);
+    int searched = 0;
+    _episodes.search(a["query"] | "", daysBack, 6, _device.nowEpoch(), turns, &searched);
     r["count"] = (uint32_t)turns.size();
+    if (searched && searched < daysBack) {  // the read budget stopped it (a long history)
+        r["searched_days"] = searched;
+        r["note"] = "Only the most recent days were searched; ask for a narrower topic if needed.";
+    }
     JsonArray arr = r["turns"].to<JsonArray>();
     for (const ltm::Turn& t : turns) {
         JsonObject o = arr.add<JsonObject>();

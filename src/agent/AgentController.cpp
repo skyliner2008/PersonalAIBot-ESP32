@@ -275,11 +275,11 @@ void AgentController::loop() {
             Serial.printf("[Agent] loop held %lu ms (slowest: %s %lu ms)\n", (unsigned long)took, slow,
                           (unsigned long)slowMs);
         }
-        if (now >= _nextStatus) {
+        if (deadline::reached(now, _nextStatus)) {
             _nextStatus = now + 250;
             publishStatus();
         }
-        if (now >= _nextInfo) {
+        if (deadline::reached(now, _nextInfo)) {
             _nextInfo = now + 1000;
             updateInfo();
         }

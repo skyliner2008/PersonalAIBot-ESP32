@@ -18,7 +18,7 @@ void AgentController::updateState(uint32_t now) {
     else if (!_wifiUp || !_gemini.isReady()) s = AVATAR_CONNECTING;
     else if (_audio->isPlaying()) s = AVATAR_SPEAKING;
     else if (!_muted && _gateAllowed && sinceMs(now, _lastVoice) < 400) s = AVATAR_LISTENING;
-    else if ((int32_t)(_toolBusyUntil - now) > 0 ||
+    else if (_toolBusy.active(now) ||
              (_awaitingReply &&
               sinceMs(now, _lastUserSpeech) < (_searchInSetup ? kSearchThinkingTimeoutMs : kThinkingTimeoutMs)))
         s = AVATAR_THINKING;

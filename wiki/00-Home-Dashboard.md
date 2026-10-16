@@ -10,7 +10,7 @@ status: in-progress
 > **Project:** Personal AI Agent on ES3C28P (ESP32-S3 2.8" IPS LCD)
 > **Goal:** คุยด้วยเสียงภาษาไทยแบบ real-time กับ Gemini 3.8 Live + **ความจำระยะยาวแบบ standalone ในตัวเครื่อง**
 > **Board:** ES3C28P — ESP32-S3-N16R8 + ILI9341V + ES8311 + FT6336G + MicroSD
-> **Firmware:** v3.4.2 (2026-10-16) — แก้จากรีวิว (UTF-8 โน้ต, บัฟเฟอร์ไมค์ 8 วิ, reboot, ล็อก settings) • วิทยุ: พักทันทีหลังเปิด, จำสถานีล่าสุด, ปุ่ม ⏻ ปิด, แตะปลุกพูดได้ทันที • ผู้ช่วยส่วนตัว + ดวงตา + เมนูทัช + auto fallback (รวม Google Search) + ปุ่มไมค์ + วิทยุออนไลน์ + PC Studio app • host tests 32 ชุด / 1,555 checks
+> **Firmware:** v3.4.3 (2026-10-16) — แก้จากรีวิวรอบ 2 (เสียงช่วงปลุกหาย, VAD ค้างเมื่อพัดลมเปิด, millis() วนกลับ 49.7 วัน, แจ้งเตือนที่พลาด) • v3.4.2: UTF-8 โน้ต, บัฟเฟอร์ไมค์ 8 วิ, reboot, ล็อก settings • วิทยุ: พักทันทีหลังเปิด, จำสถานีล่าสุด, ปุ่ม ⏻ ปิด, แตะปลุกพูดได้ทันที • ผู้ช่วยส่วนตัว + ดวงตา + เมนูทัช + auto fallback (รวม Google Search) + ปุ่มไมค์ + วิทยุออนไลน์ + PC Studio app • host tests 36 ชุด / 1,594 checks
 
 ---
 
@@ -25,7 +25,7 @@ status: in-progress
 | 04 | [[04-System-Architecture]] | Tasks, audio pipeline, derived state, memory map | ✅ v2 |
 | 05 | [[05-Gemini-Live-API-Protocol]] | WSS/TLS, setup, tools, resumption, goAway | ✅ v2 |
 | 06 | [[06-Avatar-and-Thai-UI]] | ดวงตาเด้งดึง 14 อารมณ์ (แนวนอน) + ฟอนต์ไทย + touch calibration | ✅ Verified on board |
-| 07 | [[07-Troubleshooting-Log]] | ปัญหาจริงที่พบและวิธีแก้ (T013–T043) | ✅ |
+| 07 | [[07-Troubleshooting-Log]] | ปัญหาจริงที่พบและวิธีแก้ (T013–T053) | ✅ |
 | 08 | [[08-Long-Term-Memory-GraphRAG]] | ความจำระยะยาว standalone: BM25 + Knowledge Graph | ✅ Implemented |
 | 09 | [[09-Assistant-Profiles-and-Tools]] | โปรไฟล์เสียง/นิสัย, เมนูทัช + คีย์บอร์ดไทย, 37+ tools, งบโทเคน, auto fallback, ทดสอบ API key | ✅ v3.1 |
 | 12 | [[12-Internet-Radio]] | วิทยุออนไลน์: รายการสถานีไทยที่ล็อกไว้ (แก้ใน Studio), หน้าจอแบบแอปวิทยุ (แตะกลางจอ = สั่ง AI), AI เลือกสถานีให้, Helix MP3/AAC, ลดเสียงตอนคุย | ✅ ทดสอบบนบอร์ดแล้ว |
@@ -145,6 +145,8 @@ ESP32-AI/
 | 2026-10-16 | **Release v3.4.1** — งานวิทยุทั้งหมด (T050, T051 + ปุ่ม ⏻ ปิด) ผู้ใช้ทดสอบด้วยเสียงจริงแล้วใช้ได้ | [[12-Internet-Radio]] |
 | 2026-10-16 | **รีวิวโปรเจค + แก้:** หัวข้อโน้ตไทยตัดกลางตัวอักษร (UTF-8 เสีย → session หลุดได้) • บัฟเฟอร์ไมค์ 2 → 8 วิ • `reboot` fallback 4 → 8 วิ (ไม่ตัดการปิด session) • ล็อกการบันทึก Settings • ตัด UTF-8 ใน console • `.gitattributes` • ทดสอบบนบอร์ดแล้ว | [[07-Troubleshooting-Log#T052 รีวิวโปรเจค — UTF-8 ในโน้ต, บัฟเฟอร์ไมค์, reboot ตัดการปิด session, save settings ซ้อนกัน]] |
 | 2026-10-16 | **Release v3.4.2** — งานแก้จากรีวิว (T052) | [[07-Troubleshooting-Log#T052 รีวิวโปรเจค — UTF-8 ในโน้ต, บัฟเฟอร์ไมค์, reboot ตัดการปิด session, save settings ซ้อนกัน]] |
+| 2026-10-16 | **รีวิวรอบ 2 + แก้บัคทั้งหมด:** เสียงช่วงปลุกหายท้าย (ทยอยส่ง preroll) • VAD ค้างเมื่อเสียงพื้นหลังดังขึ้น (`NoiseFloor`) • `millis()` วนกลับ 49.7 วัน — แจ้งเตือนไม่ดัง/ต่อไม่ได้/ไมค์ส่งไม่หยุด (`Deadline.h`, `monoSec` 64-bit) • tone ทำคำตอบกระตุก • บทสนทนาก่อนซิงก์นาฬิกาหาย • แจ้งเตือนที่พลาดบอกว่าพลาด • `recall_conversation` มีงบอ่าน • Studio thread-safe • host tests 36 ชุด / 1,594 checks | [[07-Troubleshooting-Log#T053 รีวิวรอบ 2 — เสียงช่วงปลุกหาย, VAD ค้างเมื่อพัดลมเปิด, millis() วนกลับ 49.7 วัน + บัคเล็ก]] |
+| 2026-10-16 | **Release v3.4.3** — งานแก้จากรีวิวรอบ 2 (T053) ทดสอบบนบอร์ดผ่าน serial แล้ว | [[07-Troubleshooting-Log#T053 รีวิวรอบ 2 — เสียงช่วงปลุกหาย, VAD ค้างเมื่อพัดลมเปิด, millis() วนกลับ 49.7 วัน + บัคเล็ก]] |
 | 2026-10-15 | **วิทยุ v3.3.0: รายการสถานี + หน้าจอแบบแอปวิทยุ** — เลิกค้น Radio Browser ออนไลน์ (ช้า/ล้ม/URL ขยะ) → 16 สถานีไทยที่ทดสอบแล้ว เก็บใน SD (`agent/radio_stations.json`) • AI เห็นรายการใน prompt เลือกตามชื่อ/เลข/แนว • หน้าจอวิทยุ: แผงกลางแตะ = สั่ง AI, แถบสถานีเลื่อนได้, ⏮ − + ⏭, เปิดเองเมื่อวิทยุเล่น, หลบให้โหมดนาฬิกา • Studio แท็บ 📻 วิทยุ (เพิ่ม/แก้/ลบ/เรียง/ทดสอบ URL) • ทดสอบบนบอร์ดแล้ว | [[12-Internet-Radio#รายการสถานี (ล็อกไว้ — ไม่ค้นออนไลน์)]] · [[10-PC-Studio-App]] |
 | 2026-10-15 | **ทดสอบวิทยุบนบอร์ด**: แก้ chunked transfer (เสียงสะดุด), watchdog รีบูต (ย้าย webTools/textModel ไป core 1), ตื่นเองเพราะเสียงวิทยุ (ประมาณเสียงสะท้อนจากระดับที่ส่งออก), การ์ดค้างทับนาฬิกา | [[12-Internet-Radio#ทดสอบบนบอร์ด (2026-10-15)]] · [[07-Troubleshooting-Log#T043 บอร์ดรีบูต task_wdt IDLE0 ขณะเปิดวิทยุ + เรียก tool ออนไลน์]] |
 | 2026-10-15 | **Internet Radio เฟส 1**: `play_radio`/`stop_radio`, ตัวเล่นสตรีม + Helix (RPSL, ไม่ใช้ส่วน GPL), mixer + ducking 12%, ปลุกด้วยเสียงต้องดังกว่าวิทยุ 2 เท่า, ชื่อสถานี/เพลงบนจอและนาฬิกา, host test resampler — build/บูตผ่าน รอ Wi-Fi ทดสอบสตรีม | [[12-Internet-Radio]] |

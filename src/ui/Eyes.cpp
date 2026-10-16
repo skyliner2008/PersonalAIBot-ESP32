@@ -8,6 +8,8 @@
 #include <Arduino.h>
 #include <math.h>
 
+#include "../util/Deadline.h"
+
 namespace {
 
 constexpr float kBaseW = 84.0f;
@@ -186,9 +188,10 @@ void Eyes::stepEye(EyeSprings& e, float dt) {
 void Eyes::updateBlink() {
     if (_mode == Mode::Sleeping) {
         _blinkFactor = 1.0f;
+        _nextBlink = _now + 1000;  // kept fresh: a deadline left for weeks reads as far ahead (millis wrap)
         return;
     }
-    if (!_blinking && _now >= _nextBlink) {
+    if (!_blinking && deadline::reached(_now, _nextBlink)) {
         _blinking = true;
         _blinkStart = _now;
     }
@@ -216,6 +219,9 @@ void Eyes::updateBlink() {
 }
 
 void Eyes::updateGaze() {
+    // deadlines that ran out follow `now`, so they never go stale (millis wrap - see Deadline.h)
+    if (deadline::reached(_now, _lookHoldUntil)) _lookHoldUntil = _now;
+    if (deadline::reached(_now, _nextLook)) _nextLook = _now;
     switch (_mode) {
         case Mode::Searching:
             _lookX.target = sinf(_time * 1.4f) * 0.75f;
@@ -226,7 +232,7 @@ void Eyes::updateGaze() {
             _lookY.target = 0.25f;
             return;
         case Mode::Listening:
-            if (_now >= _lookHoldUntil) {
+            if (deadline::reached(_now, _lookHoldUntil)) {
                 _lookX.target = 0;
                 _lookY.target = 0.12f;
             }
@@ -234,7 +240,7 @@ void Eyes::updateGaze() {
         default:
             break;
     }
-    if (_now < _lookHoldUntil || _now < _nextLook) return;
+    if (!deadline::reached(_now, _lookHoldUntil) || !deadline::reached(_now, _nextLook)) return;
 
     if (_mode == Mode::Thinking) {
         _lookX.target = -0.55f + frand(-0.15f, 0.15f);

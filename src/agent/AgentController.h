@@ -17,6 +17,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <esp_timer.h>
 
 #include <atomic>
 #include <vector>
@@ -32,6 +33,8 @@
 #include "../memory/MemoryStore.h"
 #include "../system/Storage.h"
 #include "../ui/UiTypes.h"
+#include "../util/Deadline.h"
+#include "../util/NoiseFloor.h"
 #include "AgentTools.h"
 #include "Consolidation.h"
 #include "Scheduler.h"
@@ -243,7 +246,7 @@ private:
     uint32_t _dropSince = 0;
     bool _awaitingReply = false;
     uint32_t _lastUserSpeech = 0, _lastVoice = 0, _lastActivity = 0, _lastAgentAudio = 0;
-    uint32_t _toolBusyUntil = 0;
+    deadline::Timer _toolBusy;  // a tool is running: show "thinking"
     PsString _userTurn, _agentTurn;
     uint32_t _userTurnTs = 0, _agentTurnTs = 0;
 
@@ -252,17 +255,20 @@ private:
     bool _vadOpen = false;
     uint8_t _onset = 0, _wakeVotes = 0;
     float _radioRef = 0.0f, _coupling = 0.0f;  // radio echo estimate for waking by voice over music
-    uint32_t _radioSettleUntil = 0;
-    float _noise = 0.002f;
+    deadline::Timer _radioSettle;  // the radio (re)started or the volume changed: relearn its echo first
+    vad::NoiseFloor _noise{0.002f, AGENT_VAD_MIN_LEVEL, AGENT_VAD_NOISE_FACTOR,
+                           AGENT_VAD_NOISE_RISE_MS / AUDIO_MIC_CHUNK_MS};
     float _threshold = AGENT_VAD_MIN_LEVEL;
     bool _wakeBuffering = false;
-    bool _wakeHeard = false;          // voice in the wake buffer (a tap wake with silence sends nothing)
+    bool _prerollDraining = false;    // the wake-up backlog is going out as fast as the send queue drains
+    static constexpr size_t kOutboxReserve = 4;  // send-queue slots kept free for toolResponse / stream end
+    bool _wakeHeard = false;        // voice in the wake buffer (a tap wake with silence sends nothing)
     bool _radioWasSounding = false;   // asleep: the radio (re)started -> relearn its echo before waking
     int _wakeVolume = -1;             // speaker volume the radio echo was learned at
     bool _freshAfterRadio = false;    // play_radio: next wake starts a new session (no replay of it)
     PcmRing _preroll;
     float _agcGain = 1.0f;
-    uint32_t _followUpUntil = 0;  // after a reply: stream without waiting for an onset
+    deadline::Timer _followUp;  // after a reply: stream without waiting for an onset
     // per-utterance stats for the [Mic] log
     uint32_t _uttStart = 0, _uttChunks = 0, _uttVoiced = 0;
     float _uttPeak = 0;
@@ -341,6 +347,7 @@ private:
     void flushAgentTurn(bool interrupted);
     void buildSystemPrompt(PsString& out);
     void sendPreroll();
+    void drainPreroll();
     void sendMic(const int16_t* pcm, size_t n);  // AGC + upload
     void updateAgc(float level);
     void beginUtterance(uint32_t now, float level, bool followUp);
@@ -354,7 +361,9 @@ private:
     uint32_t tokensPerMinute() const;
     void noteActivity() { _lastActivity = millis(); }
     void reportReply();
-    static uint32_t monoSec() { return millis() / 1000; }
+    // 64-bit µs timer: millis() / 1000 jumped back to 0 after 49.7 days and froze every cool-down and
+    // pause that was running (_holdUntil, ModelSelector, search::Gate compare plain seconds)
+    static uint32_t monoSec() { return (uint32_t)(esp_timer_get_time() / 1000000LL); }
     /** ms from t to now, 0 if t is later than now (stamped after `now` was sampled). */
-    static uint32_t sinceMs(uint32_t now, uint32_t t) { return (int32_t)(now - t) > 0 ? now - t : 0; }
+    static uint32_t sinceMs(uint32_t now, uint32_t t) { return deadline::elapsed(now, t); }
 };

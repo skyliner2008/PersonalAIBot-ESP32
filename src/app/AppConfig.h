@@ -10,7 +10,7 @@
 
 #pragma once
 
-#define FIRMWARE_VERSION        "3.4.2"
+#define FIRMWARE_VERSION        "3.4.3"
 
 // ============================================================
 // Prompt labels
@@ -65,7 +65,8 @@
 #define AGENT_LOCAL_VAD         1
 #define AGENT_VAD_MIN_LEVEL     0.004f  // RMS 0-1; adaptive threshold never goes below this (v3.1: 0.006)
 #define AGENT_VAD_NOISE_FACTOR  2.5f    // speech = level > noise floor x factor (v3.1: 3.0)
-#define AGENT_VAD_HANGOVER_MS   1500    // keep streaming this long after the last voiced chunk (Thai pauses)
+#define AGENT_VAD_NOISE_RISE_MS 10000   // above the threshold this long without a pause = background, not speech
+#define AGENT_VAD_HANGOVER_MS   1500   // keep streaming this long after the last voiced chunk (Thai pauses)
 #define AGENT_VAD_PREROLL_MS    600     // audio sent from before the detected onset (was 320: clipped words)
 #define AGENT_VAD_ONSET_CHUNKS  2       // voiced 40-ms chunks in a row that open the stream
 #define AGENT_FOLLOWUP_MS       6000    // after a reply, stream the mic this long without waiting for onset

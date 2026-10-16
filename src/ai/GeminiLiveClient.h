@@ -108,6 +108,8 @@ public:
     bool isReady() const { return _state == GeminiState::Ready; }
     GeminiState state() const { return _state; }
     uint32_t droppedMessages() const { return _dropped; }
+    /** Free slots in the send queue (mic audio is never waited for: a burst must fit what is free). */
+    size_t outboxSpace() const { return _outbox ? (size_t)uxQueueSpacesAvailable(_outbox) : 0; }
     /** The assistant is answering: mic audio still queued is stale - skip it so the reply gets the
      *  whole link (a phone hotspot uplink could not keep up and delayed the reply's audio). */
     void discardQueuedMic() { _micGen = (uint8_t)((_micGen + 1) % 0xFF); }

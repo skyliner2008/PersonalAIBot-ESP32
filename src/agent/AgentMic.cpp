@@ -31,13 +31,25 @@ void AgentController::sendMic(const int16_t* pcm, size_t n) {
     _uttChunks++;
 }
 
+// The ring can hold up to 6 s (what was said while the session connected) but the send queue only
+// takes ~2.5 s and mic audio never waits for a slot: sent in one go, the end of it was dropped. So it
+// goes out as fast as the queue drains; live chunks queue up behind it in the ring (order kept).
 void AgentController::sendPreroll() {
-    static int16_t chunk[kChunk];
-    size_t n;
-    while ((n = _preroll.pop(chunk, kChunk)) > 0) sendMic(chunk, n);
     _wakeBuffering = false;
     _vadOpen = true;
     _lastVoice = millis();
+    _prerollDraining = true;
+    drainPreroll();
+}
+
+void AgentController::drainPreroll() {
+    static int16_t chunk[kChunk];
+    while (_preroll.count && _gemini.outboxSpace() > kOutboxReserve) {
+        const size_t n = _preroll.pop(chunk, kChunk);
+        if (!n) break;
+        sendMic(chunk, n);
+    }
+    if (!_preroll.count) _prerollDraining = false;
 }
 
 void AgentController::beginUtterance(uint32_t now, float level, bool followUp) {
@@ -57,6 +69,10 @@ void AgentController::endUtterance(uint32_t now) {
     if (!_vadOpen) return;
     _vadOpen = false;
     _onset = 0;
+    if (_prerollDraining) {  // cut off (the reply started / the mic closed): the rest is stale
+        _prerollDraining = false;
+        _preroll.clear();
+    }
     _gemini.sendAudioStreamEnd();
     const float sentSec = _uttChunks * (AUDIO_MIC_CHUNK_MS / 1000.0f);
     const float voicedSec = _uttVoiced * (AUDIO_MIC_CHUNK_MS / 1000.0f);
@@ -120,7 +136,7 @@ void AgentController::handleAudioInput() {
         } else if (sinceMs(now, _lastAgentAudio) < 3000 && _gemini.isReady() && !_sleeping && !_sleepPending) {
             // the assistant just finished: users answer right away (not when it is about to sleep -
             // e.g. after play_radio, the follow-up window would stream the radio as "user speech")
-            _followUpUntil = now + AGENT_FOLLOWUP_MS;
+            _followUp.arm(now, AGENT_FOLLOWUP_MS);
         }
     }
     checkNoReply(now);
@@ -130,14 +146,13 @@ void AgentController::handleAudioInput() {
     for (int iter = 0; iter < 6 && _audio->captureAvailable() >= sizeof(chunk); iter++) {
         _audio->readCapture((uint8_t*)chunk, sizeof(chunk));
         const float level = rms(chunk, kChunk);
-        _threshold = _noise * AGENT_VAD_NOISE_FACTOR;
-        if (_threshold < AGENT_VAD_MIN_LEVEL) _threshold = AGENT_VAD_MIN_LEVEL;
-        const bool voice = level > _threshold;
+        _threshold = _noise.threshold();
+        // follows the background; a level that never pauses for 10 s is background too (a fan switched
+        // on used to count as speech for ever). Not while the radio sounds: its echo estimate handles it.
+        const bool voice = _noise.update(level, !_audio->radioSounding());
         if (voice) {
             _lastVoice = now;
             noteActivity();
-        } else {
-            _noise += (level - _noise) * 0.05f;  // follow the background noise
         }
         bool sent = false;
 
@@ -151,20 +166,20 @@ void AgentController::handleAudioInput() {
             const bool radioOn = _audio->radioSounding();
             // a station change starts a new stream (silence, then full level): relearn the echo first -
             // a tap on the next station woke the assistant "by voice"
-            if (radioOn && !_radioWasSounding) _radioSettleUntil = now + 2500;
+            if (radioOn && !_radioWasSounding) _radioSettle.arm(now, 2500);
             _radioWasSounding = radioOn;
             // the volume is set in the codec, after radioOutLevel: a louder speaker leaks more than the
             // learned coupling expects ("+" on the radio screen woke it "by voice") - relearn
             const int vol = _audio->volume();
             if (vol != _wakeVolume) {
-                if (_wakeVolume >= 0) _radioSettleUntil = now + 2500;
+                if (_wakeVolume >= 0) _radioSettle.arm(now, 2500);
                 _wakeVolume = vol;
             }
             bool loud = voice;
             if (radioOn) {
                 const float ref = _audio->radioOutLevel();
                 _radioRef += (ref - _radioRef) * 0.3f;  // smooth: the acoustic path lags a few chunks
-                const bool settling = (int32_t)(now - _radioSettleUntil) < 0;
+                const bool settling = _radioSettle.active(now);
                 const float expected = _coupling * _radioRef;
                 // + an absolute floor: between songs the expected leak is tiny and the radio's own
                 // 0.005-0.008 got through (woke the assistant with no one talking); speech near the
@@ -210,7 +225,7 @@ void AgentController::handleAudioInput() {
             _preroll.push(chunk, kChunk);
             _preroll.trimTo(kPrerollSamples);
             _onset = voice ? _onset + 1 : 0;
-            const bool followUp = (int32_t)(_followUpUntil - now) > 0;
+            const bool followUp = _followUp.active(now);
             if (_onset >= AGENT_VAD_ONSET_CHUNKS || followUp) {
                 beginUtterance(now, level, followUp && _onset < AGENT_VAD_ONSET_CHUNKS);
                 if (voice) {
@@ -230,12 +245,21 @@ void AgentController::handleAudioInput() {
                 updateAgc(level);
                 _replyWatchAt = 0;  // still talking
             }
-            sendMic(chunk, kChunk);
+            if (_prerollDraining) {  // the wake-up backlog is still going out: this chunk goes behind it
+                _preroll.push(chunk, kChunk);
+                drainPreroll();
+            } else {
+                sendMic(chunk, kChunk);
+            }
             sent = true;
-            const bool followUp = (int32_t)(_followUpUntil - now) > 0;
+            const bool followUp = _followUp.active(now);
             const bool silentFollowUp = _uttFollowUp && _uttVoiced == 0;
-            if (silentFollowUp ? !followUp : sinceMs(now, _lastVoice) > AGENT_VAD_HANGOVER_MS) endUtterance(now);
-            if (voice) _followUpUntil = 0;  // the user is speaking: the normal hang-over decides the end
+            // never end while the backlog is still queued: audioStreamEnd would land before the words
+            if (!_prerollDraining &&
+                (silentFollowUp ? !followUp : sinceMs(now, _lastVoice) > AGENT_VAD_HANGOVER_MS)) {
+                endUtterance(now);
+            }
+            if (voice) _followUp.cancel();  // the user is speaking: the normal hang-over decides the end
         }
 #else
         sendMic(chunk, kChunk);
@@ -291,7 +315,7 @@ void AgentController::finishRecording() {
     info += ",\"threshold\":";
     info += String(_threshold, 4);
     info += ",\"noise\":";
-    info += String(_noise, 4);
+    info += String(_noise.noise(), 4);
     info += ",\"muted\":";
     info += _muted ? "true" : "false";
     info += ",\"flags\":\"";

@@ -17,6 +17,7 @@ void AgentController::enterSleep() {
     _sleeping = true;
     _sleepPending = false;
     _vadOpen = false;
+    _prerollDraining = false;
     _wakeVotes = 0;
     _preroll.clear();
     if (_gemini.started()) _gemini.stop();  // no session = no tokens
@@ -25,7 +26,7 @@ void AgentController::enterSleep() {
         _resumeHandle = "";
     }
     _sleepSince = millis();
-    _radioSettleUntil = _sleepSince + 2500;  // radio ramps back to full: relearn its echo before listening
+    _radioSettle.arm(_sleepSince, 2500);  // radio ramps back to full: relearn its echo before listening
     _face->setHint("พักแล้ว แตะหรือพูดเพื่อปลุก", 2500);
     Serial.println("[Agent] Sleeping");
     if (_powerSaveAfterSleep) {
@@ -94,9 +95,9 @@ void AgentController::handleSleepAndRestarts(uint32_t now) {
     }
 
     if (_ringing) {
-        if (now > _ringUntil) {
+        if (deadline::reached(now, _ringUntil)) {
             _ringing = false;
-        } else if (now >= _nextChime && !_audio->isPlaying()) {
+        } else if (deadline::reached(now, _nextChime) && !_audio->isPlaying()) {
             _audio->playTone(1320, 110, 5000);
             _audio->playTone(990, 160, 5000);
             _nextChime = now + 2500;
@@ -109,20 +110,31 @@ void AgentController::handleSleepAndRestarts(uint32_t now) {
 // ============================================================
 
 void AgentController::handleScheduler(uint32_t now) {
-    if (now < _nextSchedulerCheck) return;
+    if (!deadline::reached(now, _nextSchedulerCheck)) return;
     _nextSchedulerCheck = now + 1000;
     const uint32_t epoch = nowEpoch();
     if (!epoch) return;
     std::vector<sched::Reminder> fired;
     if (!_scheduler.collectDue(epoch, fired)) return;
-    for (const sched::Reminder& r : fired) {
-        Serial.printf("[Reminder] %s: %s\n", r.timer ? "timer" : "reminder", r.label.c_str());
+    for (const sched::Reminder& r : fired) {  // r.due = when it was meant to ring
+        // Rang late (the board was off / unplugged when it was due): say so, with the time it was set
+        // for - announcing yesterday's appointment as "it is time" misled the user.
+        const bool late = epoch - r.due > kLateReminderSec;
+        Serial.printf("[Reminder] %s%s: %s\n", r.timer ? "timer" : "reminder", late ? " (missed)" : "", r.label.c_str());
         PsString msg = "[แจ้งเตือนจากระบบ] ";
-        msg += r.timer ? "ตัวจับเวลาครบแล้ว: " : "ถึงเวลา: ";
+        if (late) {
+            const timefmt::Civil c = timefmt::toCivil(r.due, TIME_UTC_OFFSET_SEC);
+            char when[64];
+            snprintf(when, sizeof(when), "%s ที่ตั้งไว้ %02d/%02d %02d:%02d น. ผ่านไปแล้ว (ตอนนั้นเครื่องปิดอยู่): ",
+                     r.timer ? "ตัวจับเวลา" : "การแจ้งเตือน", c.day, c.month, c.hour, c.minute);
+            msg += when;
+        } else {
+            msg += r.timer ? "ตัวจับเวลาครบแล้ว: " : "ถึงเวลา: ";
+        }
         msg += r.label;
-        msg += " — บอกผู้ใช้สั้นๆ";
+        msg += late ? " — บอกผู้ใช้สั้นๆ ว่าพลาดไป" : " — บอกผู้ใช้สั้นๆ";
         _announcements.push_back(msg);
-        PsString shown = "แจ้งเตือน: ";
+        PsString shown = late ? "แจ้งเตือนที่พลาดไป: " : "แจ้งเตือน: ";
         shown += r.label;
         _face->setSystemText(shown.c_str(), 15000);
         _face->setExpression(Emotion::Surprised, 4000);

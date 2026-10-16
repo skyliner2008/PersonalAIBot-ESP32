@@ -18,8 +18,10 @@
 #include "../audio/RadioStations.h"
 #include "../ui/FaceScreen.h"
 #include "../ui/UiManager.h"
+#include "../util/Deadline.h"
 #include "../util/JsonAlloc.h"
 #include "../util/TimeFmt.h"
+#include "../util/TranscriptClean.h"
 #include "Personas.h"
 #include "WebTools.h"
 
@@ -31,6 +33,7 @@ inline constexpr size_t kWakeBufferSamples = AUDIO_UPLOAD_RATE * 6;  // 6 s spok
 inline constexpr uint32_t kWifiRetryMinMs = 3000;   // back-off between Wi-Fi attempts: 3 s doubling to 60 s
 inline constexpr uint32_t kWifiRetryMaxMs = 60000;   // (routers block clients that retry every second)
 inline constexpr uint32_t kThinkingTimeoutMs = 12000;
+inline constexpr uint32_t kLateReminderSec = 15 * 60;  // fired this late = missed while the board was off
 inline constexpr uint32_t kSearchThinkingTimeoutMs = AGENT_NO_REPLY_SEARCH_MS;  // Google Search answers take longer
 
 inline std::atomic<uint8_t> gWifiReason{0};  // last STA disconnect reason (Wi-Fi event task)
