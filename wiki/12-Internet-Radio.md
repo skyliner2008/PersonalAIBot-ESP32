@@ -121,7 +121,7 @@ HTTP(S) stream ──► ICY metadata strip (StreamTitle, TIS-620 → UTF-8) ─
 | Tool | ทำอะไร |
 |---|---|
 | `play_radio(station?)` | เล่นสถานีจาก **รายการ** — เลขลำดับ / ชื่อ / แนวเพลง; ว่าง = สถานีล่าสุด; ไม่มีในรายการ → error ให้ AI เลือกจากรายชื่อใน prompt (เป็น tool ในเครื่อง ไม่ผ่าน webTools) |
-| `stop_radio()` | ปิดวิทยุ |
+| `stop_radio()` | ปิดวิทยุ + ปิดหน้าจอวิทยุกลับหน้าหลัก (เหมือนปุ่ม ⏻, T066) |
 | `get_device_status` | มี `radio.station / now_playing` — ตอบ "เพลงอะไรอยู่" ได้ |
 
 ปรับความดังวิทยุ = `set_volume` (ความดังรวมของลำโพง)

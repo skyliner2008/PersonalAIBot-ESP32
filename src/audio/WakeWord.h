@@ -28,7 +28,10 @@ public:
     /** Load the models and start the AFE. False = no model partition / no WakeNet / out of memory. */
     // prefer: model name part ("hiesp", "jarvis"; any WakeNet if missing). ownAec: feed() gets the mic after
     // the agent's echo removal (input "M"); false: raw mic + reference (input "MR", the AFE's own AEC)
-    bool begin(const char* prefer = "hiesp", bool ownAec = true);
+    // second: another word listened for at the same time (nullptr = one word)
+    bool begin(const char* prefer = "hiesp", const char* second = nullptr, bool ownAec = true);
+    /** The model that made the last detection ("wn9_hiesp", "wn9_jarvis_tts"). */
+    const char* lastWord() const { return _lastWord; }
     /** feed() expects the echo already removed (ref ignored). */
     bool ownAec() const { return _channels == 1; }
     bool ready() const { return _afe != nullptr; }
@@ -64,7 +67,9 @@ private:
 
     esp_afe_sr_data_t* _afe = nullptr;
     const void* _iface = nullptr;  // const esp_afe_sr_iface_t* (an anonymous struct: no forward declaration)
-    char _model[32] = "";
+    char _names[2][24] = {"", ""};  // WakeNet models: [0] always, [1] when two words are on
+    char _model[52] = "";           // "wn9_hiesp" or "wn9_hiesp+wn9_jarvis_tts"
+    char _lastWord[24] = "";      // written by the fetch task, read after takeDetection()
     int16_t* _frame = nullptr;     // interleaved M,R x _chunk (feed task)
     int16_t* _inter = nullptr;     // interleaved M,R x kMaxIn (agent task)
     int _chunk = 0;                // samples per channel per AFE feed

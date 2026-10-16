@@ -19,6 +19,7 @@
 #include "../audio/RadioStations.h"
 #include "../system/OtaUpdater.h"
 #include "../ui/FaceScreen.h"
+#include "../ui/RadioScreen.h"
 #include "../ui/UiManager.h"
 #include "../util/Deadline.h"
 #include "../util/JsonAlloc.h"

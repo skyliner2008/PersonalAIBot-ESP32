@@ -129,7 +129,8 @@ void AgentController::buildSystemPrompt(PsString& p) {
     // replayed an old request (it opened the radio)
     p += "\nการเรียกชื่อ: ผู้ใช้ปลุกคุณด้วยการเรียกชื่อ (เสียงอาจถอดเป็นคำที่ออกเสียงใกล้เคียง เช่น Jarvis, jawit)";
     if (_cfg.wakeMode != 0) {  // the offline wake word reaches the session too ("Hi ESP" changed the radio station)
-        p += _cfg.wakeWord ? " หรือคำปลุก \"Hi ESP\" (อาจถอดเป็น ไฮอีเอสพี, Hi ISP ฯลฯ)" : " หรือคำปลุก \"Jarvis\"";
+        if (_cfg.wakeWord != 0) p += " หรือคำปลุก \"Hi ESP\" (อาจถอดเป็น ไฮอีเอสพี, Hi ISP ฯลฯ)";
+        if (_cfg.wakeWord != 1) p += " หรือคำปลุก \"Jarvis\"";
     }
     p += " ถ้าประโยคมีแค่ชื่อคุณ คำปลุก หรือคำทักทาย ให้ขานรับสั้นๆ แล้วรอฟัง ห้ามเรียก tool ห้ามค้นหาคำนั้น "
          "ห้ามเปิด/เปลี่ยนวิทยุ และห้ามทำคำสั่งเก่า ถ้ามีคำสั่งต่อท้าย ให้ทำตามคำสั่งนั้น";

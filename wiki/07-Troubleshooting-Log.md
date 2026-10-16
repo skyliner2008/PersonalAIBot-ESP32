@@ -16,6 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T066 | [[#T066 ใช้ 2 คำพร้อมกัน + เรียกคำปลุกแล้ว AI "พักหน้าจอ" ซ้ำทุกครั้ง]] | Wake/AI | ✅ Fixed (ตื่น = session ใหม่, agent priority 5, ปิดวิทยุปิดหน้าจอ) + ตัวเลือก 2 คำ |
 | T065 | [[#T065 ปลุกด้วย "Hi ESP" ได้ แต่ลูปค้าง 10 วิ และ 45 วิ หลังตื่น]] | Serial/Tasks | ✅ Fixed (TX timeout 20 ms + wake tasks priority 3) — ผู้ใช้ยืนยัน |
 | T064 | [[#T064 คำปลุกไม่ติดกับเสียงจริง — "Jarvis" เป็นโมเดล TTS, ค่าความไว, AEC ของ AFE ช้าหลังเปิดวิทยุ]] | Wake | ✅ "Hi ESP" + 0.5 + AEC ของเรา — รอทดสอบตื่นเองระยะยาว |
 | T063 | [[#T063 โหมด "คำปลุก" เรียก "จาวิส" (ใกล้มาก) ไม่มีอะไรเกิดขึ้น]] | Wake | 🔄 แก้ไมค์โหมดนาฬิกา + self-test ผ่าน — รอผู้ใช้ทดสอบเสียงจริง |
@@ -115,6 +116,22 @@ This page documents common issues encountered during development and their solut
 **ยืนยัน 2026-10-15:** ผู้ใช้เทียบบอร์ดกับ PC app — ตอน `invert = 0` บอร์ดเป็น **พื้นขาว + ตาน้ำเงิน** ส่วนภาพ framebuffer ใน app เป็น
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
+
+## T066: ใช้ 2 คำพร้อมกัน + เรียกคำปลุกแล้ว AI "พักหน้าจอ" ซ้ำทุกครั้ง
+
+**วันที่:** 2026-10-17
+- **2 คำพร้อมกัน** (`set wakeword both` = Hi ESP + Jarvis, WakeNet 2 ตัวใน AFE เดียว): RAM ภายในของ AFE 23 → 39 KB, บูต 56 KB, ต่ำสุดขณะวิทยุ 35 KB,
+  dropped 0 · ผู้ใช้เรียกทั้งสองคำ: ปลุกติดทุกครั้งและบอกถูกว่าคำไหน (`[Wake] heard "<model>"`)
+  · ข้อควรระวัง: ที่ 0.5 สองโมเดลจับข้ามคำกันได้ และ **Jarvis ปลุกเองจากวิทยุ** 1 ครั้งในการทดสอบ (−58 dBFS, ไม่มีคนเรียก) — ค่าเริ่มต้นยังเป็น "Hi ESP" คำเดียว
+- **"พักหน้าจอ" ครั้งเดียว → ทุกครั้งที่เรียกแค่คำปลุก AI เรียก `rest_screen` อีก** (6 ครั้งติด): ตื่นแล้ว session ถูก resume พร้อมคำสั่งล่าสุด
+  → Gemini ได้ยินแค่ "Jarvis" ก็ทำคำสั่งเดิม แม้ prompt ห้าม · แก้แบบเดียวกับวิทยุ: `requestSleep()` (go_to_sleep, rest_screen) ตั้ง `_freshNextWake`
+  → ตื่นครั้งถัดไปเริ่ม session ใหม่ (หลับเพราะเงียบนานยัง resume ตามเดิม) · ทดสอบ: พักหน้าจอ → ตื่น → "จาวิส" ×2 = `new session`, ไม่มี `rest_screen`
+- **ยังซ้ำ:** หลับเพราะเงียบ (วิทยุเล่น) แล้วตื่น → resume → `get_weather` ซ้ำ → **ตื่นทุกครั้งเริ่ม session ใหม่** (`enterSleep` ล้าง handle;
+  เน็ตหลุดยัง resume) · ทดสอบ: ถามอากาศ → หลับเอง → ตื่น → "จาวิส" ×2 = `new session`, ไม่มี `get_weather`
+- `loop held ~1.3 s`: log ใหม่ `[Mic] slow chunk 1332 ms: echo 1332` = agent ถูกแย่ง CPU กลางการตัดเสียงสะท้อน ตรงช่วง `Connecting...`→`Connected`
+  = TLS handshake ของ `geminiIO` (priority 5, ไม่ผูก core) → agent priority 4 → **5** (time-slice เท่ากัน) · ทดสอบปลุก 3 ครั้งขณะวิทยุ: ไม่มี slow chunk
+- **"ปิดวิทยุ" แค่หยุด** (ผู้ใช้): `stop_radio` หยุดสตรีมแต่หน้าจอวิทยุค้างที่สถานะหยุดชั่วคราว → `RadioScreen::requestClose()` = ปิดหน้าจอกลับหน้าหลักเหมือนปุ่ม ⏻
+  · ทดสอบ: `tool stop_radio` และ `ask ปิดวิทยุ` → `[Radio] Screen closed (radio turned off)`
 
 ## T065: ปลุกด้วย "Hi ESP" ได้ แต่ลูปค้าง 10 วิ และ 45 วิ หลังตื่น
 

@@ -39,6 +39,7 @@ void drawTriangle(LGFX_Sprite& c, int x, int y, int s, bool right, uint16_t col)
 void RadioScreen::begin(AudioManager* audio) { _audio = audio; }
 
 void RadioScreen::onEnter() {
+    _closeRequested = false;  // an old "ปิดวิทยุ" must not close the screen the user just opened
     _dragging = _fingerDown = false;
     _pressed = kNone;
     _nextSettings = millis();  // due now (0 read as weeks ahead once the uptime passed 24.8 days)
@@ -163,6 +164,14 @@ void RadioScreen::onTouch(const TouchEvent& e) {
 
 void RadioScreen::tick(uint32_t now, float dt) {
     _now = now;
+    if (_closeRequested) {  // the assistant turned the radio off: back to the face (it only paused before)
+        _closeRequested = false;
+        if (gUi.top() == this) {
+            Serial.println("[Radio] Screen closed (radio turned off)");
+            gUi.pop();
+            return;
+        }
+    }
     if ((int32_t)(now - _nextSettings) >= 0) {
         _nextSettings = now + 400;
         _volume = gSettings.get().volume;

@@ -201,7 +201,8 @@ void Settings::load() {
     d.micMuted = p.getBool("muted", d.micMuted);
     d.wakeMode = p.getUChar("wakemode", d.wakeMode);
     if (d.wakeMode > 2) d.wakeMode = 2;
-    d.wakeWord = p.getUChar("wakeword", d.wakeWord) ? 1 : 0;
+    d.wakeWord = p.getUChar("wakeword", d.wakeWord);
+    if (d.wakeWord > 2) d.wakeWord = 1;
     d.wakeThreshold = p.getUChar("wakethr", d.wakeThreshold);
     if (d.wakeThreshold < 40 || d.wakeThreshold > 99) d.wakeThreshold = 50;
     if (p.isKey("radioname")) p.getString("radioname", d.radioName, sizeof(d.radioName));

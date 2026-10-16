@@ -171,12 +171,28 @@ void AgentController::handleAudioInput() {
     }
     checkNoReply(now);
     if (_recActive && (int32_t)(now - _recDeadline) >= 0) finishRecording();
+    if (millis() - now > 300) Serial.printf("[Mic] slow gate %lu ms\n", (unsigned long)(millis() - now));
 
     static int16_t chunk[kChunk];
     static int16_t refChunk[kChunk];  // what the speaker played during these very samples (DAC loopback)
+    // one chunk that takes > 300 ms says where (a steady 1.34 s "loop held (audioIn)" right after waking
+    // over the radio, T065): the time to here, in the echo removal and in wake()
+    struct SlowChunk {
+        uint32_t t0 = micros(), read = 0, echo = 0, wake = 0;
+        ~SlowChunk() {
+            const uint32_t total = micros() - t0;
+            if (total > 300000) {
+                Serial.printf("[Mic] slow chunk %lu ms: read %lu, echo %lu, wake %lu, rest %lu ms\n",
+                              (unsigned long)(total / 1000), (unsigned long)(read / 1000), (unsigned long)(echo / 1000),
+                              (unsigned long)(wake / 1000), (unsigned long)((total - read - echo - wake) / 1000));
+            }
+        }
+    };
     for (int iter = 0; iter < 6 && _audio->captureSamples() >= kChunk; iter++) {
+        SlowChunk prof;
         float refLevel = 0.0f;
         _audio->readCapture(chunk, kChunk, refLevel, refChunk);
+        prof.read = micros() - prof.t0;
         if (_pairRecActive) recordPairs(chunk, refChunk, kChunk);
         if (wordTest) {  // self-test: only the wake word gets this audio (the speaker included, no reference)
             _wakeWord.feed(chunk, nullptr, kChunk);
@@ -226,6 +242,7 @@ void AgentController::handleAudioInput() {
             const uint32_t t0 = micros();
             _aec->process(chunk, refChunk, chunk, kChunk, _radioSettle.active(now));
             const uint32_t us = micros() - t0;
+            prof.echo = us;
             if (us > _aecMaxUs) _aecMaxUs = us;
             if (_aec->doubleTalk()) _aecDoubleTalk++;
         }
@@ -297,7 +314,7 @@ void AgentController::handleAudioInput() {
             if (_cfg.wakeMode == 1 && _wakeWord.ready()) wakeNow = false;
             const bool byWord = _wordFeeding && _wakeWord.takeDetection();
             if (byWord) {
-                Serial.printf("[Mic] ปลุกด้วยคำปลุก (%s)%s\n", _wakeWord.model(), radioSession ? " ขณะวิทยุเล่น" : "");
+                Serial.printf("[Mic] ปลุกด้วยคำปลุก (%s)%s\n", _wakeWord.lastWord(), radioSession ? " ขณะวิทยุเล่น" : "");
                 wakeNow = true;
             } else if (wakeNow && radioSession) {  // why it woke over the radio (tune from real logs)
                 if (aecOn) {
@@ -312,7 +329,9 @@ void AgentController::handleAudioInput() {
             }
             if (wakeNow) {
                 _wakeHistory = 0;
+                const uint32_t tw = micros();
                 wake(true);
+                prof.wake = micros() - tw;
             }
             recordChunk(chunk, kChunk, voice, false);
             continue;

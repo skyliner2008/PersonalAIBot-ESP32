@@ -173,6 +173,7 @@ int AgentController::setBrightness(int level) {
 bool AgentController::stopRadio() {
     const bool was = gRadio.active();
     gRadio.stop();
+    gRadioUi.requestClose();  // "ปิดวิทยุ" = off and back to the face, like ⏻ (it stayed on the paused screen)
     return was;
 }
 
@@ -207,8 +208,7 @@ const char* AgentController::playRadio(const char* station, JsonObject r) {
     noteActivity();
     // Sleep right after the confirmation: the radio plays at full level and the mic only listens for
     // a wake-up (echo-aware). Awake, the follow-up window streamed the DJ to the model as the user.
-    requestSleep();
-    _freshAfterRadio = true;  // next wake: a fresh session (a resumed one replayed "เปิดวิทยุ" on unclear audio)
+    requestSleep();  // (the next wake starts a fresh session: enterSleep)
     return nullptr;
 }
 

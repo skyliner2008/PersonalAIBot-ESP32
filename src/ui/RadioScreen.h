@@ -25,8 +25,11 @@ public:
     void onTouch(const TouchEvent& e) override;
     void tick(uint32_t now, float dt) override;
     void draw(LGFX_Sprite& c) override;
+    /** "ปิดวิทยุ" by voice (stop_radio): leave this screen too, like the ⏻ button. Any task. */
+    void requestClose() { _closeRequested = true; }
 
 private:
+    volatile bool _closeRequested = false;
     AudioManager* _audio = nullptr;
     float _scroll = 0, _velocity = 0;
     int16_t _lastX = 0;

@@ -21,10 +21,10 @@ void AgentController::enterSleep() {
     _wakeVotes = 0;
     _preroll.clear();
     if (_gemini.started()) _gemini.stop();  // no session = no tokens
-    if (_freshAfterRadio) {  // see playRadio(): the next session starts without the "play the radio" turn
-        _freshAfterRadio = false;
-        _resumeHandle = "";
-    }
+    // every wake starts a fresh session (a dropped link still resumes): a resumed one replayed the last
+    // request when only the wake word came in - the radio again, "พักหน้าจอ" again, the weather again
+    // (T051, T066). Long-term memory and recall_conversation keep the continuity.
+    _resumeHandle = "";
     _sleepSince = millis();
     _radioSettle.arm(_sleepSince, 2500);  // radio ramps back to full: relearn its echo before listening
     _face->setHint("พักแล้ว แตะหรือพูดเพื่อปลุก", 2500);

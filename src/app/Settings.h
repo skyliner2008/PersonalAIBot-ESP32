@@ -41,7 +41,8 @@ struct SettingsData {
     bool micMuted = false;         // mic off survives reboots: only the screen button (or Studio) turns it back on
     uint8_t wakeMode = 2;          // asleep, what wakes it by voice: 0 loudness (as before), 1 wake word (ESP-SR), 2 both
                                    // (no model partition = loudness only - wiki 14)
-    uint8_t wakeWord = 1;          // which word: 0 "Jarvis" (TTS-trained: missed real Thai voices, T064), 1 "Hi ESP"
+    uint8_t wakeWord = 1;          // which word: 0 "Jarvis" (TTS-trained: missed real Thai voices, T064), 1 "Hi ESP",
+                                   // 2 both (one more WakeNet: ~16 KB internal RAM)
                                    // (trained on recorded people) - applied at boot
     uint8_t wakeThreshold = 50;    // WakeNet threshold x100 (40-99). The model's 0.63 missed every call in a Thai
                                    // accent; 0.50 woke 3/3 over the radio (T064)

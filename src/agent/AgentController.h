@@ -297,7 +297,6 @@ private:
     bool _radioWasSounding = false;   // asleep: the radio (re)started -> relearn its echo before waking
     bool _radioSessionWas = false;    // asleep: the radio stopped / changed station -> its tail is not a voice
     int _wakeVolume = -1;             // speaker volume the radio echo was learned at
-    bool _freshAfterRadio = false;    // play_radio: next wake starts a new session (no replay of it)
     PcmRing _preroll;
     float _agcGain = 1.0f;
     deadline::Timer _followUp;  // after a reply: stream without waiting for an onset

@@ -300,7 +300,7 @@ static void printConfig() {
     d["search"] = s.googleSearch;
     d["micgain"] = s.micGain;
     d["wake"] = s.wakeMode;  // 0 loudness, 1 wake word, 2 both
-    d["wakeword"] = s.wakeWord;  // 0 Jarvis, 1 Hi ESP (at boot)
+    d["wakeword"] = s.wakeWord;  // 0 Jarvis, 1 Hi ESP, 2 both (at boot)
     d["wakethreshold"] = s.wakeThreshold;  // x100
     d["finance"] = s.financeTools;
     d["secretsSealed"] = gSettings.secretsSealed();      // AES-GCM on flash (SecretBox)
@@ -472,7 +472,7 @@ static bool handleSet(const String& field, const String& value) {
         else if (field == "micgain") d.micGain = (uint8_t)constrain(value.toInt(), 0, 7);
         else if (field == "finance") d.financeTools = on;
         else if (field == "wakethreshold") d.wakeThreshold = (uint8_t)constrain(value.toFloat() < 1.0f ? value.toFloat() * 100.0f + 0.5f : value.toFloat(), 40, 99);
-        else if (field == "wakeword") d.wakeWord = value == "jarvis" || value == "0" ? 0 : 1;  // applied at boot
+        else if (field == "wakeword") d.wakeWord = value == "jarvis" || value == "0" ? 0 : value == "both" || value == "2" ? 2 : 1;  // at boot
         else if (field == "wake") d.wakeMode = value == "level" ? 0 : value == "word" ? 1 : value == "both" ? 2 : (uint8_t)constrain(value.toInt(), 0, 2);
         else if (field == "touch") d.touchMap = (uint8_t)constrain(value.toInt(), 0, 7);
     });
@@ -509,7 +509,7 @@ static void handleConsoleLine(String line) {
         Serial.println("ui tap x y | ui long x y | ui drag x0 y0 x1 y1 | ui open <menu|wifi|apikey|agent|user|profile|voice|info>");
         Serial.println("ui type <text> | ui back | ui home");
         Serial.println("set <ssid|pass|key|agent|user|voice|profile|personality|gender|eye|model|thinking|textmodel|");
-        Serial.println("     volume|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|wake(level|word|both)|wakeword(hiesp|jarvis, reboot)|wakethreshold(0.40-0.99)> <value>");
+        Serial.println("     volume|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|wake(level|word|both)|wakeword(hiesp|jarvis|both, reboot)|wakethreshold(0.40-0.99)> <value>");
         Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
         Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min|searchonly> | searchretry");
         Serial.println("time <unix-epoch> (set clock offline) | mem (internal RAM + task stacks) | wakeword [threshold x | test [sec]] | reboot");

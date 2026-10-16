@@ -25,7 +25,7 @@ constexpr UBaseType_t kTaskPriority = 3;
 const esp_afe_sr_iface_t* iface(const void* p) { return static_cast<const esp_afe_sr_iface_t*>(p); }
 }  // namespace
 
-bool WakeWord::begin(const char* prefer, bool ownAec) {
+bool WakeWord::begin(const char* prefer, const char* second, bool ownAec) {
     if (_afe) return true;  // one AFE only: a second one took another ~30 KB of internal RAM (Wi-Fi then failed)
     srmodel_list_t* models = esp_srmodel_init("model");
     if (!models || models->num <= 0) {
@@ -35,6 +35,10 @@ bool WakeWord::begin(const char* prefer, bool ownAec) {
     // the chosen word (Settings::wakeWord); any other WakeNet in the partition still works
     char* name = esp_srmodel_filter(models, ESP_WN_PREFIX, prefer);
     if (!name) name = esp_srmodel_filter(models, ESP_WN_PREFIX, nullptr);
+    // an optional second word, both listened for at once (~16 KB more internal RAM, more CPU, more chances
+    // for the radio to sound like one of them)
+    char* name2 = second ? esp_srmodel_filter(models, ESP_WN_PREFIX, second) : nullptr;
+    if (name2 && !strcmp(name2, name)) name2 = nullptr;
     if (!name) {
         Serial.println("[Wake] The model partition has no WakeNet - wake word off");
         return false;
@@ -48,7 +52,7 @@ bool WakeWord::begin(const char* prefer, bool ownAec) {
     if (!cfg) return false;
     cfg->wakenet_init = true;
     cfg->wakenet_model_name = name;
-    cfg->wakenet_model_name_2 = nullptr;
+    cfg->wakenet_model_name_2 = name2;
     cfg->aec_init = !ownAec;  // the speaker (radio, the assistant) out of the mic before WakeNet
     cfg->se_init = false;    // one mic: no beamforming
     cfg->ns_init = false;    // WakeNet is trained on unprocessed speech; NS costs CPU
@@ -87,7 +91,9 @@ bool WakeWord::begin(const char* prefer, bool ownAec) {
         h->destroy(afe);
         return false;
     }
-    strncpy(_model, name, sizeof(_model) - 1);
+    strncpy(_names[0], name, sizeof(_names[0]) - 1);
+    if (name2) strncpy(_names[1], name2, sizeof(_names[1]) - 1);
+    snprintf(_model, sizeof(_model), name2 ? "%s+%s" : "%s", _names[0], _names[1]);
     _iface = h;
     _afe = afe;
     // both tasks only block (in the AFE / the queue) and never touch the flash: PSRAM stacks
@@ -139,6 +145,7 @@ float WakeWord::takePeakDb() {
 bool WakeWord::setThreshold(float t) {
     if (!_afe || t < 0.4f || t > 0.9999f) return false;
     if (iface(_iface)->set_wakenet_threshold(_afe, 1, t) != 1) return false;
+    if (_names[1][0]) iface(_iface)->set_wakenet_threshold(_afe, 2, t);  // the same sensitivity for both words
     _threshold = t;
     return true;
 }
@@ -190,7 +197,9 @@ void WakeWord::fetchLoop() {
             _flush = true;
             _detections = _detections + 1;
             _detected = true;
-            Serial.printf("[Wake] heard \"%s\" (word %d, %.0f dBFS)\n", _model, r->wake_word_index, r->data_volume);
+            const int m = r->wakenet_model_index == 2 && _names[1][0] ? 1 : 0;  // which of the two models
+            strncpy(_lastWord, _names[m], sizeof(_lastWord) - 1);
+            Serial.printf("[Wake] heard \"%s\" (word %d, %.0f dBFS)\n", _names[m], r->wake_word_index, r->data_volume);
         }
     }
 }

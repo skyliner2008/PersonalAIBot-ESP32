@@ -243,7 +243,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     };
     declare(d, b, "play_radio",
             "Play a station from the radio list (in your instructions). Name it briefly, then stay quiet.", radio, 1);
-    declare(d, b, "stop_radio", "Stop the Internet radio.");
+    declare(d, b, "stop_radio", "Turn the radio off (and close its screen).");
     declare(d, b, "mute_microphone",
             "Mic OFF after this reply. Only the screen mic button turns it back on: tell the user.");
 
