@@ -31,7 +31,8 @@ struct SettingsData {
     uint8_t eyeColor = 0;          // index in persona::kEyeColors
     uint8_t model = 0;             // LiveModel
     uint8_t thinking = 0;          // extended-thinking level: 0 low, 1 medium, 2 high
-    uint8_t volume = 70;
+    uint8_t volume = 70;           // the radio (menu, radio screen, Studio, set_volume) - the voice has aiVolume
+    uint8_t aiVolume = 80;         // the assistant's voice + tones: locked here, the radio is turned down separately
     uint8_t brightness = 80;
     uint8_t sleepMinutes = 3;      // 0 = never
     uint8_t clockMinutes = 5;      // asleep this long -> power save: clock face + dimmed screen (0 = never)

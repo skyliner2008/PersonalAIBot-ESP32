@@ -241,7 +241,7 @@ void AudioManager::outLoop() {
         for (size_t i = nv; i < n; i++) chunk[i] = 0;
 
         // radio gain ramps toward the target within the chunk (no clicks when ducking)
-        const float target = _radioTarget;
+        const float target = _radioTarget * _radioVolume;  // the duck and the radio's own volume, ramped together
         const float step = (target - _radioGain) / (float)(n ? n : 1) * 0.25f;  // ~80 ms to settle
         float radioEnergy = 0.0f;
         for (size_t i = 0; i < n; i++) {
@@ -376,7 +376,15 @@ void AudioManager::setCaptureEnabled(bool on) {
 
 bool AudioManager::setVolume(int volume) {
     _volume = volume < 0 ? 0 : (volume > 100 ? 100 : volume);
-    return _codec.setVolume(_volume);
+    const bool ok = _codec.setVolume(_volume);
+    setRadioVolume(_radioVolumeSetting);  // the radio's gain is relative to the codec volume
+    return ok;
+}
+
+void AudioManager::setRadioVolume(int volume) {
+    _radioVolumeSetting = volume < 0 ? 0 : (volume > 100 ? 100 : volume);
+    const float db = ES8311::volumeDb(_radioVolumeSetting) - ES8311::volumeDb(_volume);
+    _radioVolume = _radioVolumeSetting == 0 ? 0.0f : (db >= 0.0f ? 1.0f : powf(10.0f, db / 20.0f));
 }
 
 void AudioManager::playTone(uint16_t freqHz, uint16_t ms, int16_t amplitude) {

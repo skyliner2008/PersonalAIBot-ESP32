@@ -123,8 +123,16 @@ public:
     uint32_t inBlocks() const { return _inBlocks; }
 
     // ---- Control ----
+    /** Codec (speaker) volume 0-100: the assistant's voice and tones play at this level. */
     bool setVolume(int volume);
     int volume() const { return _volume; }
+    /**
+     * Radio level 0-100 on the same scale, applied digitally in the mix (0.5 dB a step like the codec,
+     * relative to the codec volume, never above it): turning the radio down leaves the voice as it is.
+     * The echo reference is taken after the mix, so echo removal follows it by itself.
+     */
+    void setRadioVolume(int volume);
+    int radioVolume() const { return _radioVolumeSetting; }
     bool setMicGain(uint8_t step) {
         _micGain = step > 7 ? 7 : step;
         return _codec.setMicGain(_micGain);
@@ -150,6 +158,8 @@ private:
     RingBuffer _radio;
     volatile float _radioTarget = 1.0f;
     float _radioGain = 1.0f;
+    volatile float _radioVolume = 1.0f;  // setRadioVolume(): linear gain on the radio, applied with the duck
+    int _radioVolumeSetting = 100;
     volatile bool _radioOn = false;
     volatile float _radioLevel = 0.0f;
     Downsampler24to16 _resampler;

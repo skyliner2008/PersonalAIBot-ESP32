@@ -472,8 +472,8 @@ void buildMenu(ListScreen& l) {
         l.addSubmenu("ระดับการคิด", thinkingLevelId(s.thinking), openThinking);
     }
     l.addSubmenu("วิทยุออนไลน์", gRadio.active() ? "กำลังเล่น" : "เลือกสถานี", []() { gUi.push(&gRadioUi); });
-    l.addSubmenu("ระดับเสียง", String(s.volume) + "%", []() {
-        openNumberPicker("ระดับเสียง", 0, 100, 10, gSettings.get().volume / 10 * 10, "%",
+    l.addSubmenu("เสียงวิทยุ", String(s.volume) + "%", []() {  // the voice stays at aiVolume
+        openNumberPicker("เสียงวิทยุ", 0, 100, 10, gSettings.get().volume / 10 * 10, "%",
                          [](int v) { gSettings.update([&](SettingsData& d) { d.volume = (uint8_t)v; }); });
     });
     l.addSubmenu("ความสว่างจอ", String(s.brightness) + "%", []() {

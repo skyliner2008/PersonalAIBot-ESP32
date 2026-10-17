@@ -944,7 +944,10 @@ class Studio:
         self.volume_var = tk.IntVar(value=70)
         self.bright_var = tk.IntVar(value=80)
         self.sleep_var = tk.IntVar(value=3)
-        self._scale(df, "ความดังลำโพง", self.volume_var, 0, 100, lambda: self.send(f"set volume {self.volume_var.get()}"))
+        self._scale(df, "ความดังวิทยุ", self.volume_var, 0, 100, lambda: self.send(f"set volume {self.volume_var.get()}"))
+        # the assistant's voice is locked at its own level (default 80): turning the radio down leaves it alone
+        self.aivol_var = tk.IntVar(value=80)
+        self._scale(df, "ความดังเสียง AI", self.aivol_var, 10, 100, lambda: self.send(f"set aivolume {self.aivol_var.get()}"))
         self._scale(df, "ความสว่างจอ", self.bright_var, 5, 100, lambda: self.send(f"set brightness {self.bright_var.get()}"))
         self.micgain_var = tk.IntVar(value=5)
         self._scale(df, "ความไวไมค์ (0-7)", self.micgain_var, 0, 7, lambda: self.send(f"set micgain {self.micgain_var.get()}"))
@@ -1067,6 +1070,7 @@ class Studio:
         self.search_var.set(bool(c.get("search", False)))
         self.consolidate_var.set(bool(c.get("consolidate", True)))
         self.volume_var.set(int(c.get("volume", 70)))
+        self.aivol_var.set(int(c.get("aivolume", 80)))
         self.bright_var.set(int(c.get("brightness", 80)))
         self.micgain_var.set(int(c.get("micgain", 5)))
         self._set_combo(self.wake_box, int(c.get("wake", 0)))
@@ -1123,6 +1127,7 @@ class Studio:
         v["search"] = "1" if self.search_var.get() else "0"
         v["consolidate"] = "1" if self.consolidate_var.get() else "0"
         v["volume"] = str(self.volume_var.get())
+        v["aivolume"] = str(self.aivol_var.get())
         v["brightness"] = str(self.bright_var.get())
         v["micgain"] = str(self.micgain_var.get())
         v["wake"] = str(max(0, self.wake_box.current()))

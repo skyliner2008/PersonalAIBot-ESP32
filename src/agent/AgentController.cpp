@@ -185,7 +185,9 @@ void AgentController::applySettings(bool initial) {
                                 n.thinking != _cfg.thinking || n.googleSearch != _cfg.googleSearch ||
                                 n.financeTools != _cfg.financeTools;
 
-    if (initial || n.volume != _cfg.volume) _audio->setVolume(n.volume);
+    // the voice at aiVolume (codec), the radio on its own (digital, never louder than the voice)
+    if (initial || n.aiVolume != _cfg.aiVolume) _audio->setVolume(n.aiVolume);
+    if (initial || n.volume != _cfg.volume) _audio->setRadioVolume(n.volume);
     if (initial || n.micGain != _cfg.micGain) _audio->setMicGain(n.micGain);
     if (!initial && n.wakeMode != 0 && _cfg.wakeMode == 0) startWakeWord(_wakeWord, n.wakeWord);
     if (_wakeWord.ready() && (initial || n.wakeThreshold != _cfg.wakeThreshold || (n.wakeMode != 0 && _cfg.wakeMode == 0))) {

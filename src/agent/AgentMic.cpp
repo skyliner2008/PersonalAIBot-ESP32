@@ -134,7 +134,11 @@ void AgentController::bargeInNow(uint32_t now) {
     _dropAudio = true;
     _dropSince = now;
     flushAgentTurn(true);
-    _followUp.arm(now, AGENT_FOLLOWUP_MS);  // stream without waiting for an onset
+    // like a wake by voice: the buffered word + whatever follows go out as the user's turn
+    _wakeBuffering = true;
+    _wakeHeard = true;
+    _wakeVoiced = AGENT_WAKE_CHUNKS;
+    _followUp.arm(now, AGENT_FOLLOWUP_MS);  // and keep streaming without waiting for an onset
     noteActivity();
     _face->setHint("หยุดพูดแล้ว ฟังอยู่", 1500);
 }
@@ -273,6 +277,10 @@ void AgentController::handleAudioInput() {
         // (forced while settling), where the AFE's own AEC took about a minute of radio (T064)
         if (feedWord && _wakeWord.ownAec()) _wakeWord.feed(chunk, nullptr, kChunk);
         if (bargeIn) {  // the AI is talking: only the wake word gets this (no VAD, no noise floor, nothing to Gemini)
+            // ...but keep the last 1.5 s (echo removed): WakeNet confirms the word ~0.5-1 s after it ends, and
+            // "Hi ESP, ราคาทอง..." in one breath lost the whole command (T067). After a barge-in it all goes out.
+            _preroll.push(chunk, kChunk);
+            _preroll.trimTo(_wakeBuffering ? kWakeBufferSamples : AUDIO_UPLOAD_RATE * 3 / 2);
             if (_wakeWord.takeDetection()) {
                 // the AI's own voice: TTS-trained "Jarvis" caught the leftover echo of the AI saying it (-63 dBFS,
                 // and it says its name "จาวิส" often) - with two words only "Hi ESP" interrupts, and only a

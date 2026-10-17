@@ -289,7 +289,8 @@ static void printConfig() {
     d["model"] = s.model;
     d["thinking"] = s.thinking;
     d["textmodel"] = s.textModel;
-    d["volume"] = s.volume;
+    d["volume"] = s.volume;      // the radio
+    d["aivolume"] = s.aiVolume;  // the voice (locked)
     d["brightness"] = s.brightness;
     d["sleep"] = s.sleepMinutes;
     d["clock"] = s.clockMinutes;
@@ -419,7 +420,7 @@ static int indexOrFind(const String& v, int (*find)(const char*)) {
 static bool handleSet(const String& field, const String& value) {
     static const char* const kFields[] = {"ssid", "pass", "key", "agent", "user", "voice", "profile",
                                           "personality", "gender", "eye", "model", "thinking", "textmodel",
-                                          "volume", "brightness", "sleep", "clock", "dimlevel", "rotation", "invert", "consolidate",
+                                          "volume", "aivolume", "brightness", "sleep", "clock", "dimlevel", "rotation", "invert", "consolidate",
                                           "search", "micgain", "touch", "finance", "wake", "wakeword", "wakethreshold"};
     bool known = false;
     for (const char* f : kFields) known |= field == f;
@@ -461,6 +462,7 @@ static bool handleSet(const String& field, const String& value) {
         else if (field == "thinking") d.thinking = (uint8_t)constrain(value.toInt(), 0, 2);
         else if (field == "textmodel") d.textModel = (uint8_t)constrain(value.toInt(), 0, 1);
         else if (field == "volume") d.volume = (uint8_t)constrain(value.toInt(), 0, 100);
+        else if (field == "aivolume") d.aiVolume = (uint8_t)constrain(value.toInt(), 10, 100);
         else if (field == "brightness") d.brightness = (uint8_t)constrain(value.toInt(), 5, 100);
         else if (field == "sleep") d.sleepMinutes = (uint8_t)constrain(value.toInt(), 0, 120);
         else if (field == "clock") d.clockMinutes = (uint8_t)constrain(value.toInt(), 0, 120);
@@ -509,7 +511,7 @@ static void handleConsoleLine(String line) {
         Serial.println("ui tap x y | ui long x y | ui drag x0 y0 x1 y1 | ui open <menu|wifi|apikey|agent|user|profile|voice|info>");
         Serial.println("ui type <text> | ui back | ui home");
         Serial.println("set <ssid|pass|key|agent|user|voice|profile|personality|gender|eye|model|thinking|textmodel|");
-        Serial.println("     volume|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|wake(level|word|both)|wakeword(hiesp|jarvis|both, reboot)|wakethreshold(0.40-0.99)> <value>");
+        Serial.println("     volume(radio)|aivolume(voice)|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|wake(level|word|both)|wakeword(hiesp|jarvis|both, reboot)|wakethreshold(0.40-0.99)> <value>");
         Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
         Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min|searchonly> | searchretry");
         Serial.println("time <unix-epoch> (set clock offline) | mem (internal RAM + task stacks) | wakeword [threshold x | test [sec]] | reboot");

@@ -154,10 +154,11 @@ bool AgentController::setLedColor(const char* color) {
     return false;
 }
 
+// set_volume: the radio only - the voice stays at aiVolume (a confirmation tone would play at the voice's
+// level, not the radio's: none; the radio itself is the feedback)
 int AgentController::setVolume(int level) {
     gSettings.update([&](SettingsData& d) { d.volume = (uint8_t)level; });
-    _audio->setVolume(level);
-    _audio->playTone(660, 120, 4000);  // audible confirmation at the new level
+    _audio->setRadioVolume(level);
     return level;
 }
 
@@ -245,7 +246,7 @@ void AgentController::handleRadio(uint32_t now, bool busy) {
     }
 }
 
-int AgentController::volume() { return _audio->volume(); }
+int AgentController::volume() { return _audio->radioVolume(); }
 int AgentController::brightness() { return gSettings.get().brightness; }
 int AgentController::micGain() { return gSettings.get().micGain; }
 

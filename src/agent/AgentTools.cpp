@@ -218,7 +218,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
         {"level", "INTEGER", "Absolute 0-100.", false, nullptr},
         {"change", "INTEGER", "Relative, e.g. +10 louder / -10 quieter.", false, nullptr},
     };
-    declare(d, b, "set_volume", "Speaker volume: set a level or turn it up/down.", vol, 2);
+    declare(d, b, "set_volume", "Radio volume: set a level or turn it up/down.", vol, 2);
     static const Param bri[] = {
         {"level", "INTEGER", "Absolute 5-100.", false, nullptr},
         {"change", "INTEGER", "Relative, e.g. +15 / -15.", false, nullptr},

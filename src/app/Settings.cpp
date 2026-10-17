@@ -191,6 +191,8 @@ void Settings::load() {
     d.thinking = p.getUChar("think", d.thinking);
     const bool hasVolume = p.isKey("vol");
     d.volume = p.getUChar("vol", d.volume);
+    d.aiVolume = p.getUChar("aivol", d.aiVolume);
+    if (d.aiVolume < 10 || d.aiVolume > 100) d.aiVolume = 80;
     d.brightness = p.getUChar("bri", d.brightness);
     d.sleepMinutes = p.getUChar("sleep", d.sleepMinutes);
     d.clockMinutes = p.getUChar("clockmin", d.clockMinutes);
@@ -331,6 +333,7 @@ void Settings::save(const SettingsData& d) {
     p.putUChar("model", d.model);
     p.putUChar("think", d.thinking);
     p.putUChar("vol", d.volume);
+    p.putUChar("aivol", d.aiVolume);
     p.putUChar("bri", d.brightness);
     p.putUChar("sleep", d.sleepMinutes);
     p.putUChar("clockmin", d.clockMinutes);
