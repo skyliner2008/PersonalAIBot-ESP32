@@ -15,7 +15,7 @@ status: done
 
 | Library | Version (pinned) | ใช้ทำอะไร |
 |---|---|---|
-| **Platform** pioarduino `platform-espressif32` | 55.03.312 | Arduino-ESP32 **3.3.12** (ESP-IDF 5.5.5) — branch `feature/esp-sr` (เฟส 1 ของ [[14-AEC-WakeWord-Plan]]); `main` ยังเป็น `espressif32 @ 7.1.3` = Arduino 2.0.17 / IDF 4.4 |
+| **Platform** pioarduino `platform-espressif32` | 55.03.312 | Arduino-ESP32 **3.3.12** (ESP-IDF 5.5.5) — ตั้งแต่ **v4.0.0** ([[14-AEC-WakeWord-Plan]]); v3.x ใช้ `espressif32 @ 7.1.3` = Arduino 2.0.17 / IDF 4.4 |
 | `lovyan03/LovyanGFX` | 1.2.33 | จอ ILI9341V, sprite, ฟอนต์ VLW ภาษาไทย |
 | `bblanchon/ArduinoJson` | 7.4.3 | JSON ของ Gemini (allocator ใน PSRAM), ไฟล์ความจำ JSONL |
 | `adafruit/Adafruit NeoPixel` | 1.15.5 | WS2812 LED (GPIO 42) |
@@ -38,7 +38,7 @@ status: done
 
 > `driver/i2s.h` ใน IDF 4.4 ยังเป็น API หลัก (ไม่มี deprecation warning); ถ้าย้ายไป Arduino-ESP32 3.x ควรเปลี่ยนเป็น `ESP_I2S`/`i2s_std`
 >
-> **บน IDF 5.5 (branch `feature/esp-sr`):** `driver/i2s.h` ยังใช้ได้ (มี warning deprecated) · mbedtls 3: `mbedtls_sha256_*_ret` → `mbedtls_sha256_*` ·
+> **บน IDF 5.5 (v4.0.0):** `driver/i2s.h` ยังใช้ได้ (มี warning deprecated) · mbedtls 3: `mbedtls_sha256_*_ret` → `mbedtls_sha256_*` ·
 > `esp_efuse_mac_get_default` ย้ายไป `<esp_mac.h>` · RAM ภายในหายไป ~35 KB → stack ของ `geminiIO` / `textModel` / `radio` อยู่ใน PSRAM
 > (`system/PsramTask.h`, task ที่ไม่เขียน flash เอง) · package `framework-arduinoespressif32` ของ pioarduino **ทับ**ของ 2.0.17 — สลับกลับ `main` ต้องดาวน์โหลดใหม่ (~11 นาที)
 
@@ -49,14 +49,14 @@ status: done
 ```ini
 [env:esp32s3]
 platform = https://github.com/pioarduino/platform-espressif32/releases/download/55.03.312/platform-espressif32.zip
-; main: platform = espressif32 @ 7.1.3
+; v3.x: platform = espressif32 @ 7.1.3
 board = esp32-s3-devkitc-1
 framework = arduino
 board_build.flash_mode = qio
 board_build.flash_size = 16MB
 board_build.arduino.memory_type = qio_opi
 board_upload.flash_size = 16MB
-board_build.partitions = default_16MB.csv
+board_build.partitions = partitions_sr.csv
 board_build.filesystem = littlefs
 build_unflags = -std=gnu++11
 build_flags =
@@ -73,12 +73,15 @@ lib_deps =
     adafruit/Adafruit NeoPixel @ 1.15.5
 ```
 
-### Partition table: `default_16MB.csv`
+### Partition table: `partitions_sr.csv` (v4.0.0, เดิม `default_16MB.csv`)
 | Partition | ขนาด | หมายเหตุ |
 |---|---|---|
-| nvs | 20 KB | volume (Preferences) |
-| app0 / app1 | 6.25 MB × 2 | พร้อม OTA; firmware ใช้ 1.24 MB (18.9%) |
-| spiffs | ~3.4 MB | ใช้เป็น **LittleFS** สำหรับความจำเมื่อไม่มี SD |
+| nvs / otadata | 20 KB / 8 KB | ที่อยู่เดิม: ค่าที่ตั้งไว้ไม่หายตอนเปลี่ยนตาราง |
+| app0 / app1 | 5 MB × 2 | OTA; firmware 3.4 MB (ESP-SR + esp-dl) |
+| model | 3.25 MB | โมเดลคำปลุก ESP-SR (`srmodels.bin`, แฟลชโดย `tools/pio_sr_model.py` / อยู่ในไฟล์ factory) |
+| spiffs | 2.6 MB | ใช้เป็น **LittleFS** สำหรับความจำเมื่อไม่มี SD |
+
+บอร์ด v3.x ที่อัปเดตผ่าน Wi-Fi ยังใช้ตารางเดิม (ไม่มี `model` → ปลุกด้วยระดับเสียง) จนกว่าจะแฟลชไฟล์ factory ผ่าน USB
 
 (เดิม `huge_app.csv` ใช้ได้แค่ 4 MB จาก 16 MB และไม่มี OTA)
 

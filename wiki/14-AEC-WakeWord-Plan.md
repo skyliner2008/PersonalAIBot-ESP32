@@ -81,7 +81,8 @@ status: in-progress
    · กันขัดจังหวะตัวเอง: มี 2 คำ = แทรกได้เฉพาะ "Hi ESP" (Jarvis โมเดล TTS จับเศษเสียงสะท้อนของ AI ที่ −63 dBFS) + ต้องดัง ≥ −50 dBFS
    (`AGENT_BARGE_IN_WORD`, `AGENT_BARGE_IN_MIN_DBFS`) · ทดสอบ: AI อ่านข้อความที่มี "Hi ESP"/"Jarvis" 6 ครั้ง + นิทาน 30 วิ = ไม่หยุดตัวเอง
    แผนเดิม (3B, แทรกด้วยเสียงอะไรก็ได้): ส่งเสียงหลัง AEC ระหว่าง AI พูด (gate ด้วย VAD ของ AFE) · ทดสอบว่า Gemini ไม่ขัดตัวเองจากเสียงสะท้อนที่เหลือ · ตัวเลือกเปิด/ปิดได้
-5. **เฟส 4 — release 4.0.0:** factory bin (แฟลช USB ครั้งเดียว เพราะ partition เปลี่ยน) · OTA ตามปกติหลังจากนั้น · wiki/README
+5. **เฟส 4 — release 4.0.0 (2026-10-17):** factory bin รวม `srmodels.bin` ที่ partition `model` (`make_release.py`) · แฟลช USB ครั้งเดียว เพราะ partition เปลี่ยน
+   · บอร์ด v3.x อัปเดตผ่าน Wi-Fi ได้ (app 3.4 MB ลง slot 6.25 MB) แต่ไม่มี `model` = ปลุกด้วยระดับเสียง · OTA ตามปกติหลังจากนั้น · wiki/README
 
 ## ความเสี่ยง
 > **งบ RAM ภายในล่าสุด (v3.5.1, ไม่มีวิทยุ):** ว่าง 90 KB, ต่ำสุด 76 KB (v3.4.x: 102 / 94) — ส่วนต่างคือ stack 10 KB ของ task `ota` (v3.5.0) + buffer คู่ไมค์/อ้างอิง ~6 KB (v3.5.1)

@@ -72,8 +72,8 @@
 
 ## 3. เฟิร์มแวร์และหน่วยความจำ
 
-- Platform pioarduino `55.03.312` (Arduino-ESP32 3.3.12 / IDF 5.5.5, branch `feature/esp-sr` — `main`: `espressif32 @ 7.1.3` = Arduino 2.0.17 / IDF 4.4), C++17 · task ที่ไม่เขียน flash (`geminiIO`, `textModel`, `radio`) มี stack ใน PSRAM
-- Partition `default_16MB.csv`: app 6.25 MB × 2 (OTA) + LittleFS 3.4 MB · v3.5.0: OTA จาก GitHub Releases (`OtaUpdater`, ตรวจ sha256/header/marker, ยืนยันหลัง 60 วิ ไม่งั้น bootloader rollback — wiki 13)
+- Platform pioarduino `55.03.312` (Arduino-ESP32 3.3.12 / IDF 5.5.5 ตั้งแต่ v4.0.0 — v3.x: `espressif32 @ 7.1.3` = Arduino 2.0.17 / IDF 4.4), C++17 · task ที่ไม่เขียน flash (`geminiIO`, `textModel`, `radio`) มี stack ใน PSRAM
+- Partition `partitions_sr.csv` (v4.0.0): app 5 MB × 2 (OTA) + `model` 3.25 MB (คำปลุก ESP-SR) + LittleFS 2.6 MB (v3.x: `default_16MB.csv`) · v3.5.0: OTA จาก GitHub Releases (`OtaUpdater`, ตรวจ sha256/header/marker, ยืนยันหลัง 60 วิ ไม่งั้น bootloader rollback — wiki 13)
 - Firmware 1.24 MB (18.9%), static RAM 17.8%
 
 | ส่วน | ที่อยู่ | ขนาด |

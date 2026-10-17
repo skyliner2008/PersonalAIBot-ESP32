@@ -82,6 +82,12 @@ def notes(ver: str) -> str:
 > settings and memory: Settings → อัปเดตเฟิร์มแวร์ (it downloads the `-app.bin` below).
 > ไฟล์ factory ล้างค่าตั้งค่าเดิม — บอร์ดที่เป็น v3.5.0 ขึ้นไปอัปเดตเองผ่านเมนู "อัปเดตเฟิร์มแวร์" ได้ ค่าตั้งค่าและความจำอยู่ครบ
 >
+> **v4.0.0 and later — offline wake word ("Hi ESP" / "Jarvis"):** the flash layout gained a `model` partition. A board
+> updated over Wi-Fi from v3.x works as before but wakes on loudness only, until the factory image is flashed once
+> over USB (an update over the air cannot change partitions). Memory kept on an SD card is not touched.
+> **v4.0.0 ขึ้นไป — คำปลุกออฟไลน์:** มี partition `model` ใหม่ บอร์ดที่อัปเดตผ่าน Wi-Fi จาก v3.x ใช้งานได้ตามเดิมแต่ปลุกด้วย
+> ระดับเสียงเท่านั้น จนกว่าจะแฟลชไฟล์ factory ผ่าน USB หนึ่งครั้ง (อัปเดตผ่าน Wi-Fi เปลี่ยน partition ไม่ได้) ความจำบนการ์ด SD ไม่หาย
+>
 > No passwords or API keys are included in this image. / ไฟล์นี้ไม่มีรหัสหรือ API key ใดๆ
 """
 

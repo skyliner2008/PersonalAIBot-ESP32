@@ -8,7 +8,8 @@ Build a single "factory" firmware image for a GitHub release.
 The app image (the application alone, for the next OTA slot) is what a board downloads when it
 updates itself (src/system/OtaUpdater.cpp): its settings and memory stay.
 
-The image (bootloader + partition table + boot_app0 + app, merged at 0x0) can be flashed by anyone
+The image (bootloader + partition table + boot_app0 + app + the ESP-SR wake word models in the "model"
+partition, merged at 0x0) can be flashed by anyone
 without PlatformIO, e.g. with https://espressif.github.io/esptool-js/ (offset 0x0) or
     esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v<ver>-factory.bin
 
@@ -18,6 +19,7 @@ image) and scans the result for API-key-like strings. Wi-Fi / API key are entere
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import re
 import shutil
@@ -52,6 +54,29 @@ def check_secrets_header() -> None:
                      "Rename/remove include/secrets.h (or restore the placeholders) and run again.")
 
 
+def sr_model() -> list[str]:
+    """[offset, path] of the ESP-SR model pack for the "model" partition (wiki 14), or [] without one.
+    Same choice as tools/pio_sr_model.py: models/srmodels.bin, else the pack that comes with the framework."""
+    ini = (ROOT / "platformio.ini").read_text(encoding="utf-8")
+    m = re.search(r"^board_build\.partitions\s*=\s*(\S+)", ini, re.M)
+    table = ROOT / m.group(1) if m else None
+    if not table or not table.exists():
+        return []
+    for row in csv.reader(table.read_text(encoding="utf-8").splitlines()):
+        cells = [c.strip() for c in row]
+        if len(cells) >= 5 and cells[0] == "model":
+            pack = ROOT / "models" / "srmodels.bin"
+            if not pack.exists():
+                pack = Path.home() / ".platformio/packages/framework-arduinoespressif32-libs/esp32s3/esp_sr/srmodels.bin"
+            if not pack.exists():
+                sys.exit("The partition table has a model partition but no srmodels.bin was found (wiki 14).")
+            if pack.stat().st_size > int(cells[4], 0):
+                sys.exit(f"{pack} does not fit the model partition")
+            print(f"model partition {cells[3]}: {pack.name} ({pack.stat().st_size // 1024} KB, {pack.parent.name})")
+            return [cells[3], str(pack)]
+    return []
+
+
 def version() -> str:
     text = (ROOT / "src" / "app" / "AppConfig.h").read_text(encoding="utf-8")
     return re.search(r'FIRMWARE_VERSION\s+"([^"]+)"', text).group(1)
@@ -64,13 +89,16 @@ def main() -> None:
 
     boot_app0 = Path.home() / ".platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"
     esptool = Path.home() / ".platformio/packages/tool-esptoolpy/esptool.py"
-    esptool_cmd = [sys.executable, str(esptool)] if esptool.exists() else [sys.executable, "-m", "esptool"]
+    # esptool 5 (pioarduino) needs packages (rich_click, ...) that only PlatformIO's own Python has
+    penv = next((p for p in (Path.home() / ".platformio/penv/Scripts/python.exe",
+                             Path.home() / ".platformio/penv/bin/python") if p.exists()), Path(sys.executable))
+    esptool_cmd = [str(penv), str(esptool)] if esptool.exists() else [str(penv), "-m", "esptool"]
     DIST.mkdir(exist_ok=True)
     out = DIST / f"PersonalAIBot-ESP32-v{version()}-factory.bin"
-    subprocess.run(esptool_cmd + ["--chip", "esp32s3", "merge_bin", "-o", str(out),
-                    "--flash_mode", "dio", "--flash_freq", "80m", "--flash_size", "16MB",
+    subprocess.run(esptool_cmd + ["--chip", "esp32s3", "merge-bin", "-o", str(out),
+                    "--flash-mode", "dio", "--flash-freq", "80m", "--flash-size", "16MB",
                     "0x0", str(BUILD / "bootloader.bin"), "0x8000", str(BUILD / "partitions.bin"),
-                    "0xe000", str(boot_app0), "0x10000", str(BUILD / "firmware.bin")], check=True)
+                    "0xe000", str(boot_app0), "0x10000", str(BUILD / "firmware.bin")] + sr_model(), check=True)
 
     app = DIST / f"PersonalAIBot-ESP32-v{version()}-app.bin"  # over-the-air updates (keeps settings)
     shutil.copyfile(BUILD / "firmware.bin", app)
