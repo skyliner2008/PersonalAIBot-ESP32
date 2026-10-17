@@ -232,7 +232,7 @@ Portable modules (memory, tools, scheduler, tasks, personas, model fallback, cal
 host_tests\run_tests.bat
 ```
 
-40 suites · 1,667 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+42 suites · 1,744 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
 
 ## 📁 Project layout
@@ -287,6 +287,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 - **Fork & build:** `pio run` builds from a clean clone — no `secrets.h` needed. Settings live in NVS (`src/app/Settings.*`), so your own keys never touch the source tree.
 - **Add a tool:** declare it in `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`); network tools go in `src/agent/WebToolsExtra.cpp` and draw a `CardData` (see [wiki/11](wiki/11-Data-Tools-and-Cards.md)).
 - **Test without a board:** `host_tests\run_tests.bat`; on a board, every tool can be called from the Studio's 🧰 tab or the serial console (`tool <name> {json}`).
+- **See the Live API conversation:** `trace on` on the serial console prints one `[Trace]` line per server event (transcripts, tool calls, `generationComplete` / `turnComplete`; audio chunks only counted) and per JSON message the board sends (`trace off` to stop, not saved) — how a doubled answer after tool calls was tracked down ([T071](wiki/07-Troubleshooting-Log.md)).
 - **Publishing a release:** bump `FIRMWARE_VERSION` in `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py`. The script builds the factory image (`tools/make_release.py`), creates the GitHub Release as a draft, uploads the factory image and the OTA `-app.bin` (each with a `.sha256`), publishes it and re-downloads it to check the sha256. The host tests run before anything is published (`--skip-tests` only on a PC without a compiler). Releases here are **immutable**: a published version can never get new files or reuse its tag, so every release needs a new version number. (`--dry-run` only checks.)
 - **CI:** [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml) does the same on GitHub Actions but is manual-only for now (*Actions → Firmware → Run workflow*); the release job waits for the host-tests job. `tools/make_release.py` refuses to run while `include/secrets.h` holds real values and scans the image for API-key-like strings.
 - **Docs:** the `wiki/` folder is an Obsidian vault; please add problems you solve to [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md).

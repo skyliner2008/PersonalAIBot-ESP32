@@ -16,8 +16,9 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T071 | [[#T071 ถามอากาศแล้ว AI ตอบข้อความเดิม 2 รอบ (3.8 Live) — scheduling SILENT อยู่ผิดที่ใน functionResponse]] | AI/Tools | ✅ Fixed — ทดสอบบนบอร์ด: ตอบครั้งเดียว 3/3 รอบ |
 | T070 | [[#T070 สถานี AAC ทำให้บอร์ดรีบูต (task watchdog) — Helix AAC วนไม่รู้จบใน DecodeSectionData + ตรวจ/เพิ่มสถานีจาก Thailand.json]] | Radio | ✅ Fixed — ทดสอบบนบอร์ด: สถานีเดิมเล่นต่อเนื่อง ไม่รีบูต |
-| T069 | [[#T069 รีวิวรอบ 3 — โหมดคำปลุกทำให้ไม่ฟังต่อหลัง AI ตอบ + "AI ไม่ตอบ" หลอก, frame สงวนล้น stack, อุปกรณ์ชื่อกำกวม]] | Audio/Wake/Devices | ✅ Fixed — ทดสอบบนบอร์ด: ฟังต่อ + แคชอากาศผ่าน (พบ AI ตอบซ้ำหลัง web tool: มีอยู่ก่อน) |
+| T069 | [[#T069 รีวิวรอบ 3 — โหมดคำปลุกทำให้ไม่ฟังต่อหลัง AI ตอบ + "AI ไม่ตอบ" หลอก, frame สงวนล้น stack, อุปกรณ์ชื่อกำกวม]] | Audio/Wake/Devices | ✅ Fixed — ทดสอบบนบอร์ด: ฟังต่อ + แคชอากาศผ่าน (AI ตอบซ้ำหลัง web tool → แก้ใน T071) |
 | T068 | [[#T068 แยกความดังเสียง AI กับวิทยุ — AI ล็อก 80%, ปรับเสียง = วิทยุอย่างเดียว]] | Audio | ✅ Done |
 | T067 | [[#T067 เฟส 3A — พูดแทรก AI ด้วยคำปลุก (และกัน AI ขัดจังหวะตัวเอง)]] | Wake/Audio | ✅ ผู้ใช้ทดสอบพูดแทรกได้, AI ไม่ขัดตัวเอง |
 | T066 | [[#T066 ใช้ 2 คำพร้อมกัน + เรียกคำปลุกแล้ว AI "พักหน้าจอ" ซ้ำทุกครั้ง]] | Wake/AI | ✅ Fixed (ตื่น = session ใหม่, agent priority 5, ปิดวิทยุปิดหน้าจอ) + ตัวเลือก 2 คำ |
@@ -121,6 +122,35 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T071: ถามอากาศแล้ว AI ตอบข้อความเดิม 2 รอบ (3.8 Live) — scheduling SILENT อยู่ผิดที่ใน functionResponse
+
+**วันที่:** 2026-10-18 · พบระหว่างทดสอบ T069: ถามอากาศ → `turnComplete` 2 ครั้งห่างกัน ~6–8 วิ ข้อความเดียวกัน — ปิดไมค์ (`mute`) ก็ยังซ้ำ
+- **วิธีหา:** เพิ่มคำสั่ง serial **`trace on`** (`GeminiLiveClient::traceMessage`) — 1 บรรทัดต่อข้อความจากเซิร์ฟเวอร์ (transcript, toolCall + id,
+  `generationComplete`/`turnComplete`; ก้อนเสียงแค่นับ) และทุก JSON ที่ส่ง (`[Trace] tx ...`)
+- **log ก่อนแก้ (3.8 Live, ไมค์ปิด, `ask อากาศที่อุดรธานี...`):**
+  ```text
+  rx toolCall[ set_expression id=call_3381157 get_weather id=fc_1261... ]      <- เรียกคู่กันใน toolCall เดียว
+  tx {"toolResponse":...{"name":"set_expression","response":{"result":{...},"scheduling":"SILENT"}}}
+  tx {"toolResponse":...get_weather...}                                         (8.3 วิต่อมา, ส่งครั้งเดียว)
+  rx ... generationComplete · turnComplete      "ตอนนี้ที่อุดรธานีมีเมฆบางส่วนค่ะ ..."
+  rx (1.4 วิต่อมา) out:"มีเมฆบางส่วนค่ะ อุณหภูมิยี่สิบสี่จุดสอง..." · turnComplete    <- รอบ 2 โดยไม่มีอะไรส่งไปเลย
+  ```
+  toolResponse ของ `get_weather` ส่ง**ครั้งเดียว** และไม่มี clientContent/เสียงไมค์ส่งไปหลังคำตอบแรก → ไม่ใช่ `ask`, ไม่ใช่ช่วงฟังต่อ, ไม่ใช่ web tool ส่งซ้ำ
+- **สาเหตุ:** บน 3.8 Live `set_expression` ประกาศเป็น `NON_BLOCKING` (ไม่ให้ขัดการพูด) และเราตอบ `scheduling: "SILENT"` — แต่ใส่ไว้**ใน `response`**
+  ตาม API reference / schema v1beta `scheduling` เป็น field ของ **FunctionResponse ข้าง `response`** ("Only applicable to NON_BLOCKING function calls … Defaults to WHEN_IDLE")
+  → ใน `response` เซิร์ฟเวอร์อ่านเป็นข้อมูลผลลัพธ์ธรรมดา แล้วใช้ค่าเริ่มต้น **WHEN_IDLE** = "add the result … and prompt to generate output without interrupting"
+  → พอคำตอบอากาศจบ (idle) ผลของ `set_expression` ที่ค้างไว้กระตุ้นให้โมเดลพูดอีกรอบ = ตอบคำถามเดิมซ้ำ
+  (ตัวอย่าง Python ในหน้า Live API tools วาง `scheduling` ไว้ใน dict ของ response — ทำให้เข้าใจผิด) · เกิดชัดตอนเรียกคู่กับ web tool เพราะ `get_weather` เป็น BLOCKING
+  ผลของ `set_expression` จึงค้างคิวรอจนคำตอบหลักจบ · 3.1 Flash Live ไม่มี async (ทดสอบแล้วตอบครั้งเดียว)
+- **แก้:** `AgentTools::responseScheduling(name, behavior)` → `fr["scheduling"] = "SILENT"` **ระดับ FunctionResponse** (เฉพาะ 3.8 Live + tool ที่ประกาศ NON_BLOCKING;
+  BLOCKING เซิร์ฟเวอร์ไม่สนใจ, Extended Thinking ไม่รองรับ scheduling) — web tool ยังเป็น BLOCKING ไม่ใส่ scheduling
+  · host test `tool_response_scheduling`: tool ที่ประกาศ NON_BLOCKING ทุกตัวได้ scheduling และมีแค่ตัวนั้น
+- **ทดสอบบนบอร์ด (COM4, 3.8 Live, ไมค์ปิด):** `ask อากาศที่สงขลา...` (ไม่เรียก set_expression) · `ask ทำหน้าดีใจหน่อย แล้วบอกอากาศที่ระยอง...` และ
+  `ask ทำหน้าตื่นเต้นแล้วบอกอากาศที่ชลบุรี...` (เรียก `set_expression` + `get_weather` คู่กันแบบเดียวกับที่ซ้ำ, tx เห็น `},"scheduling":"SILENT"}`)
+  → **`turnComplete` ครั้งเดียวทุกรอบ** เฝ้าต่อ 37–55 วิไม่มีรอบ 2 · host tests 42 ชุด / 1,744 checks ✓
+- หมายเหตุจากการทดสอบ: `get_weather` ครั้งหนึ่งใช้ **40.1 วิ** (ปกติ 8–12 วิ, ไม่มี error ใน log) — โมเดลยังรอได้ (BLOCKING) แต่ผู้ใช้รอนาน ควรดู timeout ของ Open-Meteo ต่อ
+  · ค่าบนบอร์ดตอนเริ่มทดสอบเป็น `model 2` (3.1 Flash Live) — สลับเป็น 3.8 Live ชั่วคราวแล้วตั้งกลับ 3.1 + เปิดไมค์คืนแล้ว
+
 ## T070: สถานี AAC ทำให้บอร์ดรีบูต (task watchdog) — Helix AAC วนไม่รู้จบใน DecodeSectionData + ตรวจ/เพิ่มสถานีจาก Thailand.json
 
 **วันที่:** 2026-10-18 · ผู้ใช้ให้ตรวจ `Thailand.json` (406 สถานี) แล้วเพิ่มที่ใช้ได้ลงบอร์ด (wiki 12)
@@ -169,7 +199,7 @@ PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ใ�
 - แคช: `tool get_weather {"location":"เชียงใหม่"}` 11.8 วิ → ซ้ำใน 28 วิ = 0.0 วิ (`answered from the last 28 s`) · ภูเก็ตดึงใหม่ ✅
   · AI ส่ง arguments ต่างจาก console (`location_en` + `location`) = คนละ key → ดึงใหม่ (ตามที่ออกแบบ)
 - **พบ (มีอยู่ก่อน ไม่เกี่ยวกับการแก้นี้):** ถามอากาศ (web tool + 3.8 Live) → **AI ตอบข้อความเดิม 2 รอบ** — ทดสอบแบบปิดไมค์ (`mute`, ไม่มีช่วงฟังต่อ)
-  ก็ยังซ้ำ = มาจากฝั่งเซิร์ฟเวอร์/การส่ง toolResponse แบบรอผล ยังไม่ได้แก้
+  ก็ยังซ้ำ → **แก้แล้วใน T071** (`scheduling: SILENT` ของ `set_expression` อยู่ใน `response` แทนที่จะอยู่ข้างๆ → WHEN_IDLE)
 - **RAM ภายในต่ำสุด 10 KB** (`[Health] ... min 10 KB`) ระหว่างดึงอากาศขณะ session เปิด + คำปลุก 2 คำ · ครั้งหนึ่ง TLS ต่อไม่ได้ (`start_ssl_client: connect failed`, อากาศใช้ 21.6 วิ)
   → ใช้คำปลุกคำเดียว (`set wakeword hiesp`) คืน ~16 KB
 

@@ -233,7 +233,7 @@ flowchart LR
 host_tests\run_tests.bat
 ```
 
-40 ชุดทดสอบ · 1,667 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
+42 ชุดทดสอบ · 1,744 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ หรือ clang++)
 
 ## 📁 โครงสร้างโปรเจกต์
@@ -288,6 +288,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 - **Fork & build:** `pio run` build ได้จาก clone ใหม่โดยไม่ต้องมี `secrets.h` — ค่าตั้งค่าอยู่ใน NVS (`src/app/Settings.*`) key ของคุณจึงไม่เข้าไปอยู่ในซอร์สโค้ด
 - **เพิ่ม tool:** ประกาศใน `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`) tool ที่ใช้เน็ตใส่ใน `src/agent/WebToolsExtra.cpp` และวาด `CardData` (ดู [wiki/11](wiki/11-Data-Tools-and-Cards.md))
 - **ทดสอบไม่ต้องมีบอร์ด:** `host_tests\run_tests.bat` — บนบอร์ดเรียก tool ทุกตัวได้จากแท็บ 🧰 ใน Studio หรือ serial (`tool <name> {json}`)
+- **ดูบทสนทนากับ Live API:** พิมพ์ `trace on` ใน serial → ขึ้นบรรทัด `[Trace]` ทุกข้อความจากเซิร์ฟเวอร์ (transcript, การเรียก tool, `generationComplete` / `turnComplete` — ก้อนเสียงแค่นับจำนวน) และทุกข้อความ JSON ที่บอร์ดส่ง (`trace off` ปิด, ไม่บันทึกค่า) — ใช้หาสาเหตุ AI ตอบซ้ำ 2 รอบหลังเรียก tool ([T071](wiki/07-Troubleshooting-Log.md))
 - **ออก Release:** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py` สคริปต์จะ build ไฟล์ factory (`tools/make_release.py`) สร้าง Release แบบร่าง แนบไฟล์ factory และไฟล์ OTA `-app.bin` (พร้อม `.sha256`) เผยแพร่ แล้วดาวน์โหลดกลับมาเทียบ sha256 โดยรัน host tests ก่อนเผยแพร่เสมอ (`--skip-tests` ใช้เฉพาะเครื่องที่ไม่มี compiler) — Release ของ repo นี้เป็นแบบ **immutable** เผยแพร่แล้วแก้ไฟล์หรือใช้ชื่อ tag ซ้ำไม่ได้ ทุกครั้งต้องใช้เลขเวอร์ชันใหม่ (`--dry-run` = ตรวจอย่างเดียว)
 - **CI:** [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml) ทำแบบเดียวกันบน GitHub Actions แต่ตอนนี้ตั้งเป็นกดรันเองเท่านั้น (*Actions → Firmware → Run workflow*) และ job ออก release จะรอ job host-tests ผ่านก่อน — `tools/make_release.py` ไม่ยอมทำงานถ้า `include/secrets.h` มีค่าจริง และสแกนไฟล์หาสิ่งที่หน้าตาเหมือน API key
 - **เอกสาร:** โฟลเดอร์ `wiki/` เป็น Obsidian vault — ปัญหาที่แก้ได้ช่วยบันทึกใน [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md)

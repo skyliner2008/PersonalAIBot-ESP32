@@ -28,7 +28,7 @@ status: implemented
 | Input gating | Local VAD: ส่งเฉพาะช่วงที่พูด + `audioStreamEnd`; ปิด session เมื่อพัก |
 
 > [!NOTE] ข้อแตกต่างของ gemini-3.8-live ที่กระทบโค้ด
-> - Function calling เป็น **NON_BLOCKING โดย default** → เราประกาศ `behavior: "BLOCKING"` ทุก tool
+> - Function calling เป็น **NON_BLOCKING โดย default** → เราประกาศ `behavior: "BLOCKING"` ทุก tool (ยกเว้น `set_expression`: NON_BLOCKING + `scheduling: SILENT` ระดับ FunctionResponse — T071)
 > - ห้ามส่ง `thinkingLevel` ใน setup · proactive audio เปิดถาวร (โมเดลอาจไม่ตอบเสียงที่ไม่เกี่ยว)
 > - ข้อความเดียวอาจมีทั้ง audio + transcript + `turnComplete` → ต้องประมวลผลทุก field ไม่ return ก่อน
 
@@ -117,6 +117,16 @@ sequenceDiagram
 ```json
 {"toolResponse":{"functionResponses":[{"id":"call-1","name":"save_memory","response":{"result":{"status":"saved","memory_id":7,"total_memories":42}}}]}}
 ```
+tool ที่ประกาศ `NON_BLOCKING` (บน 3.8 Live มีแค่ `set_expression`) ต้องบอก `scheduling` เป็น **field ของ FunctionResponse ข้าง `response`** — ไม่ใช่ใน `response`
+(ตัวอย่าง Python ในหน้า Live tools วางไว้ใน dict ของ response ซึ่งเซิร์ฟเวอร์อ่านเป็นข้อมูลธรรมดา):
+```json
+{"toolResponse":{"functionResponses":[{"id":"call_5707699","name":"set_expression","response":{"result":{"shown":"happy"}},"scheduling":"SILENT"}]}}
+```
+ไม่ใส่ = `WHEN_IDLE` (ค่าเริ่มต้น): พอโมเดลพูดจบจะถูกสั่งให้พูดอีกรอบ — `set_expression` ที่เรียกคู่กับ `get_weather` ทำให้ตอบอากาศซ้ำ 2 รอบ (T071) ·
+`INTERRUPT` = ตัดที่พูดอยู่แล้วพูดเรื่องผลนั้น · BLOCKING ไม่สนใจ field นี้ · Extended Thinking ไม่รองรับ scheduling
+
+**ดูข้อความจริงบนบอร์ด:** serial `trace on` → `[Trace] rx <ms> serverContent{ out:"..." generationComplete }`, `toolCall[ name id=... ]`,
+`[Trace] tx <ms> <bytes> B: {...}` (240 ไบต์แรก) · ก้อนเสียงนับเป็น `(+N audio)` · `trace off` ปิด (ไม่บันทึกค่า)
 
 ---
 

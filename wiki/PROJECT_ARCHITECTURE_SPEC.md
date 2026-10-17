@@ -139,7 +139,7 @@ Gemini → inlineData PCM 24 kHz → Base64 decode → playback ring 1 MB
 - TLS roots: GTS Root R1/R3/R4 + GlobalSign ECC R4 (`tools/gen_root_ca.py`)
 - Setup: `responseModalities:["AUDIO"]`, voice `Aoede`, `systemInstruction` (persona + กฎการใช้ความจำ + วันเวลา + core memory + บทสนทนาล่าสุด), `tools` (8, BLOCKING), `input/outputAudioTranscription`, `contextWindowCompression.slidingWindow`, `sessionResumption{handle}`
 - จัดการ: `setupComplete`, `serverContent` (audio/transcripts/interrupted/generationComplete/turnComplete), `toolCall`, `toolCallCancellation`, `sessionResumptionUpdate`, `goAway`, close code/reason
-- gemini-3.8-live: tools default NON_BLOCKING (เราตั้ง BLOCKING), ห้าม `thinkingLevel`, proactive audio เปิดถาวร
+- gemini-3.8-live: tools default NON_BLOCKING (เราตั้ง BLOCKING; `set_expression` NON_BLOCKING + `scheduling: SILENT` ระดับ FunctionResponse — T071), ห้าม `thinkingLevel`, proactive audio เปิดถาวร
 - v3.1: `googleSearch` ใส่เมื่อเปิดใช้และไม่ได้ถูกพักเพราะโควตา (โควตา Search หมด → เซิร์ฟเวอร์ปิดด้วย 1011 "exceeded your current quota"
   → ลองใหม่โดยไม่มี Search) · ไม่มี `setupComplete` ภายใน 15 วิ → reconnect · close reason ถูกตัดที่ 123 ไบต์ จึงมี `apitest` (REST) ไว้ดู QuotaFailure
 

@@ -84,6 +84,9 @@ public:
     }
     /** Function declarations as JSON (serial console / PC app). */
     void describeTools(String& out);
+    /** Diagnostic (console `trace`): log every Live API event and client message (not saved). */
+    void setTrace(bool on) { _gemini.setTrace(on); }
+    bool trace() const { return _gemini.trace(); }
 
     // ---- Read-only status for other tasks ----
     AvatarState state() const { return (AvatarState)_state.load(); }

@@ -299,6 +299,33 @@ TEST(tool_declarations_per_model) {
     CHECK(recall == "(none)" && expr == "(none)");
 }
 
+// T071: a NON_BLOCKING call answered without "scheduling" (or with it inside "response") defaults to
+// WHEN_IDLE - gemini-3.8-live then spoke its whole answer twice
+TEST(tool_response_scheduling) {
+    auto sched = [](const char* name, ToolBehavior b) {
+        const char* s = AgentTools::responseScheduling(name, b);
+        return std::string(s ? s : "(none)");
+    };
+    CHECK(sched("set_expression", ToolBehavior::Blocking) == "SILENT");
+    CHECK(sched("get_weather", ToolBehavior::Blocking) == "(none)");     // BLOCKING: the server ignores it
+    CHECK(sched("recall_memory", ToolBehavior::Blocking) == "(none)");
+    CHECK(sched("set_expression", ToolBehavior::NonBlocking) == "(none)");  // extended thinking: not supported
+    CHECK(sched("set_expression", ToolBehavior::Unspecified) == "(none)");  // 3.1: no async calls
+    CHECK(sched(nullptr, ToolBehavior::Blocking) == "(none)");
+
+    // 3.8 Live: every tool declared NON_BLOCKING gets a scheduling, and only those
+    ToolRig rig(tempDir("sched"));
+    JsonDocument doc;
+    rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Blocking, false);
+    size_t nonBlocking = 0;
+    for (JsonObjectConst d : doc[0]["functionDeclarations"].as<JsonArrayConst>()) {
+        const bool async = !strcmp(d["behavior"] | "", "NON_BLOCKING");
+        nonBlocking += async;
+        CHECK(async == (AgentTools::responseScheduling(d["name"] | "", ToolBehavior::Blocking) != nullptr));
+    }
+    CHECK_EQ(nonBlocking, (size_t)1);
+}
+
 TEST(tools_memory_roundtrip) {
     ToolRig rig(tempDir("toolmem"));
     JsonDocument r;

@@ -11,6 +11,7 @@
 
 #include "GeminiLiveClient.h"
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -39,6 +40,16 @@ constexpr size_t kReadBuf = 4096;                  // WebSocket frame reads (ioL
 uint32_t parseDurationMs(const char* s) {
     if (!s || !*s) return 0;
     return (uint32_t)(strtof(s, nullptr) * 1000.0f);
+}
+
+// snprintf onto the end of a fixed line (trace output); stops quietly when it is full
+__attribute__((format(printf, 4, 5))) void appendf(char* buf, size_t cap, size_t& n, const char* fmt, ...) {
+    if (n + 1 >= cap) return;
+    va_list ap;
+    va_start(ap, fmt);
+    const int w = vsnprintf(buf + n, cap - n, fmt, ap);
+    va_end(ap);
+    if (w > 0) n = n + (size_t)w < cap ? n + (size_t)w : cap - 1;
 }
 }  // namespace
 
@@ -544,6 +555,7 @@ bool GeminiLiveClient::sendJson(const JsonDocument& doc) {
     if (!ensure(buf, _txCap, need)) return false;
     _tx = (char*)buf;
     const size_t n = serializeJson(doc, _tx, _txCap);
+    if (_trace) Serial.printf("[Trace] tx %lu ms %u B: %.*s\n", (unsigned long)millis(), (unsigned)n, n > 240 ? 240 : (int)n, _tx);
     return enqueue(_tx, n, 1000);
 }
 
@@ -605,6 +617,7 @@ void GeminiLiveClient::handleMessage(const char* json, size_t len) {
         return;
     }
     if (!_listener) return;
+    if (_trace) traceMessage(doc);
 
     if (!doc["setupComplete"].isNull()) {
         _state = GeminiState::Ready;
@@ -653,4 +666,67 @@ void GeminiLiveClient::handleMessage(const char* json, size_t len) {
 
     const uint32_t tokens = doc["usageMetadata"]["totalTokenCount"] | 0u;
     if (tokens) _listener->onUsage(tokens);
+}
+
+// One line per server event with its keys (transcripts and tool calls in full); audio-only chunks
+// are just counted - to see the order of turns, tool calls and flags on the board
+void GeminiLiveClient::traceMessage(const JsonDocument& doc) {
+    char line[480];
+    size_t n = 0;
+#define add(...) appendf(line, sizeof(line), n, __VA_ARGS__)
+    bool interesting = false;
+    for (JsonPairConst kv : doc.as<JsonObjectConst>()) {
+        const char* key = kv.key().c_str();
+        if (!strcmp(key, "usageMetadata")) continue;
+        if (strcmp(key, "serverContent") != 0) {
+            interesting = true;
+            break;
+        }
+        for (JsonPairConst s : kv.value().as<JsonObjectConst>()) {
+            if (strcmp(s.key().c_str(), "modelTurn") != 0) interesting = true;
+        }
+        for (JsonObjectConst part : kv.value()["modelTurn"]["parts"].as<JsonArrayConst>()) {
+            if (part["inlineData"].isNull()) interesting = true;
+        }
+    }
+    if (!interesting) {
+        _traceAudioMsgs++;
+        return;
+    }
+    add("[Trace] rx %lu ms", (unsigned long)millis());
+    if (_traceAudioMsgs) add(" (+%lu audio)", (unsigned long)_traceAudioMsgs);
+    _traceAudioMsgs = 0;
+    for (JsonPairConst kv : doc.as<JsonObjectConst>()) {
+        const char* key = kv.key().c_str();
+        if (!strcmp(key, "serverContent")) {
+            add(" serverContent{");
+            for (JsonPairConst s : kv.value().as<JsonObjectConst>()) {
+                const char* k = s.key().c_str();
+                if (!strcmp(k, "inputTranscription") || !strcmp(k, "outputTranscription")) {
+                    add(" %s:\"%s\"", k[0] == 'i' ? "in" : "out", s.value()["text"] | "");
+                } else if (!strcmp(k, "modelTurn")) {
+                    for (JsonObjectConst part : s.value()["parts"].as<JsonArrayConst>()) {
+                        if (!part["inlineData"].isNull()) add(" audio");
+                        else if (part["text"].is<const char*>()) add(" %s:\"%.80s\"", (part["thought"] | false) ? "thought" : "text", part["text"] | "");
+                        else add(" part?");
+                    }
+                } else {
+                    add(" %s", k);
+                }
+            }
+            add(" }");
+        } else if (!strcmp(key, "toolCall")) {
+            add(" toolCall[");
+            for (JsonObjectConst c : kv.value()["functionCalls"].as<JsonArrayConst>()) add(" %s id=%s", c["name"] | "?", c["id"] | "-");
+            add(" ]");
+        } else if (!strcmp(key, "toolCallCancellation")) {
+            add(" toolCallCancellation[");
+            for (JsonVariantConst id : kv.value()["ids"].as<JsonArrayConst>()) add(" %s", id | "?");
+            add(" ]");
+        } else if (strcmp(key, "usageMetadata") != 0) {
+            add(" %s", key);
+        }
+    }
+#undef add
+    Serial.println(line);
 }

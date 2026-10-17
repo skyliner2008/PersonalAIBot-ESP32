@@ -122,6 +122,11 @@ AgentTools::AgentTools(ltm::MemoryStore& memory, ltm::EpisodicLog& episodes, sch
 
 bool AgentTools::isSilentTool(const char* name) { return name && strcmp(name, "set_expression") == 0; }
 
+// Blocking = gemini-3.8-live, where the silent tools alone are declared NON_BLOCKING (see declare())
+const char* AgentTools::responseScheduling(const char* name, ToolBehavior behavior) {
+    return behavior == ToolBehavior::Blocking && isSilentTool(name) ? "SILENT" : nullptr;
+}
+
 // ============================================================
 // Declarations (keep descriptions short: they are billed every turn)
 // ============================================================

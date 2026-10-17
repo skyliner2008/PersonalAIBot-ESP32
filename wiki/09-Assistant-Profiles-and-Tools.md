@@ -85,7 +85,7 @@ status: implemented
 | ในตัว | **Google Search** — ปิดเป็นค่าเริ่มต้น (ต้องมี key ที่มีสิทธิ์ Search); ถ้าปิด เรื่องล่าสุดใช้ `get_news(topic)` |
 
 - คำอธิบาย tools เป็นภาษาอังกฤษแบบสั้น (≈6 KB JSON ≈ 1.6k tokens) เพราะถูกนับทุก turn
-- **behavior ตามโมเดล:** 3.8 Live = `BLOCKING` (ยกเว้น `set_expression` = `NON_BLOCKING` + `scheduling: SILENT`), 3.8 Extended Thinking = `NON_BLOCKING` ทั้งหมด (BLOCKING = hard error), 3.1 Flash Live = ไม่ใส่ field
+- **behavior ตามโมเดล:** 3.8 Live = `BLOCKING` (ยกเว้น `set_expression` = `NON_BLOCKING` + `scheduling: SILENT` — field ของ FunctionResponse ข้าง `response`, ใส่ใน `response` แล้วโมเดลพูดซ้ำ 2 รอบ T071), 3.8 Extended Thinking = `NON_BLOCKING` ทั้งหมด (BLOCKING = hard error), 3.1 Flash Live = ไม่ใส่ field
 - **การแจ้งเตือน:** ถึงเวลา → เสียงกริ๊ง 2 โน้ตทุก 2.5 วิ (สูงสุด 30 วิ หรือจนแตะจอ), ตาตกใจ, ข้อความบนจอ และส่ง `clientContent` "[แจ้งเตือนจากระบบ] ..." ให้ผู้ช่วยพูดบอก; ถ้ากำลังพักจะตื่นเอง
 - ไฟล์: `agent/reminders.json`, `agent/tasks.json` (เขียนแบบ atomic ผ่าน `.tmp`)
 
@@ -173,6 +173,7 @@ expr love | sleep | wake | time <unix-epoch> | reboot
 ui open menu|wifi|apikey|agent|user|profile|voice|info|calibrate | ui tap x y | ui type ข้อความ | screenshot
 PC app: config | options | tools | diag | wifiscan | apitest              → <TAG> <json> หนึ่งบรรทัด
 วินิจฉัย: keymode query|header | setupmode full|nosearch|min|searchonly   (ไม่บันทึกถาวร; searchonly = โมเดล + Search เท่านั้น → log [Diag])
+          trace [on|off]   (ทุกข้อความรับ/ส่งกับ Live API เป็นบรรทัด [Trace] — ก้อนเสียงแค่นับ; ไม่บันทึกถาวร)
 ```
 
 `config` ไม่พิมพ์ API key / รหัส Wi-Fi — มีแค่ `keySet`, `keyLen`, `keyHint` (3 ตัวแรก…4 ตัวท้าย) ไว้ตรวจว่าใส่ key ถูกตัว

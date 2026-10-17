@@ -96,12 +96,21 @@ public:
 
     /**
      * Run one function call. Fills `response` with {"result": {...}} or {"error": "..."}.
-     * For NON_BLOCKING set_expression on gemini-3.8-live the caller adds "scheduling":"SILENT".
+     * The caller adds responseScheduling() next to it.
      */
     bool execute(const char* name, JsonObjectConst args, JsonObject response);
 
     /** Tools that should never interrupt speech (declared NON_BLOCKING where allowed). */
     static bool isSilentTool(const char* name);
+
+    /**
+     * FunctionResponse "scheduling" for a call of `name` declared with `behavior` (nullptr = leave it out).
+     * It belongs NEXT TO "response", not inside it: inside, the server read it as part of the result and
+     * used the default WHEN_IDLE - set_expression called beside get_weather made gemini-3.8-live say the
+     * whole answer a second time once it was done (T071). Only NON_BLOCKING calls take it: BLOCKING
+     * ignores it and the extended-thinking model does not support it.
+     */
+    static const char* responseScheduling(const char* name, ToolBehavior behavior);
 
     uint32_t memoryWrites() const { return _memoryWrites; }
 

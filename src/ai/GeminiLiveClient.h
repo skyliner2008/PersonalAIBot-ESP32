@@ -123,6 +123,9 @@ public:
     uint32_t audioBytesReceived() const { return _audioBytes; }
     /** Bytes written to the WebSocket so far (diag: uplink throughput). */
     uint32_t txBytes() const { return _txBytes; }
+    /** Console `trace`: one line per server event / client JSON message (audio only counted). */
+    void setTrace(bool on) { _trace = on; }
+    bool trace() const { return _trace; }
 
 private:
     enum class MsgKind : uint8_t { Connected, Disconnected, Data, Closed };
@@ -168,6 +171,8 @@ private:
     volatile bool _streamEndPending = false;  // audioStreamEnd that did not fit the queue: sent after it
     uint32_t _audioBytes = 0;
     volatile uint32_t _txBytes = 0;
+    volatile bool _trace = false;
+    uint32_t _traceAudioMsgs = 0;  // audio-only server messages since the last trace line
     uint32_t _setupAt = 0;
     static constexpr uint32_t kSetupTimeoutMs = 15000;
 
@@ -207,5 +212,6 @@ private:
     bool enqueue(const char* data, size_t len, uint32_t waitMs, bool mic = false);
     void sendSetup();
     void handleMessage(const char* json, size_t len);
+    void traceMessage(const JsonDocument& doc);
     bool ensure(void*& buf, size_t& cap, size_t need);
 };

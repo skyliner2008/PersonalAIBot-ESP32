@@ -515,7 +515,7 @@ static void handleConsoleLine(String line) {
         Serial.println("set <ssid|pass|key|agent|user|voice|profile|personality|gender|eye|model|thinking|textmodel|");
         Serial.println("     volume(radio)|aivolume(voice)|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|wake(level|word|both)|wakeword(hiesp|jarvis|both, reboot)|wakethreshold(0.40-0.99)> <value>");
         Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
-        Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min|searchonly> | searchretry");
+        Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min|searchonly> | searchretry | trace [on|off]");
         Serial.println("time <unix-epoch> (set clock offline) | devices [reload | save <json>] | device <name> [on|off|0-100] | mem (internal RAM + task stacks) | wakeword [threshold x | test [sec]] | reboot");
         Serial.println("ota (status: OTA <json>) | ota check | ota install | ota rollback | ota fetch <https-url> | ota selftest");
         Serial.println("radio list: radiolist | radioadd name|url|genre | radioedit <n> name|url|genre | radiodel <n> | radiomove <from> <to> | radioreset | radio <n>");
@@ -629,6 +629,9 @@ static void handleConsoleLine(String line) {
         else if (rest == "min") agent.setSetupMode(2);
         else if (rest == "searchonly") agent.setSetupMode(3);
         else Serial.println("setupmode <full|nosearch|min|searchonly>  (diagnostic Live API setup; not saved)");
+    } else if (cmd == "trace") {  // trace [on|off]: one [Trace] line per Live API event / client JSON message
+        agent.setTrace(rest.isEmpty() ? !agent.trace() : (rest == "on" || rest == "1"));
+        Serial.printf("OK trace %s\n", agent.trace() ? "on" : "off");
     } else if (cmd == "apitest") {
         agent.uiApiTest();  // reply: "APITEST <json>" a few seconds later
     } else if (cmd == "mute") {

@@ -683,10 +683,9 @@ void AgentController::onToolCall(JsonArrayConst calls) {
             continue;
         }
         const bool ok = _tools->execute(name, call["args"].as<JsonObjectConst>(), response);
-        // On gemini-3.8-live set_expression is NON_BLOCKING: answer silently
-        if (_activeModel == (uint8_t)LiveModel::Live38 && AgentTools::isSilentTool(name)) {
-            response["scheduling"] = "SILENT";
-        }
+        // gemini-3.8-live: set_expression is NON_BLOCKING - answered SILENT, or the model is prompted
+        // again once its reply is done and says it a second time (T071)
+        if (const char* s = AgentTools::responseScheduling(name, behaviorFor(_activeModel))) fr["scheduling"] = s;
         if (strcmp(name, "set_expression") != 0) {
             String args;  // what the model asked for (e.g. which radio station) - memory tools stay private
             const bool privateArgs = !strncmp(name, "save_", 5) || !strcmp(name, "notes");
