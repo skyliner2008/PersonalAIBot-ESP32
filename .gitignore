@@ -16,6 +16,8 @@ build/
 *.a
 *.elf
 *.bin
+!models/srmodels.bin
+# ^ ESP-SR wake word models (568 KB, ESPRESSIF MIT License: models/LICENSE-esp-sr.txt) - needed for "Jarvis"
 *.hex
 *.map
 

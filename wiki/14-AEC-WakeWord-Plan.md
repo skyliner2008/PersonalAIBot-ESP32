@@ -65,7 +65,7 @@ status: in-progress
    - ตั้งค่า `wakeMode` (NVS `wakemode`): 0 ระดับเสียง (เดิม), 1 คำปลุกอย่างเดียว, 2 ทั้งสองแบบ (ค่าเริ่มต้น) · `set wake level|word|both` · diag `wake_mode`, `wake_word`, `wake_word_heard`
    - static DRAM +14 KB จาก esp-sr (`sigmoid_table` 5.6 KB, runtime ของ esp-dl 5 KB, `subband_filter_coef` 3 KB)
    - **"Jarvis":** `models/srmodels.bin` (568 KB) = `wn9_jarvis_tts` + `wn9_hiesp` จาก github.com/espressif/esp-sr (master — ไฟล์ "Hi ESP" ตรงกับชุดของ 2.5.3 ทุกไบต์)
-     แพ็กด้วย `tools/pack_sr_models.py` (เขียนเองตามรูปแบบของ `pack_model.py`) · ที่มาใน `models/README.md`
+     แพ็กด้วย `tools/pack_sr_models.py` (เขียนเองตามรูปแบบของ `pack_model.py`) · ที่มาใน `models/README.md` · อยู่ใน git + `models/LICENSE-esp-sr.txt` (ESPRESSIF MIT)
    - **AFE กิน RAM ภายใน ~30–36 KB** → ครั้งแรกเหลือ 7 KB (เรียก `begin()` ซ้ำ = AFE 2 ชุด → Wi-Fi ต่อไม่ได้ จอดับ, T061) · แก้: AFE ชุดเดียว + สร้างเฉพาะ `wakeMode != 0`
      + ไม่ยอมเปิดถ้าเหลือ < 50 KB · หา RAM คืน: stack `webTools` ไป PSRAM (เมื่อข้อมูลอยู่บน SD), buffer อ่าน frame ของ Gemini 4 KB + การ์ดของ webTools 3 KB ไป PSRAM,
      stack `agent` 12 → 9 KB, `ui` 10 → 8 KB (จากค่าที่ไม่เคยใช้ใน soak 1 ชม.)
