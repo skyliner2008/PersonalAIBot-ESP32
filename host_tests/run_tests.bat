@@ -38,6 +38,7 @@ cl /nologo /std:c++17 /EHsc /utf-8 /O2 /W3 /D_CRT_SECURE_NO_WARNINGS ^
   "%ROOT%\src\agent\Scheduler.cpp" ^
   "%ROOT%\src\agent\TaskList.cpp" ^
   "%ROOT%\src\agent\Consolidation.cpp" ^
+  "%ROOT%\src\agent\ThaiProvinces.cpp" ^
   "%ROOT%\src\ai\ModelFallback.cpp" ^
   /Fo"%OUT%\\" /Fe"%OUT%\host_tests.exe"
 if errorlevel 1 exit /b 1

@@ -103,7 +103,7 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 Gemini toolCall ──► AgentController::onToolCall
                       ├─ tool ทั่วไป  → ตอบทันที (toolResponse)
                       └─ web tool     → WebTools::submit(id, name, args, sessionGen)   (agent ไม่ถูกบล็อก)
-task webTools (core 0, prio 2, 12 KB): HTTPS (WiFiClientSecure + WEB_ROOT_CA_PEM) / คำนวณ → CardData
+task webTools (core 1, prio 2 → 4 ระหว่างทำงานให้โมเดล/console, 12 KB): HTTPS (WiFiClientSecure + WEB_ROOT_CA_PEM) / คำนวณ → CardData
    ├─ gCard.show(card)  → task UI push การ์ดทับหน้าตา (เฉพาะหน้าหลัก), ปิดเองหลัง 30 วิ / แตะ
    ├─ Result → AgentController::handleWebResults → toolResponse ด้วย id เดิม (ทิ้งถ้า session เปลี่ยนแล้ว)
    └─ ว่างอยู่ทุก 2 นาที: checkPriceAlerts() → Result(tag = kAlertTag) → announcement "[แจ้งเตือนราคาจากระบบ] …"
@@ -114,6 +114,10 @@ task webTools (core 0, prio 2, 12 KB): HTTPS (WiFiClientSecure + WEB_ROOT_CA_PEM
 - console / PC app: `tool <name> {json}` → `{"status":"fetching..."}` แล้วตามด้วยบรรทัด `TOOL <name> {...}` + การ์ดบนจอ
 - **แคชผลลัพธ์ (T069):** tool + arguments เดิมภายในเวลาที่ข้อมูลยังสด ตอบจากที่จำไว้พร้อมการ์ดเดิม (4 ช่อง, PSRAM, ไม่จำ error, `as_of` = เวลาที่ดึงจริง):
   `get_weather` 10 นาที · `get_oil_price` / `economic_calendar` 30 นาที · `get_news` 5 นาที · `search_knowledge` 1 ชม. · `get_market_quote` / `convert_currency` / `market_overview` 1 นาที — log `[Tool] … answered from the last N s`
+- **ความเร็ว (T072):** ทุก request พิมพ์ `[Web] <host> -> <code> in N ms (dns, tls, reply, body; bytes)` —
+  งานที่โมเดล/console รอ รันที่ **priority 4** (สูงกว่า UI/คำปลุกที่ 3, ต่ำกว่า agent/geminiIO ที่ 5; เช็กราคาเบื้องหลังยัง 2) ·
+  ชื่อ**จังหวัด 77 จังหวัด** (ไทย/อังกฤษ/"จ.…"/"Chonburi"/"กทม"/"โคราช") ใช้พิกัดในตัว `agent/ThaiProvinces.*` ไม่ต้อง geocode ·
+  TLS handshake จำกัด 10 วิ (`kTlsHandshakeSec`, เดิม framework 120 วิ) · `http.begin()` ก่อน connect (หลัง connect มันตัดทิ้งแล้วจับมือใหม่)
 - คิว webTools เต็ม → ตอบโมเดลว่า `busy … try again` (เดิม `unknown function` ทำให้โมเดลเลิกใช้ tool นั้น) · `price_alert remove` ต้องมี `id` (`-1` = ลบทั้งหมด; เดิมไม่ใส่ = ลบหมด)
 
 ## เวลาที่ใช้ (วัดบนบอร์ด 2026-10-15)
@@ -126,7 +130,10 @@ task webTools (core 0, prio 2, 12 KB): HTTPS (WiFiClientSecure + WEB_ROOT_CA_PEM
 | `get_oil_price` / `get_location` / `economic_calendar` | ~2–3 วิ |
 | `market_overview` (+ Fear&Greed) | ~3.5 วิ |
 | `search_knowledge` | ~8 วิ |
-| `get_weather` | ~8.5 วิ (geocode + forecast + PM2.5) |
+| `get_weather` | **~2.8 วิ** ชื่อจังหวัด (forecast + PM2.5) · ~4.3 วิ อำเภอ/สถานที่อื่น (+ geocode) · ~4.2 วิ ไม่ระบุที่ (+ ipwho.is) — วัด 2026-10-18 หลัง T072 (เดิม 8–12 วิ, ถึง 23 วิ) |
+
+ทำไมยังเกือบ 3 วิ: HTTPS แต่ละครั้งต้องจับมือ TLS ใหม่ (คนละโฮสต์: `api.` / `air-quality-api.` / `geocoding-api.open-meteo.com`)
+เซิร์ฟเวอร์อยู่เยอรมนี RTT ~200 ms → TCP + TLS 1.2 = 3 RTT + คณิต RSA/ECDHE ≈ 1.15 วิ, คำตอบ 1 RTT ≈ 0.2 วิ (จาก PC ยังใช้ ~1 วิต่อ request)
 
 ## ทดสอบจริงกับ AI (2026-10-15, `ask` ผ่าน console)
 

@@ -25,6 +25,7 @@ mkdir -p "$OUT"
     "$ROOT/src/agent/Scheduler.cpp" \
     "$ROOT/src/agent/TaskList.cpp" \
     "$ROOT/src/agent/Consolidation.cpp" \
+    "$ROOT/src/agent/ThaiProvinces.cpp" \
     "$ROOT/src/ai/ModelFallback.cpp" \
     -o "$OUT/host_tests"
 

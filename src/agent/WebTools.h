@@ -3,8 +3,9 @@
  * @brief Live-data tools (weather, Thai fuel prices, TradingView quotes, FX, news) with on-screen cards
  * @see wiki/11-Data-Tools-and-Cards.md
  *
- * HTTPS calls take 1-3 s, so they run in their own task ("webTools", core 0): the agent submits a
- * function call, keeps streaming audio, and later sends the toolResponse with the same id.
+ * HTTPS calls take 1-3 s, so they run in their own task ("webTools", core 1, priority 4 while a job
+ * runs - see JobPriority): the agent submits a function call, keeps streaming audio, and later sends
+ * the toolResponse with the same id.
  * Every tool also fills a CardData and hands it to gCard (shown over the face while the AI speaks).
  *
  * Sources (no API key needed, TLS verified against WEB_ROOT_CA_PEM):

@@ -5,6 +5,7 @@
 
 #include "WebTools.h"
 
+#include "ThaiProvinces.h"
 #include "WebToolsCommon.h"
 #include "../system/PsramTask.h"
 
@@ -29,6 +30,7 @@ namespace webtools {
 namespace {
 
 constexpr UBaseType_t kQueueDepth = 4;
+constexpr UBaseType_t kTaskPriority = 2;  // idle / background (price alerts); see JobPriority
 
 const char* const kWebTools[] = {"get_weather",     "get_oil_price",   "get_market_quote",  "convert_currency",
                                  "get_news",        "calculate",       "convert_units",     "get_world_time",
@@ -133,6 +135,12 @@ bool geocodeFetch(const char* name, float& lat, float& lon, String& label) {
 
 bool geocode(const char* name, float& lat, float& lon, String& label) {
     if (!name || !*name) return false;
+    if (const thaiplace::Province* p = thaiplace::findProvince(name)) {  // no request for the 77 provinces
+        lat = p->lat;
+        lon = p->lon;
+        label = p->th;
+        return true;
+    }
     for (const GeoCache& g : gGeo) {
         if (g.key.length() && g.key == name) {
             lat = g.lat;
@@ -672,8 +680,8 @@ bool WebTools::begin(const char* storageDir) {
     // notes / price alerts are files in the agent dir: on LittleFS that is a flash write, which needs an
     // internal stack; on the SD card (or no storage) the 12 KB stack can live in PSRAM (system/PsramTask.h)
     const bool writesFlash = strncmp(_dir, "/littlefs", 9) == 0;
-    if (writesFlash) return xTaskCreatePinnedToCore(taskEntry, "webTools", 12288, this, 2, nullptr, 1) == pdPASS;
-    return startPsramTask(taskEntry, "webTools", 12288, this, 2, nullptr, 1);
+    if (writesFlash) return xTaskCreatePinnedToCore(taskEntry, "webTools", 12288, this, kTaskPriority, nullptr, 1) == pdPASS;
+    return startPsramTask(taskEntry, "webTools", 12288, this, kTaskPriority, nullptr, 1);
 }
 
 bool WebTools::submit(const char* id, const char* name, const char* argsJson, uint32_t tag) {
@@ -696,6 +704,19 @@ bool WebTools::submit(const char* id, const char* name, const char* argsJson, ui
 bool WebTools::poll(Result& out) { return _results && xQueueReceive(_results, &out, 0) == pdTRUE; }
 
 void WebTools::taskEntry(void* self) { static_cast<WebTools*>(self)->loop(); }
+
+namespace {
+// A job someone waits for (the model, the console) runs above the eyes' animation and the wake word (ui /
+// wakefeed / wakeword, priority 3 on this core; the ui redraws every 16 ms): at priority 2 the TLS crypto
+// only got the gaps between frames - a handshake took 2.4 s awake, 1.2 s at 4 (T072). It still yields to
+// the agent loop and the Live API I/O (5); waiting on the network costs the others nothing. The idle-time
+// price-alert check stays at 2. (The core-1 idle task is not watchdog-checked.)
+constexpr UBaseType_t kJobPriority = 4;
+struct JobPriority {
+    JobPriority() { vTaskPrioritySet(nullptr, kJobPriority); }
+    ~JobPriority() { vTaskPrioritySet(nullptr, kTaskPriority); }
+};
+}  // namespace
 
 void WebTools::loop() {
     // ~3 KB: not on the task stack, and not in internal RAM either (wiki 14: the wake word needs it)
@@ -725,6 +746,7 @@ void WebTools::loop() {
             }
             continue;
         }
+        JobPriority boost;
         const uint32_t t0 = millis();
         const uint32_t ttl = cacheTtlMs(j.name);
         PsString key;

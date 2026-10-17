@@ -16,6 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T072 | [[#T072 get_weather ช้า 8–40 วิ — TLS ถูกแย่ง CPU (priority 2), จับมือซ้ำ, geocode ชื่อไทยพลาด]] | Tools/Network | ✅ Fixed — จังหวัด 2.8 วิ (เดิม 8–23 วิ) |
 | T071 | [[#T071 ถามอากาศแล้ว AI ตอบข้อความเดิม 2 รอบ (3.8 Live) — scheduling SILENT อยู่ผิดที่ใน functionResponse]] | AI/Tools | ✅ Fixed — ทดสอบบนบอร์ด: ตอบครั้งเดียว 3/3 รอบ |
 | T070 | [[#T070 สถานี AAC ทำให้บอร์ดรีบูต (task watchdog) — Helix AAC วนไม่รู้จบใน DecodeSectionData + ตรวจ/เพิ่มสถานีจาก Thailand.json]] | Radio | ✅ Fixed — ทดสอบบนบอร์ด: สถานีเดิมเล่นต่อเนื่อง ไม่รีบูต |
 | T069 | [[#T069 รีวิวรอบ 3 — โหมดคำปลุกทำให้ไม่ฟังต่อหลัง AI ตอบ + "AI ไม่ตอบ" หลอก, frame สงวนล้น stack, อุปกรณ์ชื่อกำกวม]] | Audio/Wake/Devices | ✅ Fixed — ทดสอบบนบอร์ด: ฟังต่อ + แคชอากาศผ่าน (AI ตอบซ้ำหลัง web tool → แก้ใน T071) |
@@ -122,6 +123,36 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T072: get_weather ช้า 8–40 วิ — TLS ถูกแย่ง CPU (priority 2), จับมือซ้ำ, geocode ชื่อไทยพลาด
+
+**วันที่:** 2026-10-18 · ต่อจาก T071 (ครั้งหนึ่ง 40.1 วิ) และ T069 (21.6 วิ) — ระหว่างนั้นโมเดลรอเงียบ (BLOCKING บน 3.8 Live)
+- **วิธีวัด:** `httpRequest` พิมพ์ `[Web] <host> -> <code> in N ms (dns, tls, reply, body; bytes)` ทุก request (ถาวร) +
+  probe ชั่วคราวที่ทำ GET เอง (แยก TCP / TLS / byte แรก) + เทียบ `curl` จาก PC
+- **ผลวัด:** `get_weather` = HTTPS 2–4 ครั้งไป 3 โฮสต์ (geocoding / forecast / air-quality ของ Open-Meteo ที่เยอรมนี RTT ~200 ms) จับมือ TLS ใหม่ทุกครั้ง
+  | ตอนวัด | TLS ต่อครั้ง | ทั้ง request |
+  |---|---|---|
+  | ตื่นอยู่ priority 2 (เดิม) | 2.3–2.8 วิ (ถึง 6.2) | ~2.7 วิ |
+  | พักจอ (UI แทบไม่วาด) | 1.3–1.5 วิ | — |
+  | priority 3 / **4** | 1.5 / **1.15–1.25 วิ** | ~1.7 / **~1.4 วิ** |
+  | PC (เน็ตเดียวกัน) | ~0.55 วิ | ~1 วิ |
+  probe: byte แรกหลังส่ง request = 1 RTT (181 ms Open-Meteo, 36–44 ms ipwho.is) → เวลาที่เหลือคือ CPU ของ TLS
+- **สาเหตุ:**
+  1. task `webTools` priority 2 บน core 1 อยู่**ใต้ UI** (priority 3 วาดตาทุก 16 ms) และ `wakefeed`/`wakeword` (3) → คณิต TLS ได้แค่ช่องว่างระหว่างเฟรม
+  2. ชื่อจังหวัดภาษาไทยที่ geocoder ไม่รู้จัก ("อุบลราชธานี", "เพชรบุรี", "สระบุรี" ได้ `results` ว่าง 31 B) → geocode ซ้ำด้วยชื่ออังกฤษ = จับมือ TLS เพิ่มอีกครั้ง (ครั้งละ ~6 วิตอนตื่น)
+  3. TLS handshake ของ framework มี timeout แยก **120 วิ** (`handshake_timeout`) — `setTimeout`/connect timeout 12 วิ ไม่ครอบ: แพ็กเก็ตหายระหว่างจับมือ (hotspot)
+     ค้างได้นานเกินกว่า 12 วิมาก (น่าจะเป็นที่มาของ 21.6/40.1 วิ — ทดสอบ ~30 ครั้งไม่เจอซ้ำ) · `tls.setTimeout(12)` เดิมเป็นหน่วย ms ใน Arduino 3.x (ถูก connect ทับ ไม่มีผล)
+  4. (เจอระหว่างวัด) `HTTPClient::begin()` บน client ที่ connect แล้ว เห็นเป็น "host ใหม่" แล้ว**ตัดทิ้งแล้วจับมือใหม่** → ต้อง `begin()` ก่อน connect
+- **แก้:** `JobPriority` ใน `WebTools::loop` — งานที่โมเดล/console รอ รัน **priority 4** (เหนือ UI/คำปลุก, ใต้ agent/geminiIO 5; idle task core 1
+  ไม่ถูก watchdog เฝ้า) เช็กแจ้งเตือนราคาเบื้องหลังยัง 2 · **`agent/ThaiProvinces.*`**: พิกัดเมืองหลัก 77 จังหวัด (จาก geocoder ของ Open-Meteo เอง, PPLA/PPLC)
+  รับ "จังหวัด…", "จ.…", "เมือง…", อังกฤษสะกดต่างๆ ("Chonburi"/"Chon Buri", "Khon Kaen Province"), ชื่อย่อ (กทม, โคราช, อยุธยา, อุบล, อุดร) — อำเภอ/สถานที่อื่นยัง geocode ·
+  `setHandshakeTimeout(10)` · `http.begin()` ก่อน `tls.connect()` · host test `thai_provinces`
+- **ทดสอบบนบอร์ด (ตื่นอยู่, COM4):** จังหวัด (ลำพูน, อุทัยธานี, "จ.จันทบุรี", "Sing Buri") **2.8–2.9 วิ** (เดิม 8.3–11.8, geocode พลาด 15–23 วิ) ·
+  หาดใหญ่ (geocode) 4.3 วิ · ไม่ระบุที่ (ipwho.is) 4.2 วิ · `ask อากาศที่ยโสธร...` (3.1 Flash Live) เรียก tool → ผลใน 2.8 วิ ตอบครั้งเดียว ·
+  `wakeword` dropped 0 · RAM ภายในต่ำสุด 23 KB · host tests 43 ชุด / 2,007 checks ✓
+- **แลกกับ:** ตอนจับมือ TLS (~0.5 วิ CPU ต่อครั้ง, 2 ครั้งต่อการถามอากาศ) ภาพตาหยุดนิ่งชั่วครู่ระหว่าง "กำลังดึงข้อมูล..." (เสียง/agent ไม่กระทบ — priority 5–6)
+- ที่ยังเหลือ: ~1.15 วิต่อ handshake เป็นต้นทุนของ TLS 1.2 ไปเยอรมนี (3 RTT) — ลดอีกได้ด้วย TLS session resumption (ต้องเก็บ session ต่อโฮสต์) หรือรวบ PM2.5 ไว้ในแคช
+  · `TextModelClient` / `RadioPlayer` / `OtaUpdater` ยังใช้ handshake timeout 120 วิของ framework (งานเบื้องหลัง ไม่ได้แก้ในรอบนี้)
+
 ## T071: ถามอากาศแล้ว AI ตอบข้อความเดิม 2 รอบ (3.8 Live) — scheduling SILENT อยู่ผิดที่ใน functionResponse
 
 **วันที่:** 2026-10-18 · พบระหว่างทดสอบ T069: ถามอากาศ → `turnComplete` 2 ครั้งห่างกัน ~6–8 วิ ข้อความเดียวกัน — ปิดไมค์ (`mute`) ก็ยังซ้ำ
@@ -148,7 +179,7 @@ PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ใ�
 - **ทดสอบบนบอร์ด (COM4, 3.8 Live, ไมค์ปิด):** `ask อากาศที่สงขลา...` (ไม่เรียก set_expression) · `ask ทำหน้าดีใจหน่อย แล้วบอกอากาศที่ระยอง...` และ
   `ask ทำหน้าตื่นเต้นแล้วบอกอากาศที่ชลบุรี...` (เรียก `set_expression` + `get_weather` คู่กันแบบเดียวกับที่ซ้ำ, tx เห็น `},"scheduling":"SILENT"}`)
   → **`turnComplete` ครั้งเดียวทุกรอบ** เฝ้าต่อ 37–55 วิไม่มีรอบ 2 · host tests 42 ชุด / 1,744 checks ✓
-- หมายเหตุจากการทดสอบ: `get_weather` ครั้งหนึ่งใช้ **40.1 วิ** (ปกติ 8–12 วิ, ไม่มี error ใน log) — โมเดลยังรอได้ (BLOCKING) แต่ผู้ใช้รอนาน ควรดู timeout ของ Open-Meteo ต่อ
+- หมายเหตุจากการทดสอบ: `get_weather` ครั้งหนึ่งใช้ **40.1 วิ** (ปกติ 8–12 วิ, ไม่มี error ใน log) → ดู T072
   · ค่าบนบอร์ดตอนเริ่มทดสอบเป็น `model 2` (3.1 Flash Live) — สลับเป็น 3.8 Live ชั่วคราวแล้วตั้งกลับ 3.1 + เปิดไมค์คืนแล้ว
 
 ## T070: สถานี AAC ทำให้บอร์ดรีบูต (task watchdog) — Helix AAC วนไม่รู้จบใน DecodeSectionData + ตรวจ/เพิ่มสถานีจาก Thailand.json

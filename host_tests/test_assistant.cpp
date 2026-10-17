@@ -1403,3 +1403,62 @@ TEST(device_config) {
     CHECK_EQ(findByName(3, "", at3), kNoMatch);
     CHECK_EQ(findByName(3, nullptr, at3), kNoMatch);
 }
+
+// ============================================================
+// Thai provinces for get_weather without a geocoding request (agent/ThaiProvinces.h - T072)
+// ============================================================
+#include <set>
+
+#include "agent/ThaiProvinces.h"
+
+TEST(thai_provinces) {
+    using thaiplace::findProvince;
+    CHECK_EQ(thaiplace::kProvinceCount, (size_t)77);
+    std::set<std::string> th, en;
+    for (size_t i = 0; i < thaiplace::kProvinceCount; i++) {
+        const thaiplace::Province& p = thaiplace::kProvinces[i];
+        th.insert(p.th);
+        en.insert(p.en);
+        CHECK(p.lat > 5.5f && p.lat < 20.5f && p.lon > 97.3f && p.lon < 105.7f);  // inside Thailand
+        CHECK(findProvince(p.th) == &p);
+        CHECK(findProvince(p.en) == &p);
+    }
+    CHECK_EQ(th.size(), (size_t)77);
+    CHECK_EQ(en.size(), (size_t)77);
+
+    auto is = [&](const char* name, const char* want) {
+        const thaiplace::Province* p = findProvince(name);
+        return p && !strcmp(p->th, want);
+    };
+    // what the model / the user actually send
+    CHECK(is("จังหวัดขอนแก่น", "ขอนแก่น"));
+    CHECK(is("จ.ขอนแก่น", "ขอนแก่น"));
+    CHECK(is(" จ. ขอนแก่น ", "ขอนแก่น"));
+    CHECK(is("เมืองเชียงใหม่", "เชียงใหม่"));
+    CHECK(is("จันทบุรี", "จันทบุรี"));  // starts with "จ": must not be read as "จ." + "ันทบุรี"
+    CHECK(is("จ.จันทบุรี", "จันทบุรี"));
+    CHECK(is("khon kaen", "ขอนแก่น"));
+    CHECK(is("KhonKaen", "ขอนแก่น"));
+    CHECK(is("Khon Kaen Province", "ขอนแก่น"));
+    CHECK(is("Chonburi", "ชลบุรี"));
+    CHECK(is("Lopburi", "ลพบุรี"));
+    CHECK(is("Sisaket", "ศรีสะเกษ"));
+    CHECK(is("Phang-nga", "พังงา"));
+    CHECK(is("Nong Bua Lamphu", "หนองบัวลำภู"));
+    CHECK(is("Ubon Ratchathani, Thailand", "อุบลราชธานี"));
+    CHECK(is("กทม.", "กรุงเทพมหานคร"));
+    CHECK(is("กรุงเทพฯ", "กรุงเทพมหานคร"));
+    CHECK(is("Bangkok", "กรุงเทพมหานคร"));
+    CHECK(is("โคราช", "นครราชสีมา"));
+    CHECK(is("Korat", "นครราชสีมา"));
+    CHECK(is("อยุธยา", "พระนครศรีอยุธยา"));
+    CHECK(is("อุบล", "อุบลราชธานี"));
+    // places that are not provinces go to the geocoder
+    CHECK(findProvince("หาดใหญ่") == nullptr);
+    CHECK(findProvince("Pattaya") == nullptr);
+    CHECK(findProvince("เกาะสมุย") == nullptr);
+    CHECK(findProvince("จังหวัด") == nullptr);
+    CHECK(findProvince("จ") == nullptr);
+    CHECK(findProvince("") == nullptr);
+    CHECK(findProvince(nullptr) == nullptr);
+}

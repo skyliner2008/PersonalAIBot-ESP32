@@ -146,7 +146,8 @@ src/
 │   ├── AgentDevice.cpp      #   └ สถานะ UI, DeviceOps (สั่งเครื่องด้วยเสียง), วิทยุ, diagnostics
 │   ├── AgentInternal.h      #   └ ค่าคงที่/helper ที่ไฟล์ Agent*.cpp ใช้ร่วมกัน
 │   ├── AgentTools.*         # 42 function declarations + dispatch
-│   ├── WebTools*.*          # tools ข้อมูล (HTTPS เท่านั้น) ใน task webTools
+│   ├── WebTools*.*          # tools ข้อมูล (HTTPS เท่านั้น) ใน task webTools (priority 4 ระหว่างทำงานให้โมเดล)
+│   ├── ThaiProvinces.*      # พิกัด 77 จังหวัด (get_weather ไม่ต้อง geocode)
 │   ├── Personas.*           # 30 เสียง, 7 นิสัย, 8 โปรไฟล์, 8 สีตา
 │   ├── Scheduler.* / TaskList.*  # timers & reminders / to-do
 │   └── Consolidation.*      # prompt/schema/parser/rate-limit สำหรับ Flash-Lite

@@ -232,7 +232,7 @@ ESP32-AI/
 ├── src/
 │   ├── main.cpp            boot, ui/led tasks, serial console
 │   ├── app/                AppConfig.h, Settings (NVS)
-│   ├── agent/              AgentController (+Session, Mic, Routines, Device, Internal.h), AgentTools, WebTools(+Extra, Common), Personas, Scheduler, TaskList, Consolidation
+│   ├── agent/              AgentController (+Session, Mic, Routines, Device, Internal.h), AgentTools, WebTools(+Extra, Common), ThaiProvinces, Personas, Scheduler, TaskList, Consolidation
 │   ├── ai/                 GeminiLiveClient, TextModelClient, ModelFallback, GoogleRootCA.h
 │   ├── ui/                 Eyes, FaceScreen, CardScreen, RadioScreen, UiManager, ListScreen, KeyboardScreen, SettingsScreens
 │   ├── audio/              AudioManager, ES8311, Resampler, RadioPlayer, RadioStations

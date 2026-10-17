@@ -156,7 +156,7 @@ On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio 
 
 ## 🛠️ Tools
 
-The model calls these by itself. Data tools run in a background task and draw a card while the AI keeps talking. The same lookup asked again within its refresh time (weather 10 min, fuel 30 min, news 5 min, quotes 1 min) is answered from memory - no new HTTPS round trip.
+The model calls these by itself. Data tools run in a background task and draw a card while the AI keeps talking. The same lookup asked again within its refresh time (weather 10 min, fuel 30 min, news 5 min, quotes 1 min) is answered from memory - no new HTTPS round trip. Weather for any of the 77 Thai provinces takes ~3 s: their coordinates are built in (no geocoding request), and a lookup someone is waiting for runs above the screen animation.
 
 <details>
 <summary><b>All 42 tools</b> (36 without the optional finance pack)</summary>
@@ -232,7 +232,7 @@ Portable modules (memory, tools, scheduler, tasks, personas, model fallback, cal
 host_tests\run_tests.bat
 ```
 
-42 suites · 1,744 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+43 suites · 2,007 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
 
 ## 📁 Project layout

@@ -27,6 +27,9 @@
 namespace webtools {
 
 constexpr uint32_t kHttpTimeoutMs = 12000;
+// A stalled TLS handshake (lost packets on a phone hotspot) otherwise hangs for the framework's 120 s
+// while the model waits in silence; a normal one takes 1-3 s here (Open-Meteo is ~200 ms away)
+constexpr unsigned long kTlsHandshakeSec = 10;
 
 /** Unix time, 0 while the clock is not synced. */
 inline uint32_t epochNow() {
@@ -64,23 +67,52 @@ inline int httpRequest(const String& url, String& response, const char* body = n
                        uint32_t timeoutMs = kHttpTimeoutMs) {
     if (WiFi.status() != WL_CONNECTED) return -10;
     if (!url.startsWith("https://")) return -3;
+    const int slash = url.indexOf('/', 8);
+    const String host = url.substring(8, slash < 0 ? url.length() : slash);
+    const uint32_t t0 = millis();
+    uint32_t tDns = 0, tTls = 0, tReply = 0;
+    int code = -1;
+    auto report = [&]() {  // one line per request: where the time of a slow lookup went
+        const uint32_t t = millis();
+        Serial.printf("[Web] %s -> %d in %lu ms (dns %lu, tls %lu, reply %lu, body %lu; %u B)\n", host.c_str(), code,
+                      (unsigned long)(t - t0), (unsigned long)(tDns ? tDns - t0 : t - t0),
+                      (unsigned long)(tTls ? tTls - tDns : 0), (unsigned long)(tReply ? tReply - tTls : 0),
+                      (unsigned long)(tReply ? t - tReply : 0), (unsigned)response.length());
+    };
+    // resolved apart from the connect (lwIP keeps it for the connect) so the log tells DNS from TLS
+    IPAddress ip;
+    if (WiFi.hostByName(host.c_str(), ip) != 1) {
+        code = -11;
+        report();
+        return code;
+    }
+    tDns = millis();
     WiFiClientSecure tls;
     tls.setCACert(WEB_ROOT_CA_PEM);
-    tls.setTimeout((timeoutMs + 999) / 1000);
+    tls.setHandshakeTimeout(kTlsHandshakeSec);  // the framework's default is 120 s; timeoutMs does not cover it
     HTTPClient http;
     http.setTimeout(timeoutMs);
     http.setConnectTimeout(timeoutMs);
     http.setUserAgent("Mozilla/5.0 (ESP32-AI personal assistant)");
+    // begin() BEFORE connecting: on a client that is already connected it sees a "new host" and drops the
+    // connection - a second handshake per request (T072). Connected here, GET()/POST() reuse it.
     if (!http.begin(tls, url)) return -2;
-    int code;
+    if (!tls.connect(host.c_str(), 443, (int32_t)timeoutMs)) {
+        code = -1;
+        report();
+        return code;
+    }
+    tTls = millis();
     if (body) {
         http.addHeader("Content-Type", "application/json");
         code = http.POST((uint8_t*)body, strlen(body));
     } else {
         code = http.GET();
     }
+    tReply = millis();
     if (code > 0) response = http.getString();  // > 4 KB goes to PSRAM
     http.end();
+    report();
     return code;
 }
 
