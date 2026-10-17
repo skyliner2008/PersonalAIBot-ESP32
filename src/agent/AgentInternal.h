@@ -18,6 +18,7 @@
 #include "../audio/RadioPlayer.h"
 #include "../audio/RadioStations.h"
 #include "../system/OtaUpdater.h"
+#include "../system/Peripherals.h"
 #include "../ui/FaceScreen.h"
 #include "../ui/RadioScreen.h"
 #include "../ui/UiManager.h"

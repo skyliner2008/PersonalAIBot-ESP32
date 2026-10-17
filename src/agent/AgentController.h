@@ -127,6 +127,11 @@ public:
     const char* playRadio(const char* station, JsonObject result) override;
     bool applyAssistantChange(const AssistantChange& change, JsonObject result) override;
     void describeAssistant(JsonObject out) override;
+    int deviceCount() override;
+    void listDevices(JsonArray out) override;
+    const char* deviceAction(const char* action, const char* name, JsonVariantConst value, JsonObject result) override;
+    /** Re-read agent/devices.json (console `devices reload`); the next session sees the new list. */
+    void reloadDevices();
 
     // ---- UiHost (touch UI) ----
     void uiTap() override { post(CMD_TAP); }
@@ -390,6 +395,7 @@ private:
     void noteBlip(uint32_t now, bool voice, float level);
     void checkNoReply(uint32_t now);
     void bargeInNow(uint32_t now);  // the wake word while the AI talks: stop the reply, listen
+    void handleDevices(uint32_t now);  // inputs with "notify" -> an announcement
     void markAnswered() { _replyWatchAt = 0; }
     void startRecording(uint8_t sec);
     void recordPairs(const int16_t* mic, const int16_t* ref, size_t n);

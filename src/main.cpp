@@ -30,6 +30,7 @@
 #include "pins_config.h"
 #include "system/I2cBus.h"
 #include "system/OtaUpdater.h"
+#include "system/Peripherals.h"
 #include "system/Storage.h"
 #include "ui/CardScreen.h"
 #include "ui/FaceScreen.h"
@@ -37,6 +38,7 @@
 #include "ui/RadioScreen.h"
 #include "ui/SettingsScreens.h"
 #include "ui/UiManager.h"
+#include "util/JsonFile.h"
 #include "util/Utf8.h"
 
 static LGFX_ES3C28P lcd;
@@ -514,7 +516,7 @@ static void handleConsoleLine(String line) {
         Serial.println("     volume(radio)|aivolume(voice)|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|wake(level|word|both)|wakeword(hiesp|jarvis|both, reboot)|wakethreshold(0.40-0.99)> <value>");
         Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
         Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min|searchonly> | searchretry");
-        Serial.println("time <unix-epoch> (set clock offline) | mem (internal RAM + task stacks) | wakeword [threshold x | test [sec]] | reboot");
+        Serial.println("time <unix-epoch> (set clock offline) | devices [reload | save <json>] | device <name> [on|off|0-100] | mem (internal RAM + task stacks) | wakeword [threshold x | test [sec]] | reboot");
         Serial.println("ota (status: OTA <json>) | ota check | ota install | ota rollback | ota fetch <https-url> | ota selftest");
         Serial.println("radio list: radiolist | radioadd name|url|genre | radioedit <n> name|url|genre | radiodel <n> | radiomove <from> <to> | radioreset | radio <n>");
     } else if (cmd == "config") {
@@ -550,6 +552,41 @@ static void handleConsoleLine(String line) {
         d["last_dbfs"] = w.lastVolumeDb();
         d["peak_dbfs"] = w.takePeakDb();
         printTagged("WAKEWORD", d);
+    } else if (cmd == "devices") {  // devices [reload] -> DEVICES {"count", "devices":[...], "errors"} (wiki 15)
+        char path[96];
+        snprintf(path, sizeof(path), "%s/devices.json", storage.agentDir());
+        bool reload = rest == "reload";
+        if (rest.startsWith("save ")) {  // devices save {"devices":[...]} - written to the SD card, then loaded
+            JsonDocument in;
+            if (storage.kind() == StorageKind::None || deserializeJson(in, rest.substring(5)) || !in["devices"].is<JsonArray>()) {
+                Serial.println("ERR devices save: needs storage and {\"devices\":[...]}");
+            } else {
+                reload = jsonfile::save(path, in);
+                Serial.println(reload ? "OK devices saved" : "ERR devices save: write failed");
+            }
+        }
+        if (reload) {
+            gPeriph.begin(storage.kind() != StorageKind::None ? path : "");
+            agent.uiNewSession();  // the tool list and the prompt changed
+        }
+        JsonDocument d;
+        d["count"] = gPeriph.count();
+        gPeriph.describe(d["devices"].to<JsonArray>());
+        d["errors"] = gPeriph.errors();
+        printTagged("DEVICES", d);
+    } else if (cmd == "device") {  // device <name> <on|off|0-100> (or just <name> to read)
+        const int sp2 = rest.lastIndexOf(' ');
+        JsonDocument d, v;
+        const String name = sp2 > 0 ? rest.substring(0, sp2) : rest;
+        const char* why;
+        if (sp2 > 0) {
+            v.set(rest.substring(sp2 + 1));
+            why = gPeriph.set(name.c_str(), v.as<JsonVariantConst>(), d.to<JsonObject>());
+        } else {
+            why = gPeriph.read(name.c_str(), d.to<JsonObject>());
+        }
+        if (why) d["error"] = why;
+        printTagged("DEVICE", d);
     } else if (cmd == "mem") {
         printMemory();
     } else if (cmd == "ota") {  // firmware update from GitHub Releases (see system/OtaUpdater.h)

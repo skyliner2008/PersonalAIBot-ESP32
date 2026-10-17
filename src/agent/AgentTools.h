@@ -73,6 +73,14 @@ public:
     virtual const char* playRadio(const char* station, JsonObject result) = 0;
     virtual bool applyAssistantChange(const AssistantChange& change, JsonObject result) = 0;
     virtual void describeAssistant(JsonObject out) = 0;
+    // ---- devices the user wired to the free ports (agent/devices.json, wiki 15) ----
+    virtual int deviceCount() { return 0; }  // 0 = the `device` tool is not declared at all
+    virtual void listDevices(JsonArray out) { (void)out; }
+    /** action "read" / "set" on one device. nullptr = ok, else why not. */
+    virtual const char* deviceAction(const char* action, const char* name, JsonVariantConst value, JsonObject result) {
+        (void)action, (void)name, (void)value, (void)result;
+        return "no devices are configured";
+    }
 };
 
 class AgentTools {
@@ -140,5 +148,6 @@ private:
     bool muteMicrophone(JsonObjectConst a, JsonObject r, const char*& e);
     bool restScreen(JsonObjectConst a, JsonObject r, const char*& e);
     bool stopRadio(JsonObjectConst a, JsonObject r, const char*& e);
+    bool device(JsonObjectConst a, JsonObject r, const char*& e);
     bool playRadio(JsonObjectConst a, JsonObject r, const char*& e);
 };

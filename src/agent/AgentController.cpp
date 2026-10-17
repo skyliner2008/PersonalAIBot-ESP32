@@ -99,6 +99,7 @@ bool AgentController::begin(AudioManager* audio, FaceScreen* face, Storage* stor
         Serial.println("[Memory] No storage: memory lives in RAM until reboot");
     }
     _tools = new AgentTools(_memory, _episodes, _scheduler, _tasks, *this, TIME_UTC_OFFSET_SEC);
+    reloadDevices();  // agent/devices.json: relays, dimmers, sensors on the free ports (wiki 15)
 
     _gemini.begin(this);
     _text.begin();
@@ -283,6 +284,7 @@ void AgentController::loop() {
         // an older `now` made `now - _lastActivity` wrap around and put the agent to sleep
         const uint32_t now = millis();
         handleScheduler(now);
+        handleDevices(now);
         lap("scheduler");
         handleSleepAndRestarts(now);
         lap("sleep");

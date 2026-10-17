@@ -1,0 +1,9 @@
+{
+  "_help": "Copy to the SD card as agent/devices.json (or send it with: devices save <json>). Free pins: 2, 3, 14, 21 (Expand header), 43/44 (UART header, if unused). Analog only on 2 or 3. Types: switch, dimmer, input, analog. See wiki/15-Expansion-Ports.md",
+  "devices": [
+    {"name": "พัดลม", "type": "switch", "pin": 21, "active_low": true},
+    {"name": "ไฟโต๊ะ", "type": "dimmer", "pin": 2},
+    {"name": "ประตูหน้าบ้าน", "type": "input", "pin": 14, "pull": "up", "notify": true},
+    {"name": "แสงในห้อง", "type": "analog", "pin": 3}
+  ]
+}

@@ -111,6 +111,7 @@ const AgentTools::Entry AgentTools::kHandlers[] = {
     {"rest_screen", &AgentTools::restScreen},
     {"stop_radio", &AgentTools::stopRadio},
     {"play_radio", &AgentTools::playRadio},
+    {"device", &AgentTools::device},
     {nullptr, nullptr},
 };
 
@@ -246,6 +247,15 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     declare(d, b, "stop_radio", "Turn the radio off (and close its screen).");
     declare(d, b, "mute_microphone",
             "Mic OFF after this reply. Only the screen mic button turns it back on: tell the user.");
+    if (_device.deviceCount() > 0) {  // only with devices wired up (agent/devices.json): no cost otherwise
+        static const char* const kDeviceActions[] = {"list", "read", "set", nullptr};
+        static const Param devp[] = {
+            {"action", "STRING", nullptr, true, kDeviceActions},
+            {"name", "STRING", "Device name from your instructions.", false, nullptr},
+            {"value", "STRING", "set: on/off, or 0-100 for a dimmer.", false, nullptr},
+        };
+        declare(d, b, "device", "Read or switch the devices wired to the board (relay, dimmer, sensor).", devp, 3);
+    }
 
     // ---- Live data with on-screen graphics (run by webtools::WebTools, answered asynchronously) ----
     static const Param weather[] = {
@@ -735,6 +745,20 @@ bool AgentTools::playRadio(JsonObjectConst a, JsonObject r, const char*& e) {
 bool AgentTools::stopRadio(JsonObjectConst, JsonObject r, const char*&) {
     r["was_playing"] = _device.stopRadio();
     r["status"] = "radio off";
+    return true;
+}
+
+// device: the user's own hardware on the free ports (relay, dimmer, button / sensor, analog) - wiki 15
+bool AgentTools::device(JsonObjectConst a, JsonObject r, const char*& e) {
+    const char* action = a["action"] | "list";
+    if (!strcmp(action, "list")) {
+        _device.listDevices(r["devices"].to<JsonArray>());
+        return true;
+    }
+    if (strcmp(action, "read") && strcmp(action, "set")) return (e = "action must be list, read or set"), false;
+    const char* name = a["name"] | "";
+    if (!*name) return (e = "name is required"), false;
+    if (const char* why = _device.deviceAction(action, name, a["value"], r)) return (e = why), false;
     return true;
 }
 

@@ -134,6 +134,7 @@ On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio 
 | Tap while asleep / paused | Wake up / reconnect immediately |
 | Say **"Hi ESP"** while asleep | Offline wake word (ESP-SR WakeNet after our echo removal, works over the radio) — ⚙ menu "ปลุกด้วยเสียง" / Studio / `set wake level\|word\|both`, `set wakeword hiesp\|jarvis`, `set wakethreshold 0.5` |
 | Say **"Hi ESP"** while the assistant is talking | It stops and listens to you at once - the speaker is removed from the mic first, so its own voice cannot interrupt it |
+| "turn on the fan", "dim the desk lamp to 30", "is the door closed?" | Your own relays, dimmers, buttons/sensors and analog inputs on the free pins, listed by name in `agent/devices.json` on the SD card — see [wiki 15](wiki/15-Expansion-Ports.md) for the free ports and what they can drive |
 | Long-press the screen 1.5 s | Fresh conversation (long-term memory stays) |
 | Silent for 3 min → asleep (closed eyes); 5 more min → **dim clock** | Speak or tap to wake: full brightness + eyes open (times: ⚙ menu / Studio / by voice) |
 | "turn it down a bit", "brighter", "rest the screen", "mute the mic" | Volume / brightness up-down, dim clock right away, mic off by voice — turning the mic **on** is only possible with the 🎤 button (the mute survives reboots) |

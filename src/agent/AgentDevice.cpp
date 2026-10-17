@@ -448,6 +448,41 @@ bool AgentController::applyAssistantChange(const AssistantChange& c, JsonObject 
     return true;
 }
 
+// ============================================================
+// Devices on the free ports (system/Peripherals, agent/devices.json - wiki 15)
+// ============================================================
+
+int AgentController::deviceCount() { return gPeriph.count(); }
+
+void AgentController::listDevices(JsonArray out) { gPeriph.describe(out); }
+
+const char* AgentController::deviceAction(const char* action, const char* name, JsonVariantConst value,
+                                          JsonObject result) {
+    if (!strcmp(action, "set")) return gPeriph.set(name, value, result);
+    return gPeriph.read(name, result);
+}
+
+void AgentController::reloadDevices() {
+    char path[96];
+    snprintf(path, sizeof(path), "%s/devices.json", _storage->agentDir());
+    gPeriph.begin(_storage->kind() != StorageKind::None ? path : "");
+    if (_gemini.started()) startFreshSession(nullptr);  // the tool list and the prompt changed
+}
+
+// an input with "notify" changed: say it (a doorbell / PIR / door contact). Asleep it wakes up for it.
+void AgentController::handleDevices(uint32_t now) {
+    gPeriph.poll(now, [this](const char* name, bool active) {
+        Serial.printf("[Devices] %s -> %s\n", name, active ? "active" : "idle");
+        PsString msg = "[แจ้งเตือนจากระบบ] อุปกรณ์ \"";
+        msg += name;
+        msg += active ? "\" ทำงาน (active)" : "\" กลับเป็นปกติ (idle)";
+        msg += " — บอกผู้ใช้สั้นๆ";
+        _announcements.push_back(msg);
+        noteActivity();
+        if (_sleeping) wake(false);
+    });
+}
+
 void AgentController::describeAssistant(JsonObject out) {
     out["name"] = _cfg.agentName;
     if (_cfg.userName[0]) out["user_name"] = _cfg.userName;

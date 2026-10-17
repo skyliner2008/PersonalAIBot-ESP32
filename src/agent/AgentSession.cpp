@@ -162,6 +162,13 @@ void AgentController::buildSystemPrompt(PsString& p) {
          "ความไวไมค์ / ตั้งเวลาพัก / ตั้งเวลาโหมดนาฬิกา = configure_device, พักหน้าจอ / โหมดนาฬิกาเดี๋ยวนี้ = rest_screen, วิทยุ = play_radio / stop_radio (เปิดแล้วพูดชื่อสถานีสั้นๆ แล้วเงียบ เพลงที่เล่นอยู่ดูได้จาก get_device_status), ปิดไมค์ = mute_microphone "
          "(เปิดไมค์ด้วยเสียงไม่ได้ บอกผู้ใช้ให้แตะปุ่มไมค์บนจอ)\n"
          "ข้อความที่ขึ้นต้นด้วย [แจ้งเตือนจากระบบ] หรือ [แจ้งเตือนราคาจากระบบ] มาจากอุปกรณ์ ให้แจ้งผู้ใช้ทันทีสั้นๆ\n";
+    if (gPeriph.count()) {  // the user's own hardware (agent/devices.json, wiki 15)
+        String devices;
+        gPeriph.summary(devices);
+        p += "อุปกรณ์ที่ต่อกับบอร์ด (สั่ง/อ่านด้วย tool device, เรียกตามชื่อนี้): ";
+        p += devices.c_str();
+        p += " • switch = เปิด/ปิด, dimmer = 0-100, input/analog = อ่านค่าอย่างเดียว ถามสถานะให้ read ก่อนตอบ ห้ามเดา\n";
+    }
     if (gStations.count()) {  // play_radio picks from this list (number, name or genre)
         String list;
         gStations.describe(list);

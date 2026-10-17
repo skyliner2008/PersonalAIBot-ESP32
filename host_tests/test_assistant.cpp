@@ -1316,3 +1316,52 @@ TEST(echo_canceller) {
     CHECK(aec.passthrough());
     CHECK(aec.micRms() < humRaw * 0.1f);
 }
+
+// ============================================================
+// Devices on the free ports (util/DeviceConfig.h, agent/devices.json - wiki 15)
+// ============================================================
+#include "util/DeviceConfig.h"
+
+TEST(device_config) {
+    using namespace periph;
+    // only the free pins; analog only on ADC1 (Wi-Fi stops ADC2); not the BOOT key (a UI button already)
+    CHECK(pinProblem(Kind::Switch, 21) == nullptr);
+    CHECK(pinProblem(Kind::Analog, 2) == nullptr);
+    CHECK(pinProblem(Kind::Analog, 14) != nullptr);
+    CHECK(pinProblem(Kind::Input, 0) != nullptr);
+    CHECK(pinProblem(Kind::Switch, 10) != nullptr);  // the LCD's CS
+    CHECK(pinProblem(Kind::Dimmer, 38) != nullptr);  // the SD card's clock
+
+    JsonDocument doc;
+    deserializeJson(doc, R"({"devices":[
+        {"name":"พัดลม","type":"switch","pin":21,"active_low":true},
+        {"name":"ไฟโต๊ะ","type":"dimmer","pin":2},
+        {"name":"ประตู","type":"input","pin":3,"notify":true},
+        {"name":"ผิด","type":"switch","pin":10},
+        {"name":"ซ้ำ","type":"input","pin":21},
+        {"name":"ดิน","type":"analog","pin":14},
+        {"name":"มอเตอร์","type":"servo","pin":14},
+        {"type":"switch","pin":14}
+    ]})");
+    Spec specs[kMaxDevices];
+    char errors[400];
+    const int n = parse(doc, specs, errors, sizeof(errors));
+    CHECK_EQ(n, 3);
+    CHECK(specs[0].kind == Kind::Switch && specs[0].pin == 21 && specs[0].activeLow);
+    CHECK(specs[1].kind == Kind::Dimmer && !specs[1].notify);
+    CHECK(specs[2].kind == Kind::Input && specs[2].pullUp && specs[2].notify);  // inputs default to a pull-up
+    CHECK(strstr(errors, "ผิด: not a free pin") != nullptr);
+    CHECK(strstr(errors, "ซ้ำ: pin or name used twice") != nullptr);
+    CHECK(strstr(errors, "ดิน: analog only") != nullptr);
+    CHECK(strstr(errors, "มอเตอร์: type must be") != nullptr);
+    CHECK(strstr(errors, "?: name missing") != nullptr);
+
+    // values the model sends for "set"
+    JsonDocument v;
+    v.set("on");    CHECK_EQ(parseLevel(v.as<JsonVariantConst>()), 100);
+    v.set("ปิด");   CHECK_EQ(parseLevel(v.as<JsonVariantConst>()), 0);
+    v.set("40%");   CHECK_EQ(parseLevel(v.as<JsonVariantConst>()), 40);
+    v.set(150);     CHECK_EQ(parseLevel(v.as<JsonVariantConst>()), 100);
+    v.set(true);    CHECK_EQ(parseLevel(v.as<JsonVariantConst>()), 100);
+    v.set("bright"); CHECK_EQ(parseLevel(v.as<JsonVariantConst>()), -1);
+}

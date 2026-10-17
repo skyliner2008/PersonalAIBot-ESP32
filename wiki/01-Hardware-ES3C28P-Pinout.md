@@ -38,7 +38,7 @@ status: reference
 | **Battery Interface (BAT)**| ขอบล่าง กลางซ้าย | 2-Pin JST (เครื่องหมาย `-` และ `+`) | ต่อแบตเตอรี่ LiPo 3.7V (วัดไฟผ่าน ADC GPIO 9) |
 | **TYPE-C Interface** | ขอบซ้าย กลาง | USB Type-C | สำหรับ Upload โปรแกรม, Serial Monitor และไฟเลี้ยง |
 | **RESET Key** | ขอบซ้าย บน | เชื่อมต่อขา CHIP_PU | กดเพื่อรีสตาร์ต MCU |
-| **BOOT Key** | ขอบซ้าย ล่าง | เชื่อมต่อขา **GPIO 0** (Active LOW) | กดค้างขณะเสียบ USB เพื่อเข้า Bootloader หรือใช้เป็นปุ่มกด |
+| **BOOT Key** | ขอบซ้าย ล่าง | เชื่อมต่อขา **GPIO 0** (Active LOW) | กดค้างขณะเสียบ USB เพื่อเข้า Bootloader · เฟิร์มแวร์ใช้เป็นปุ่ม (กดสั้น = แตะจอ, ค้าง 1.5 วิ = เมนูตั้งค่า) — **ไม่ว่าง** |
 
 ---
 
@@ -235,7 +235,8 @@ V_battery = ADC_reading × (3.3 / 4095) × 2
 
 ## 📌 Expansion GPIOs
 
-The following GPIOs are available on the expansion header for custom peripherals:
+The following GPIOs are available on the expansion header for custom peripherals
+(what each free port can drive, and how the assistant controls them: [[15-Expansion-Ports]]):
 
 | GPIO | ADC Channel | Notes |
 |------|-------------|-------|
