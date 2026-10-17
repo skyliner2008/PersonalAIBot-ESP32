@@ -914,10 +914,15 @@ void runPriceAlert(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, Car
         return;
     }
     if (action == "remove") {
+        // no id used to mean "all": a model that passed the symbol instead of the id wiped every alert (T069)
         const int id = a["id"] | 0;
+        if (!id) {
+            setError(out, "ต้องระบุ id ของแจ้งเตือน (ดูจาก action list) หรือ id = -1 เพื่อลบทั้งหมด");
+            return;
+        }
         int removed = 0;
         for (size_t i = alerts.size(); i-- > 0;) {
-            if (!id || (alerts[i]["id"] | 0) == id) {
+            if (id < 0 || (alerts[i]["id"] | 0) == id) {
                 alerts.remove(i);
                 removed++;
             }

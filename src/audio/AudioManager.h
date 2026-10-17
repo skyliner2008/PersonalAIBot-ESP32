@@ -82,7 +82,9 @@ public:
     void tunePrebuffer(uint32_t neededMs, bool hadGap);
     ReplyStats takeReplyStats() {
         ReplyStats r{_replyGaps, _replyLongestGap, _replyOutGap, _prebufMs};
-        _replyGaps = _replyLongestGap = _replyOutGap = 0;
+        _replyGaps = 0;
+        _replyLongestGap = 0;
+        _replyOutGap = 0;
         return r;
     }
 

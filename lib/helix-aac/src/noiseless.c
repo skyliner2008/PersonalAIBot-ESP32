@@ -117,11 +117,14 @@
  *
  * Outputs:     index of Huffman codebook for each scalefactor band in each section
  *
- * Return:      none
+ * Return:      0 if successful, ERR_AAC_INVALID_FRAME for impossible section lengths
  *
  * Notes:       sectCB, sectEnd, sfbCodeBook, ordered by window groups for short blocks
+ *              ESP32-AI (T070): damaged / unsupported data read past the frame gives zeros -> a section
+ *              length of 0 never advanced sfb (endless loop: task watchdog reboot on a radio station), and
+ *              a length past maxSFB wrote beyond sfbCodeBook. Both are now rejected as a bad frame.
  **************************************************************************************/
-/* __attribute__ ((section (".data"))) */ static void DecodeSectionData(BitStreamInfo *bsi, int winSequence, int numWinGrp, int maxSFB, unsigned char *sfbCodeBook)
+/* __attribute__ ((section (".data"))) */ static int DecodeSectionData(BitStreamInfo *bsi, int winSequence, int numWinGrp, int maxSFB, unsigned char *sfbCodeBook)
 {
 	int g, cb, sfb;
 	int sectLen, sectLenBits, sectLenIncr, sectEscapeVal;
@@ -137,14 +140,19 @@
 			do {
 				sectLenIncr = GetBits(bsi, sectLenBits);
 				sectLen += sectLenIncr;
+				if (sectLen > maxSFB)
+					return ERR_AAC_INVALID_FRAME;	/* (also ends an all-escape run) */
 			} while (sectLenIncr == sectEscapeVal);
 
+			if (sectLen == 0 || sfb + sectLen > maxSFB)
+				return ERR_AAC_INVALID_FRAME;
 			sfb += sectLen;
 			while (sectLen--)
 				*sfbCodeBook++ = (unsigned char)cb;
 		}
 		ASSERT(sfb == maxSFB);
 	}
+	return 0;
 }
 
 /**************************************************************************************
@@ -398,7 +406,7 @@ static void DecodeGainControlInfo(BitStreamInfo *bsi, int winSequence, GainContr
  *
  * Return:      none
  **************************************************************************************/
-static void DecodeICS(PSInfoBase *psi, BitStreamInfo *bsi, int ch)
+static int DecodeICS(PSInfoBase *psi, BitStreamInfo *bsi, int ch)
 {
 	int globalGain;
 	ICSInfo *icsInfo;
@@ -412,7 +420,8 @@ static void DecodeICS(PSInfoBase *psi, BitStreamInfo *bsi, int ch)
 	if (!psi->commonWin)
 		DecodeICSInfo(bsi, icsInfo, psi->sampRateIdx);
 
-	DecodeSectionData(bsi, icsInfo->winSequence, icsInfo->numWinGroup, icsInfo->maxSFB, psi->sfbCodeBook[ch]);
+	if (DecodeSectionData(bsi, icsInfo->winSequence, icsInfo->numWinGroup, icsInfo->maxSFB, psi->sfbCodeBook[ch]))
+		return ERR_AAC_INVALID_FRAME;
 
 	DecodeScaleFactors(bsi, icsInfo->numWinGroup, icsInfo->maxSFB, globalGain, psi->sfbCodeBook[ch], psi->scaleFactors[ch]);
 	
@@ -430,6 +439,7 @@ static void DecodeICS(PSInfoBase *psi, BitStreamInfo *bsi, int ch)
 	gi->gainControlDataPresent = GetBits(bsi, 1);
 	if (gi->gainControlDataPresent)
 		DecodeGainControlInfo(bsi, icsInfo->winSequence, gi);
+	return 0;
 }
 
 /**************************************************************************************
@@ -465,7 +475,8 @@ int DecodeNoiselessData(AACDecInfo *aacDecInfo, unsigned char **buf, int *bitOff
 	SetBitstreamPointer(&bsi, (*bitsAvail+7) >> 3, *buf);
 	GetBits(&bsi, *bitOffset);
 
-	DecodeICS(psi, &bsi, ch);
+	if (DecodeICS(psi, &bsi, ch))
+		return ERR_AAC_INVALID_FRAME;
 
 	if (icsInfo->winSequence == 2)
 		DecodeSpectrumShort(psi, &bsi, ch);

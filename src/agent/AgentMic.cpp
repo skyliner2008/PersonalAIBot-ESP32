@@ -93,7 +93,9 @@ void AgentController::endUtterance(uint32_t now) {
         }
         _backlogDropped = 0;
     }
-    if (_uttVoiced >= 3) {  // real speech: from now on expect an answer
+    if (_uttVoiced >= 3 && _audio->isPlaying()) {  // the answer is already playing: nothing to wait for
+        Serial.printf("[Mic] จบประโยค: ส่ง %.1f วิ (เสียงพูด %.1f วิ) -> AI กำลังตอบ\n", sentSec, voicedSec);
+    } else if (_uttVoiced >= 3) {  // real speech: from now on expect an answer
         Serial.printf("[Mic] จบประโยค: ส่ง %.1f วิ (เสียงพูด %.1f วิ, ดังสุด %.3f, ขยาย x%.1f) -> รอ AI ตอบ\n", sentSec,
                       voicedSec, _uttPeak, _agcGain);
         _replyWatchAt = now;
@@ -179,6 +181,13 @@ void AgentController::handleAudioInput() {
                          !_powerSave && _cfg.wakeMode != 0 && _wakeWord.ready();
     const bool allow = wordTest || bargeIn ||
                        (_configOk && !_muted && (!_powerSave || wordOnly) && !(AGENT_HALF_DUPLEX && speaking));
+    // the assistant just finished: users answer right away (not when it is about to sleep - e.g. after
+    // play_radio, the follow-up window would stream the radio as "user speech")
+    auto armFollowUp = [&]() {
+        if (sinceMs(now, _lastAgentAudio) < 3000 && _gemini.isReady() && !_sleeping && !_sleepPending) {
+            _followUp.arm(now, AGENT_FOLLOWUP_MS);
+        }
+    };
     if (allow != _gateAllowed) {
         _audio->setCaptureEnabled(allow);
         _gateAllowed = allow;
@@ -186,10 +195,25 @@ void AgentController::handleAudioInput() {
             endUtterance(now);
             _onset = 0;
             if (!_wakeBuffering) _preroll.clear();
-        } else if (sinceMs(now, _lastAgentAudio) < 3000 && _gemini.isReady() && !_sleeping && !_sleepPending) {
-            // the assistant just finished: users answer right away (not when it is about to sleep -
-            // e.g. after play_radio, the follow-up window would stream the radio as "user speech")
-            _followUp.arm(now, AGENT_FOLLOWUP_MS);
+        } else {
+            armFollowUp();
+        }
+    }
+    // The reply's own edges. With the wake word on, the gate stays open while the AI talks (barge-in), so
+    // the gate above never saw the reply: no follow-up window after any reply, a sentence still open when
+    // the answer started ended only after it ("AI ไม่ตอบ" 8 s later) and a wake-up backlog still draining
+    // took the 1.5 s recorded during the reply along as user speech (T069)
+    const bool held = AGENT_HALF_DUPLEX && speaking && !_sleeping;
+    if (held != _replyHeld) {
+        _replyHeld = held;
+        if (held) {  // the reply started: this sentence is over, its backlog is stale
+            endUtterance(now);
+            _onset = 0;
+            if (!_wakeBuffering) _preroll.clear();
+        } else {
+            // what the barge-in buffer kept of the AI's own voice is not the user's - unless a barge-in took it
+            if (!_wakeBuffering) _preroll.clear();
+            if (allow && !_followUp.active(now)) armFollowUp();
         }
     }
     checkNoReply(now);

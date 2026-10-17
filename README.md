@@ -35,7 +35,7 @@ Everything runs on the board itself: **no server, no Raspberry Pi, no vector dat
 | 🧑‍💼 **Personalities** | 8 ready-made profiles, 30 voices, 7 personalities, male/female Thai politeness (ค่ะ / ครับ). Change them by touch or just by asking. |
 | 👀 **Expressive face** | Cozmo-style eyes with 14 emotions, Thai subtitles, on-screen mic button, dark theme. After a while asleep it turns into a **dim clock** (power save) and wakes up — full brightness — as soon as it hears you. |
 | 📊 **Live data cards** | Weather + PM2.5, Thai fuel prices, stocks / gold / crypto / FX, technical analysis, market scanner, economic calendar, news, Wikipedia — drawn as graphics while the AI talks. |
-| 📻 **Internet radio** | A radio-app screen with 16 tested Thai stations: swipe and tap a station, ± volume, ⏸ pause, a red ⏻ button to switch the radio off, and tap the middle of the screen to talk to the assistant as usual. Say "play the luk thung station" or "station 4" and the assistant picks from your list. Edit the list (add, edit, delete, reorder, test URL) in ESP32-AI Studio. MP3/AAC via the Helix decoder; the radio dips to 12 % while you talk. Volume buttons and "turn it down" change the radio only — the assistant's voice stays at its own level (80 by default, `set aivolume`). After "play the radio" the assistant names the station and goes to sleep at once (it never answers the DJ), and "play the radio" with no station resumes the last one. [wiki/12](wiki/12-Internet-Radio.md) |
+| 📻 **Internet radio** | A radio-app screen with 16 tested Thai stations (up to 40; `python tools/radio_check.py` checks a station export the way the board plays it): swipe and tap a station, ± volume, ⏸ pause, a red ⏻ button to switch the radio off, and tap the middle of the screen to talk to the assistant as usual. Say "play the luk thung station" or "station 4" and the assistant picks from your list. Edit the list (add, edit, delete, reorder, test URL) in ESP32-AI Studio. MP3/AAC via the Helix decoder; the radio dips to 12 % while you talk. Volume buttons and "turn it down" change the radio only — the assistant's voice stays at its own level (80 by default, `set aivolume`). After "play the radio" the assistant names the station and goes to sleep at once (it never answers the DJ), and "play the radio" with no station resumes the last one. [wiki/12](wiki/12-Internet-Radio.md) |
 | ⏰ **Personal assistant** | Timers, reminders (daily / weekdays / weekly), to-do list, notes, price alerts that speak up, calculator, unit & world-time conversion. |
 | 🔁 **Self-healing** | Automatic model fallback, quota-aware back-off, Google Search pause on quota (if enabled), session resumption, Wi-Fi reconnect. |
 | 🖥️ **ESP32-AI Studio** | Dark-mode PC app: all settings, live debug log, chat, remote screen with touch, mic recorder, tool runner, build & flash. |
@@ -156,7 +156,7 @@ On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio 
 
 ## 🛠️ Tools
 
-The model calls these by itself. Data tools run in a background task and draw a card while the AI keeps talking.
+The model calls these by itself. Data tools run in a background task and draw a card while the AI keeps talking. The same lookup asked again within its refresh time (weather 10 min, fuel 30 min, news 5 min, quotes 1 min) is answered from memory - no new HTTPS round trip.
 
 <details>
 <summary><b>All 42 tools</b> (36 without the optional finance pack)</summary>
@@ -300,7 +300,7 @@ Pull requests and issues are welcome.
 ## 🙏 Credits
 
 - [Google Gemini Live API](https://ai.google.dev/gemini-api/docs/live) · [LovyanGFX](https://github.com/lovyan03/LovyanGFX) · [ArduinoJson](https://arduinojson.org/) · [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel)
-- Thai font: **TH Sarabun New** (SIPA, Thai national font) · MP3/AAC decoding: **RealNetworks Helix** (RPSL, `lib/helix-*`) · default station list checked with the help of [Radio Browser](https://www.radio-browser.info)
+- Thai font: **TH Sarabun New** (SIPA, Thai national font) · MP3/AAC decoding: **RealNetworks Helix** (RPSL, `lib/helix-*`) — `noiseless.c` patched: a damaged AAC frame is rejected instead of looping forever (a station rebooted the board) · default station list checked with the help of [Radio Browser](https://www.radio-browser.info)
 - Data: [Open-Meteo](https://open-meteo.com/) · [Bangchak](https://www.bangchak.co.th/) · [TradingView](https://www.tradingview.com/) · [Wikipedia](https://www.wikipedia.org/) · [ForexFactory](https://www.forexfactory.com/) · [alternative.me](https://alternative.me/crypto/fear-and-greed-index/) · [ipwho.is](https://ipwho.is/) · Google News
 - Tools and finance features ported from the **PersonalAIBot** Android app
 

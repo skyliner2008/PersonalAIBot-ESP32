@@ -367,7 +367,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
             {"symbol", "STRING", "Same forms as get_market_quote.", false, nullptr},
             {"above", "NUMBER", "Alert when price >= this.", false, nullptr},
             {"below", "NUMBER", "Alert when price <= this.", false, nullptr},
-            {"id", "INTEGER", "remove: alert id (none = all).", false, nullptr},
+            {"id", "INTEGER", "remove: alert id; -1 = all.", false, nullptr},
         };
         declare(d, b, "price_alert",
                 "Price alerts checked by the device every 2 minutes; it speaks up when one triggers.", alert, 5);

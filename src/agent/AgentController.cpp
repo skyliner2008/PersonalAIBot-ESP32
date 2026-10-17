@@ -73,6 +73,9 @@ bool AgentController::begin(AudioManager* audio, FaceScreen* face, Storage* stor
         if (rt.begin("rt", false)) {  // read-write: creates the namespace on first boot (no NOT_FOUND log)
             _search.restore(rt.isKey("srchoff") ? rt.getUInt("srchoff", 0) : 0,
                             rt.isKey("srchn") ? rt.getUChar("srchn", 0) : 0);
+            // turns already turned into memories: from 0, the first run after every boot sent the last 24
+            // turns again and could bring back a memory deleted with forget_memory (T069)
+            _consolidatedUntil = rt.isKey("consol") ? rt.getUInt("consol", 0) : 0;
             rt.end();
         }
     }

@@ -16,6 +16,8 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T070 | [[#T070 สถานี AAC ทำให้บอร์ดรีบูต (task watchdog) — Helix AAC วนไม่รู้จบใน DecodeSectionData + ตรวจ/เพิ่มสถานีจาก Thailand.json]] | Radio | ✅ Fixed — ทดสอบบนบอร์ด: สถานีเดิมเล่นต่อเนื่อง ไม่รีบูต |
+| T069 | [[#T069 รีวิวรอบ 3 — โหมดคำปลุกทำให้ไม่ฟังต่อหลัง AI ตอบ + "AI ไม่ตอบ" หลอก, frame สงวนล้น stack, อุปกรณ์ชื่อกำกวม]] | Audio/Wake/Devices | ✅ Fixed — ทดสอบบนบอร์ด: ฟังต่อ + แคชอากาศผ่าน (พบ AI ตอบซ้ำหลัง web tool: มีอยู่ก่อน) |
 | T068 | [[#T068 แยกความดังเสียง AI กับวิทยุ — AI ล็อก 80%, ปรับเสียง = วิทยุอย่างเดียว]] | Audio | ✅ Done |
 | T067 | [[#T067 เฟส 3A — พูดแทรก AI ด้วยคำปลุก (และกัน AI ขัดจังหวะตัวเอง)]] | Wake/Audio | ✅ ผู้ใช้ทดสอบพูดแทรกได้, AI ไม่ขัดตัวเอง |
 | T066 | [[#T066 ใช้ 2 คำพร้อมกัน + เรียกคำปลุกแล้ว AI "พักหน้าจอ" ซ้ำทุกครั้ง]] | Wake/AI | ✅ Fixed (ตื่น = session ใหม่, agent priority 5, ปิดวิทยุปิดหน้าจอ) + ตัวเลือก 2 คำ |
@@ -118,6 +120,58 @@ This page documents common issues encountered during development and their solut
 **ยืนยัน 2026-10-15:** ผู้ใช้เทียบบอร์ดกับ PC app — ตอน `invert = 0` บอร์ดเป็น **พื้นขาว + ตาน้ำเงิน** ส่วนภาพ framebuffer ใน app เป็น
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
+
+## T070: สถานี AAC ทำให้บอร์ดรีบูต (task watchdog) — Helix AAC วนไม่รู้จบใน DecodeSectionData + ตรวจ/เพิ่มสถานีจาก Thailand.json
+
+**วันที่:** 2026-10-18 · ผู้ใช้ให้ตรวจ `Thailand.json` (406 สถานี) แล้วเพิ่มที่ใช้ได้ลงบอร์ด (wiki 12)
+- ลองเล่นทุกสถานีที่เพิ่มบนบอร์ด: **"Best Radio 89 ขอนแก่น" (AAC 48 kbps HE-AAC → 44.1 kHz) รีบูตบอร์ดใน ~5 วิ**
+  `task_wdt: IDLE0 ... CPU 0: radio` · backtrace (`xtensa-esp32s3-elf-addr2line`): `raac_GetBits` ← `DecodeSectionData` (noiseless.c) ← `AACDecode` ← `RadioPlayer::session`
+- **สาเหตุ:** Helix `DecodeSectionData` อ่านความยาว section จาก bitstream — เฟรมที่เสีย/อ่านเกินท้ายเฟรมได้ 0 → `sectLen = 0` → `sfb` ไม่ขยับ = **วนไม่รู้จบ** (radio task priority 4 บน core 0 ไม่คืน CPU)
+  และ `sectLen` ที่เกิน `maxSFB` เขียน `sfbCodeBook` **เลยขอบ array** (สตรีมวิทยุคือข้อมูลจากภายนอก = หน่วยความจำเสียได้)
+- **แก้:** `lib/helix-aac/src/noiseless.c` — `DecodeSectionData` คืน `ERR_AAC_INVALID_FRAME` เมื่อ section ยาว 0 หรือเกิน `maxSFB` (`DecodeICS` → `DecodeNoiselessData` ส่งต่อ)
+  → `RadioPlayer` ข้ามเฟรมนั้นตามปกติ · `RadioPlayer`: ข้ามไบต์ที่ถอดไม่ได้คืน CPU ทุก 256 ไบต์, ไม่มีเฟรมดีใน 64 KB = เลิก ("AAC stream the decoder cannot read"),
+  รอบที่ไม่ได้ถอดเฟรมใดเลยหน่วง 1 ms แม้ข้อมูลยังเข้า (เดิมวนเปล่า)
+- **ทดสอบ:** สถานีเดิมเล่น 40 วิ ไม่รีบูต ชื่อเพลงขึ้น (`ลูกทุ่ง (ปรับความเร็ว ...)`) · 24/24 สถานีใหม่เล่นได้บนบอร์ด
+- ระหว่างตรวจ: SHOUTcast v1 ส่งหน้า HTML ให้ UA "Mozilla" → ต่อท้าย `/;` ได้สตรีม (29 สถานี) · ผลตรวจทั้งหมด + สำรอง 25 สถานีใน wiki 12 · `tools/radio_check.py`
+
+## T069: รีวิวรอบ 3 — โหมดคำปลุกทำให้ไม่ฟังต่อหลัง AI ตอบ + "AI ไม่ตอบ" หลอก, frame สงวนล้น stack, อุปกรณ์ชื่อกำกวม
+
+**วันที่:** 2026-10-17 · รีวิวทั้งโปรเจครอบ 3 (เน้นโค้ดหลัง T053: คำปลุก/AEC, พูดแทรก, แยกความดัง, OTA, อุปกรณ์) · ผู้ใช้สั่ง "แก้ไขทั้งหมด"
+1. **โหมดคำปลุก (ค่าเริ่มต้น `wakeMode = 2`) ปิดช่วง "ฟังต่อ 6 วิ" หลัง AI ตอบ** — ตั้งแต่ T067 ระหว่าง AI พูด `bargeIn` เปิดไมค์ให้ WakeNet
+   → `_gateAllowed` ไม่เปลี่ยนเลย ส่วนที่ผูกกับการปิด/เปิด gate จึงไม่ทำงาน: (ก) ไม่ตั้ง `_followUp` หลังคำตอบ (ข) ประโยคที่ยังเปิดตอน AI เริ่มตอบ
+   (เซิร์ฟเวอร์ตัด 900 ms, เรา 1.5 วิ) ปิดหลังคำตอบจบ → ตั้ง `_awaitingReply` ช้า → 8 วิต่อมาขึ้น **"AI ไม่ตอบ ลองพูดอีกครั้ง" ทั้งที่ตอบแล้ว** และไม่พัก/ไม่กลับวิทยุ
+   (ค) ถ้ายังทยอยส่ง backlog ตอนปลุก เสียง 1.5 วิที่เก็บไว้ระหว่าง AI พูดถูกส่งต่อเป็น "เสียงผู้ใช้" (ผ่าน AGC สูงสุด x8)
+   → `_replyHeld`: ขอบเริ่ม/จบของคำตอบ (half duplex + หางเสียง) แยกจาก gate — เริ่มตอบ = `endUtterance` + ล้าง preroll, จบ = ล้างบัฟเฟอร์พูดแทรก
+   (ถ้าไม่ได้แทรก) + ตั้งช่วงฟังต่อ · `endUtterance` ขณะคำตอบกำลังเล่นไม่ตั้ง "รอ AI ตอบ" อีก (`[Mic] ... -> AI กำลังตอบ`)
+2. **WakeWord ตั้ง `_detected` ก่อนเขียน `_lastWord` / `_lastDetectDb`** — agent (priority 5, core เดียวกัน) อาจอ่านคำ/ระดับเสียงของครั้งก่อน
+   แล้วตัดสินการพูดแทรกผิด (เสียง "Jarvis" ของ AI เองหยุดคำตอบได้) → เขียนค่าก่อน + memory barrier แล้วค่อยตั้งธง
+3. **GeminiLiveClient: opcode สงวน 0x3–0x7** ไม่ใช่ data และไม่ผ่านการเช็ก control ≤125 ไบต์ → payload (ถึง 1 MB) ถูกคัดลอกลง `ctrl[128]` บน stack
+   → ตัดการเชื่อมต่อทันทีตาม RFC 6455 (`bad frame header (reserved opcode)`)
+4. **`get_device_status` รายงาน `speaker_volume` = เสียง AI (ล็อก 80)** ทั้งที่ `set_volume` ปรับแค่วิทยุ (T068) → `radio_volume` + `voice_volume_locked`
+5. **อุปกรณ์ (wiki 15):** `poll()` อ่านรายการโดยไม่ล็อกขณะ `devices reload/save` ทาง console เขียนใหม่ → poll ใช้ `xSemaphoreTake(_lock, 0)` (ข้ามรอบถ้าไม่ว่าง)
+   + คัดลอกชื่อก่อนเรียก callback นอกล็อก · ชื่อบางส่วนที่ตรงหลายเครื่อง ("ไฟ" กับ "ไฟโต๊ะ"/"ไฟห้องนอน") เคยเลือกตัวแรก = สั่ง relay ผิดตัว
+   → `periph::findByName` ตอบ "several devices match" (host test `device_config`)
+6. **consolidation ส่งบทสนทนาเก่าซ้ำทุกบูต** — `_consolidatedUntil` เริ่ม 0 → 24 เทิร์นเก่าถูกส่งให้ Flash-Lite อีกรอบ และความจำที่ลบด้วย `forget_memory`
+   อาจกลับมา → เก็บใน NVS `rt/consol`
+7. **`AsyncFileSink::idle()` เป็นจริงตั้งแต่คิวว่าง** ขณะบรรทัดสุดท้ายยังเขียนอยู่ → `memclear` (compact: ลบ + rename) ชนกับการเขียนนั้นได้ → ธง `_writing`
+   (peek ก่อน receive จึงไม่มีช่วงที่คิวว่างแต่ธงยังไม่ตั้ง)
+8. **คิว web tool เต็ม → ตอบโมเดลว่า `unknown function`** (โมเดลเลิกใช้ tool นั้นทั้ง session) → ตอบ `busy ... try again`
+9. **`price_alert remove` ไม่ใส่ id = ลบทั้งหมด** (โมเดลส่ง symbol แทน id ก็หายหมด) → ต้องมี id, `id = -1` = ลบทั้งหมด
+10. **ประสิทธิภาพ:** ผลของ web tool เดิม + arguments เดิม ตอบจากที่จำไว้ (4 ช่อง, PSRAM, ไม่จำ error): อากาศ 10 นาที, น้ำมัน/ปฏิทิน 30 นาที,
+    ข่าว 5 นาที, Wikipedia 1 ชม., ราคา/แลกเงิน/ภาพรวมตลาด 1 นาที — `get_weather` ซ้ำไม่ต้อง TLS handshake 2–3 ครั้ง (`[Tool] ... answered from the last N s`)
+11. เล็กน้อย: warning `-Wvolatile` ใน `AsyncFileSink.h` / `AudioManager.h`
+**ยังไม่ได้ทำ (ความเสี่ยงที่บันทึกไว้):** OTA ยังไม่มีลายเซ็น (บัญชี GitHub = เฟิร์มแวร์ — แนะนำ Ed25519 ฝัง public key) • legacy I2S driver
+(`driver/i2s.h`) จะหายใน IDF 6 • SecretBox: ถ้า eFuse UID เป็นศูนย์ กุญแจมาจาก MAC อย่างเดียว (MAC ส่งออกอากาศ) — การ์ด SD หลุดอย่างเดียวพอถอดรหัส
+**ทดสอบ:** `pio run` ผ่าน (RAM 31.8%, Flash 64.6%) · host tests 41 ชุด / 1,695 checks ✓
+**ทดสอบบนบอร์ด (2026-10-17, แฟลช COM4, `wakeMode` 2, 3.8 Live):**
+- ข้อ 1: หลังทุกคำตอบขึ้น `[Mic] ฟังต่อ 6 วิ หลัง AI ตอบ` (ก่อนแก้ในโหมดคำปลุกไม่เคยขึ้น) · ผู้ใช้พูด "สภาพอากาศวันนี้" ในช่วงนั้น → ส่งไป → `get_weather` + คำตอบ ✅
+  · ไม่มี "AI ไม่ตอบ" หลังคำตอบใดๆ ในการทดสอบ 4 รอบ — ส่วนกรณีพูดซ้อนตอน AI เริ่มตอบสร้างด้วยการพิมพ์ไม่ได้ ต้องทดสอบด้วยเสียงอีกครั้ง
+- แคช: `tool get_weather {"location":"เชียงใหม่"}` 11.8 วิ → ซ้ำใน 28 วิ = 0.0 วิ (`answered from the last 28 s`) · ภูเก็ตดึงใหม่ ✅
+  · AI ส่ง arguments ต่างจาก console (`location_en` + `location`) = คนละ key → ดึงใหม่ (ตามที่ออกแบบ)
+- **พบ (มีอยู่ก่อน ไม่เกี่ยวกับการแก้นี้):** ถามอากาศ (web tool + 3.8 Live) → **AI ตอบข้อความเดิม 2 รอบ** — ทดสอบแบบปิดไมค์ (`mute`, ไม่มีช่วงฟังต่อ)
+  ก็ยังซ้ำ = มาจากฝั่งเซิร์ฟเวอร์/การส่ง toolResponse แบบรอผล ยังไม่ได้แก้
+- **RAM ภายในต่ำสุด 10 KB** (`[Health] ... min 10 KB`) ระหว่างดึงอากาศขณะ session เปิด + คำปลุก 2 คำ · ครั้งหนึ่ง TLS ต่อไม่ได้ (`start_ssl_client: connect failed`, อากาศใช้ 21.6 วิ)
+  → ใช้คำปลุกคำเดียว (`set wakeword hiesp`) คืน ~16 KB
 
 ## T068: แยกความดังเสียง AI กับวิทยุ — AI ล็อก 80%, ปรับเสียง = วิทยุอย่างเดียว
 

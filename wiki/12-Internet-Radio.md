@@ -61,6 +61,57 @@ status: implemented — station list + touch player, tested on hardware 2026-10-
 | Surf 102.5 · BKK.FM | ป๊อป ร็อก / อัลเทอร์เนทีฟ |
 | บ้านธัมมะ | ธรรมะ |
 
+### เพิ่มจาก `Thailand.json` (2026-10-18, T070) — บอร์ดของผู้ใช้มี 40 สถานี (เต็ม)
+
+ไฟล์รายชื่อสถานีไทย 406 สถานี (แบบ radio-browser: `Title`, `Genre`, `Source1..6`) ตรวจด้วย **`tools/radio_check.py`** แบบเดียวกับที่บอร์ดเล่น:
+แตก `.pls`/`.m3u` เป็น URL สตรีม (บอร์ดไม่อ่าน playlist) · ต่อแบบ HTTP/1.1 + `Icy-MetaData` + redirect + รับ `ICY 200` + TLS ไม่ตรวจ ·
+ต้องเจอเฟรม MP3 (layer III) / AAC-ADTS ต่อกัน 3 เฟรม, ≤ 192 kbps, เน็ตส่งทันเวลาจริง, content-type ที่ `RadioPlayer` ยอมรับ
+- **ใช้ได้ 56 / 406** — ส่วนใหญ่ตาย: โดเมนหาย 115, ปฏิเสธการเชื่อมต่อ 79, timeout 55, HTTP error 19, HLS `.m3u8` 13 (บอร์ดเล่นไม่ได้), > 192 kbps 3
+- **29 สถานีได้คืนด้วยการต่อท้าย `;`** — SHOUTcast v1 ส่งหน้า HTML ให้ user agent ที่มี "Mozilla" (ของบอร์ด) → `http://host:port/;` ได้ตัวสตรีม (เก็บ URL แบบนี้ในรายการเลย)
+- ตัดซ้ำ: 94 Smile / 94 E FM, รักไทย 90, JS100, Yes 106 (97 Mazz = icy "YES Radio 106"), Met 107 ×2, Mello ×2, FM 102 ×2, อสมท พิจิตร = วัดนาคปรก
+- **เพิ่ม 24 สถานีผ่าน `radioadd`** (ลำดับ 17–40) และ**ลองเล่นบนบอร์ดทุกสถานี: เล่นได้ 24/24** (หลังแก้ decoder — ดูด้านล่าง)
+
+| เพิ่มแล้ว (17–40) | แนว |
+|---|---|
+| MCOT News 100.5 · FM 102 ขสทบ. | ข่าว / จราจร |
+| Met 107 · Mello 97.5 · City Life 93.75 ศรีราชา | สากล / ฟังสบาย |
+| Modern 98.75 | ร็อก |
+| Kiss 91.75 · Love Radio 93.75 · Radio Trip 89.75 ภูเก็ต · Hitz FM 102.25 ลำปาง · 107 Love FM ลำปาง · Fat 93 เชียงราย · 107 Pink Radio เชียงราย · Best Radio 89 ขอนแก่น (AAC) · ส.ทร.15 นราธิวาส 94.75 | ป๊อป / วาไรตี้ |
+| Hot Monitor 102.25 กระบี่ · TP4 107.5 ชุมพร · TP4 103 ตรัง | ลูกทุ่ง |
+| อสมท ภูเก็ต 101.5 · โคราช 95.75 · สงขลา 96.5 · พิษณุโลก 106.25 · จันทบุรี 95.25 · ลำปาง 99 | อสมท ภูมิภาค |
+
+**สำรอง (ใช้ได้ ณ 2026-10-18 แต่ไม่มีที่ว่าง — สลับใน Studio แท็บวิทยุ / `radioedit <n> ชื่อ|URL|แนว`):**
+
+| สถานี (ชื่อในไฟล์) | รูปแบบ | URL |
+|---|---|---|
+| ส.ทร.  3 ภูเก็ต am 1485 khz | MP3 128 kbps | `http://rcp.plathong.net:7354/index.html/;` |
+| mcot radio network fm 107.75 mhz พิจิตร | MP3 160 kbps | `http://rstream.mcot.net:9004/;` |
+| mcot radio network fm 102.5 mhz ยะลา | MP3 192 kbps | `http://rstream.mcot.net:9102/;` |
+| mcot radio network fm  91 mhz ปัตตานี | MP3 192 kbps | `http://rstream.mcot.net:9098/;` |
+| mcot radio network fm  95.75 mhz พัทลุง | MP3 192 kbps | `http://rstream.mcot.net:9100/;` |
+| mcot radio network fm  92 mhz บุรีรัมย์ | MP3 160 kbps | `http://rstream.mcot.net:9050/;` |
+| mcot radio network fm 104.5 mhz นครศรีธร | MP3 128 kbps | `http://rstream.mcot.net:9094/;` |
+| mcot radio network fm  90.75 mhz ชุมพร | MP3 112 kbps | `http://rstream.mcot.net:9014/;` |
+| mcot radio network fm  92 mhz กาฬสินธุ์ | MP3 192 kbps | `http://rstream.mcot.net:9028/;` |
+| mcot radio network fm 105 mhz กระบี่ | MP3 128 kbps | `http://rstream.mcot.net:9084/;` |
+| mcot radio network fm 106.75 mhz ประจวบค | MP3 112 kbps | `http://rstream.mcot.net:9012/;` |
+| mcot radio network fm 100.5 mhz ระนอง | MP3 128 kbps | `http://rstream.mcot.net:9016/;` |
+| mcot radio network fm  96.75 mhz ระยอง | MP3 112 kbps | `http://rstream.mcot.net:9026/;` |
+| mcot radio network fm 107 mhz สกลนคร | MP3 160 kbps | `http://rstream.mcot.net:9040/;` |
+| mcot radio network fm  93.25 mhz สตูล | MP3 192 kbps | `http://rstream.mcot.net:9106/;` |
+| mcot radio network fm 105.30 mhz สิงห์บุ | MP3 128 kbps | `http://rstream.mcot.net:9006/;` |
+| mcot radio network fm 102 mhz สุราษฎร์ธา | MP3 112 kbps | `http://rstream.mcot.net:9090/;` |
+| mcot radio network fm  99.25 mhz สุโขทัย | MP3 64 kbps | `http://rstream.mcot.net:9080/;` |
+| mcot radio network fm 102.5 mhz หนองคาย | MP3 192 kbps | `http://rstream.mcot.net:9042/;` |
+| mcot radio network fm  92 mhz น่าน | MP3 112 kbps | `http://rstream.mcot.net:9072/;` |
+| mcot radio network fm 107.25 mhz กาญจนบุ | MP3 192 kbps | `http://rstream.mcot.net:9010/;` |
+| Pattaya People Radio Radio 96 FM | MP3 128 kbps | `http://s1.thailandstreaming.net:8020/;` |
+| 97 Mazz Radio Phuket | AAC 128 kbps | `http://radio1.comgig.com:4096/;stream.m4a` |
+| js 100 กรุงเทพฯ | MP3 128 kbps | `http://sv4.hostpleng.com:8184/;` |
+| สถานี: TP4, FM FM 89.25 MHz. Phatthalung | MP3 96 kbps | `http://radio11.plathong.net/7018/;` |
+
+**พบระหว่างทดสอบ:** ชื่อเพลงบางสถานี (Hot Monitor) เป็น TIS-620 ที่ server แปลงเป็น UTF-8 ผิดซ้ำอีกชั้น ("¢èÒÇ…") — `validUtf8` ผ่านจึงไม่ถูกแปลง (ยังไม่แก้)
+
 ## หน้าจอวิทยุ (`RadioScreen`)
 
 ![[images/radio-player.png]] ![[images/radio-player-stopped.png]]

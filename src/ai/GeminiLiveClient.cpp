@@ -300,6 +300,10 @@ int GeminiLiveClient::readOneFrame(char* buf, size_t cap, bool& fin, char* ctrl,
     }
     const bool data = op == WS_TRANSPORT_OPCODES_TEXT || op == WS_TRANSPORT_OPCODES_BINARY ||
                       op == WS_TRANSPORT_OPCODES_CONT;
+    if (!data && !(op & 0x08)) {  // reserved non-control opcode (0x3-0x7): its payload would overrun ctrl[] (T069)
+        Serial.printf("[Gemini] bad frame header (reserved opcode %d)\n", op);
+        return -1;  // RFC 6455 5.2: fail the connection
+    }
     if (data && op != WS_TRANSPORT_OPCODES_CONT) _rxLen = 0;  // a new message starts
     ctrlLen = 0;
     bool overflow = false;

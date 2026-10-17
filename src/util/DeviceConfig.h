@@ -127,6 +127,29 @@ inline int parse(JsonDocument& doc, Spec* out, char* errors, size_t errCap) {
     return n;
 }
 
+constexpr int kNoMatch = -1;
+constexpr int kAmbiguous = -2;
+
+/**
+ * Index of the device called `name`: the exact name first, else the one device whose name contains it
+ * ("ไฟ" for "ไฟโต๊ะ"). kNoMatch, or kAmbiguous when the part fits several ("ไฟ" with "ไฟโต๊ะ" and
+ * "ไฟห้องนอน": guessing the first one switched the wrong relay - T069).
+ */
+template <class NameAt>  // NameAt: int -> const char* (name of device i)
+int findByName(int n, const char* name, NameAt nameAt) {
+    if (!name || !*name) return kNoMatch;
+    for (int i = 0; i < n; i++) {
+        if (!strcmp(nameAt(i), name)) return i;
+    }
+    int found = kNoMatch;
+    for (int i = 0; i < n; i++) {
+        if (!strstr(nameAt(i), name)) continue;
+        if (found != kNoMatch) return kAmbiguous;
+        found = i;
+    }
+    return found;
+}
+
 /** "on", "off", "50", "50%", true/false, numbers -> 0-100 (-1 = not understood). */
 inline int parseLevel(JsonVariantConst v) {
     if (v.is<bool>()) return v.as<bool>() ? 100 : 0;

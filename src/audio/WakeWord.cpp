@@ -153,6 +153,7 @@ bool WakeWord::setThreshold(float t) {
 bool WakeWord::takeDetection() {
     if (!_detected) return false;
     _detected = false;
+    __sync_synchronize();  // lastWord() / lastDetectDb() are read after this
     return true;
 }
 
@@ -196,10 +197,13 @@ void WakeWord::fetchLoop() {
             _lastDetect = now;
             _flush = true;
             _detections = _detections + 1;
-            _detected = true;
             const int m = r->wakenet_model_index == 2 && _names[1][0] ? 1 : 0;  // which of the two models
             strncpy(_lastWord, _names[m], sizeof(_lastWord) - 1);
             _lastDetectDb = r->data_volume;
+            // the flag last: the agent (higher priority, same core) may run right after it and judges a
+            // barge-in by the word and its level - set first, it could read the previous detection's (T069)
+            __sync_synchronize();
+            _detected = true;
             Serial.printf("[Wake] heard \"%s\" (word %d, %.0f dBFS)\n", _names[m], r->wake_word_index, r->data_volume);
         }
     }

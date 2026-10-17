@@ -675,6 +675,13 @@ void AgentController::onToolCall(JsonArrayConst calls) {
         if (!call["id"].isNull()) fr["id"] = call["id"];
         fr["name"] = name;
         JsonObject response = fr["response"].to<JsonObject>();
+        if (webtools::isWebTool(name)) {
+            // its queue is full: AgentTools does not know web tools and answered "unknown function", after
+            // which the model stopped using the tool for the whole session (T069)
+            response["error"] = "busy: other lookups are still running - try again in a few seconds";
+            Serial.printf("[Tool] %s -> busy (web tool queue full)\n", name);
+            continue;
+        }
         const bool ok = _tools->execute(name, call["args"].as<JsonObjectConst>(), response);
         // On gemini-3.8-live set_expression is NON_BLOCKING: answer silently
         if (_activeModel == (uint8_t)LiveModel::Live38 && AgentTools::isSilentTool(name)) {

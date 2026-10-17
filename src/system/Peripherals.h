@@ -40,7 +40,15 @@ public:
     template <typename F>
     void poll(uint32_t now, F changed) {
         if (!_count || now - _lastPoll < kPollMs) return;
+        // the console's `devices reload` rewrites the list under the lock: skip this poll rather than read
+        // half a device (and never hold up the agent loop waiting) - T069
+        if (!_lock || xSemaphoreTake(_lock, 0) != pdTRUE) return;
         _lastPoll = now;
+        struct Fired {
+            char name[sizeof(periph::Spec::name)];
+            bool active;
+        } fired[periph::kMaxDevices];
+        int nFired = 0;
         for (int i = 0; i < _count; i++) {
             Dev& d = _devs[i];
             if (d.spec.kind != periph::Kind::Input) continue;
@@ -54,9 +62,13 @@ public:
             d.state = active;
             if (d.spec.notify && now - d.lastNotify >= kMinNotifyMs) {
                 d.lastNotify = now;
-                changed(d.spec.name, active);
+                memcpy(fired[nFired].name, d.spec.name, sizeof(fired[nFired].name));
+                fired[nFired++].active = active;
             }
         }
+        xSemaphoreGive(_lock);
+        // outside the lock, with copies of the names (a reload may rewrite the list right after)
+        for (int i = 0; i < nFired; i++) changed(fired[i].name, fired[i].active);
     }
 
 private:
@@ -70,7 +82,7 @@ private:
     static constexpr uint32_t kPollMs = 50;
     static constexpr uint32_t kMinNotifyMs = 30000;  // a busy PIR must not wake the assistant every second
 
-    Dev* find(const char* name);
+    Dev* find(const char* name, const char*& why);  // why: not found / several match
     bool readInput(const Dev& d) const;
     void fill(const Dev& d, JsonObject out) const;
 

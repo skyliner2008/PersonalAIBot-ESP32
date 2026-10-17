@@ -112,6 +112,9 @@ task webTools (core 0, prio 2, 12 KB): HTTPS (WiFiClientSecure + WEB_ROOT_CA_PEM
 - การ์ดชนิด: `Weather`, `Oil`, `Quotes`, `News`, `Text` (ตัวเลขใหญ่ + ย่อหน้า), `Table` (ชื่อ + ค่าสี), `Analysis` (เกจ -1..+1 + ตาราง 8 แถว)
 - TLS ตรวจใบรับรองทุกโฮสต์: `WEB_ROOT_CA_PEM` = Google GTS R1/R3/R4 + GlobalSign ECC R4 + ISRG Root X1 + DigiCert Global Root G2 + Amazon Root CA 1 — ครอบคลุม Open-Meteo, บางจาก, TradingView, Wikipedia, ipwho.is, alternative.me, faireconomy (สร้างด้วย `python tools/gen_root_ca.py`); `http://` ถูกปฏิเสธเสมอ (`httpRequest` คืน -3) — ทุกแหล่งข้อมูลเป็น HTTPS
 - console / PC app: `tool <name> {json}` → `{"status":"fetching..."}` แล้วตามด้วยบรรทัด `TOOL <name> {...}` + การ์ดบนจอ
+- **แคชผลลัพธ์ (T069):** tool + arguments เดิมภายในเวลาที่ข้อมูลยังสด ตอบจากที่จำไว้พร้อมการ์ดเดิม (4 ช่อง, PSRAM, ไม่จำ error, `as_of` = เวลาที่ดึงจริง):
+  `get_weather` 10 นาที · `get_oil_price` / `economic_calendar` 30 นาที · `get_news` 5 นาที · `search_knowledge` 1 ชม. · `get_market_quote` / `convert_currency` / `market_overview` 1 นาที — log `[Tool] … answered from the last N s`
+- คิว webTools เต็ม → ตอบโมเดลว่า `busy … try again` (เดิม `unknown function` ทำให้โมเดลเลิกใช้ tool นั้น) · `price_alert remove` ต้องมี `id` (`-1` = ลบทั้งหมด; เดิมไม่ใส่ = ลบหมด)
 
 ## เวลาที่ใช้ (วัดบนบอร์ด 2026-10-15)
 

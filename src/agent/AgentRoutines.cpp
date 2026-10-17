@@ -190,7 +190,14 @@ void AgentController::handleConsolidation(uint32_t now) {
                 }
             }
             _textSel.reportSuccess(_consolidateModel);
-            _consolidatedUntil = _pendingUntil;
+            if (_pendingUntil > _consolidatedUntil) {
+                _consolidatedUntil = _pendingUntil;
+                Preferences rt;  // kept across reboots (NVS "rt"): those turns are not sent again
+                if (rt.begin("rt", false)) {
+                    rt.putUInt("consol", _consolidatedUntil);
+                    rt.end();
+                }
+            }
             _turnsSinceConsolidation = 0;
             Serial.printf("[Consolidate] %s: %u facts, %u relations, %u new\n", textModelId(_consolidateModel),
                           (unsigned)facts.size(), (unsigned)rels.size(), (unsigned)added);

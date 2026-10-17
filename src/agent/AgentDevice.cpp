@@ -274,7 +274,9 @@ void AgentController::fillStatus(JsonObject out) {
     else out["power"] = "usb";
     out["wifi_connected"] = (bool)_wifiUp;
     if (_wifiUp) out["wifi_rssi_dbm"] = WiFi.RSSI();
-    out["speaker_volume"] = _audio->volume();
+    // set_volume changes the radio only (T068): report that one, the voice is locked at its own level
+    out["radio_volume"] = _audio->radioVolume();
+    out["voice_volume_locked"] = _audio->volume();
     if (gRadio.active()) {  // "เพลงอะไรอยู่" can be answered from here
         char rn[64], rt[128];
         gRadio.info(rn, sizeof(rn), rt, sizeof(rt));

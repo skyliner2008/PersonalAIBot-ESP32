@@ -272,6 +272,7 @@ private:
 
     // Mic path
     bool _gateAllowed = false;
+    bool _replyHeld = false;  // half duplex: the AI's reply (+ echo tail) is playing - its edges end / follow a sentence
     bool _vadOpen = false;
     uint8_t _onset = 0, _wakeVotes = 0;
     uint8_t _wakeHistory = 0;  // radio + echo removal: one bit per chunk, wake on AEC_WAKE_VOTES of the last 8

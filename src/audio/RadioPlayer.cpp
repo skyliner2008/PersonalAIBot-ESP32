@@ -274,6 +274,8 @@ bool RadioPlayer::session(uint32_t gen) {
     uint32_t lastData = connectedAt;
     uint32_t totalBytes = 0;   // stream bytes read (a stall report says when the data stopped)
     bool played = false;
+    size_t badBytes = 0;        // bytes skipped since the last good frame
+    bool undecodable = false;
     char meta[256 * 16 + 1];
 
     // ---- HTTP body reader: Transfer-Encoding: chunked is common on CDN-hosted streams ----
@@ -421,8 +423,16 @@ bool RadioPlayer::session(uint32_t gen) {
                 // corrupt frame: skip a byte and look for the next sync word
                 memmove(in, in + 1, fill - 1);
                 fill -= 1;
+                // a stream the decoder cannot read is skipped byte by byte: give the core back now and then
+                // (IDLE0 starved = task watchdog reboot, T070) and give up after 64 KB without a good frame
+                if (++badBytes % 256 == 0) vTaskDelay(1);
+                if (badBytes > 64 * 1024) {
+                    undecodable = true;
+                    break;
+                }
                 continue;
             }
+            badBytes = 0;
             const size_t used = fill - (size_t)left;
             memmove(in, in + used, (size_t)left);
             fill = (size_t)left;
@@ -460,7 +470,13 @@ bool RadioPlayer::session(uint32_t gen) {
             // back every frame (the idle task must run, or the task watchdog resets the board)
             vTaskDelay(1);
         }
-        if (!progressed && stream->available() <= 0) vTaskDelay(pdMS_TO_TICKS(10));
+        if (undecodable) {
+            setError(aac ? "AAC stream the decoder cannot read" : "MP3 stream the decoder cannot read");
+            Serial.printf("[Radio] %s: no good frame in 64 KB - giving up on this stream\n", _codec);
+            break;
+        }
+        // nothing decoded: wait for data, and never spin (bytes keep coming but no frame decodes)
+        if (!progressed) vTaskDelay(pdMS_TO_TICKS(stream->available() > 0 ? 1 : 10));
     }
 
     if (mp3dec) MP3FreeDecoder(mp3dec);

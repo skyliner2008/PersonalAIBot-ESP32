@@ -66,14 +66,12 @@ void Peripherals::begin(const char* path) {
     Serial.printf("[Devices] %d from %s%s%s\n", _count, path, _errors[0] ? " - skipped: " : "", _errors);
 }
 
-Peripherals::Dev* Peripherals::find(const char* name) {
-    if (!name) return nullptr;
-    for (int i = 0; i < _count; i++) {
-        if (!strcmp(_devs[i].spec.name, name)) return &_devs[i];
-    }
-    for (int i = 0; i < _count; i++) {  // "ไฟ" for "ไฟโต๊ะ": a unique prefix / part of the name is enough
-        if (*name && strstr(_devs[i].spec.name, name)) return &_devs[i];
-    }
+// "ไฟ" for "ไฟโต๊ะ": a part of the name is enough when only one device has it
+Peripherals::Dev* Peripherals::find(const char* name, const char*& why) {
+    const int i = periph::findByName(_count, name, [this](int k) { return (const char*)_devs[k].spec.name; });
+    if (i >= 0) return &_devs[i];
+    why = i == periph::kAmbiguous ? "several devices match that name: use the full name from the list"
+                                  : "no device with that name (see the list)";
     return nullptr;
 }
 
@@ -108,16 +106,18 @@ void Peripherals::describe(JsonArray out) {
 
 const char* Peripherals::read(const char* name, JsonObject out) {
     Guard g(_lock);
-    Dev* d = find(name);
-    if (!d) return "no device with that name (see the list)";
+    const char* why = nullptr;
+    Dev* d = find(name, why);
+    if (!d) return why;
     fill(*d, out);
     return nullptr;
 }
 
 const char* Peripherals::set(const char* name, JsonVariantConst value, JsonObject out) {
     Guard g(_lock);
-    Dev* d = find(name);
-    if (!d) return "no device with that name (see the list)";
+    const char* why = nullptr;
+    Dev* d = find(name, why);
+    if (!d) return why;
     const int level = periph::parseLevel(value);
     switch (d->spec.kind) {
         case periph::Kind::Switch:

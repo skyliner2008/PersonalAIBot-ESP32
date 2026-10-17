@@ -1364,4 +1364,15 @@ TEST(device_config) {
     v.set(150);     CHECK_EQ(parseLevel(v.as<JsonVariantConst>()), 100);
     v.set(true);    CHECK_EQ(parseLevel(v.as<JsonVariantConst>()), 100);
     v.set("bright"); CHECK_EQ(parseLevel(v.as<JsonVariantConst>()), -1);
+
+    // names the model uses: exact, a unique part, never a guess between several (T069)
+    const char* names[] = {"ไฟโต๊ะ", "ไฟห้องนอน", "พัดลม", "ไฟ"};
+    auto at3 = [&](int i) { return names[i]; };
+    CHECK_EQ(findByName(3, "พัดลม", at3), 2);
+    CHECK_EQ(findByName(3, "โต๊ะ", at3), 0);         // a part only one name has
+    CHECK_EQ(findByName(3, "ไฟ", at3), kAmbiguous);  // the desk lamp or the bedroom light?
+    CHECK_EQ(findByName(4, "ไฟ", at3), 3);           // ...unless a device is called exactly that
+    CHECK_EQ(findByName(3, "แอร์", at3), kNoMatch);
+    CHECK_EQ(findByName(3, "", at3), kNoMatch);
+    CHECK_EQ(findByName(3, nullptr, at3), kNoMatch);
 }

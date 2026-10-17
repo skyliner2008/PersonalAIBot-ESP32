@@ -38,6 +38,72 @@ const char* const kWebTools[] = {"get_weather",     "get_oil_price",   "get_mark
 
 constexpr uint32_t kAlertCheckMs = 120000;
 
+// ---------------------------------------------------------------- short-lived result cache
+// Every lookup is 1-3 TLS handshakes (~1.3 s of CPU each, get_weather up to 3) and the model often asks
+// the same thing again for a follow-up question ("แล้วพรุ่งนี้ล่ะ"): the same tool + arguments within the
+// data's own refresh time gets the stored answer and card (T069). Errors are never stored.
+uint32_t cacheTtlMs(const char* name) {
+    struct Ttl {
+        const char* name;
+        uint32_t ms;
+    };
+    static const Ttl kTtl[] = {
+        {"get_weather", 10 * 60000},       {"get_oil_price", 30 * 60000},    {"get_news", 5 * 60000},
+        {"economic_calendar", 30 * 60000}, {"search_knowledge", 60 * 60000}, {"get_market_quote", 60000},
+        {"convert_currency", 60000},       {"market_overview", 60000},
+    };
+    for (const Ttl& t : kTtl) {
+        if (!strcmp(name, t.name)) return t.ms;
+    }
+    return 0;  // live state (notes, alerts), pure math, or scans that should run fresh
+}
+
+struct CacheEntry {
+    PsString key;  // "<tool>\n<args json>"
+    PsString json;
+    CardData* card = nullptr;  // PSRAM
+    uint32_t at = 0, ttl = 0;
+};
+constexpr int kCacheSlots = 4;
+CacheEntry gCache[kCacheSlots];
+
+CacheEntry* cacheFind(const PsString& key, uint32_t now) {
+    for (CacheEntry& e : gCache) {
+        if (e.ttl && e.key == key && now - e.at < e.ttl) return &e;
+    }
+    return nullptr;
+}
+
+void cacheStore(const PsString& key, uint32_t ttl, const PsString& json, const CardData& card, uint32_t now) {
+    CacheEntry* slot = nullptr;
+    for (CacheEntry& e : gCache) {  // the same key, else an empty / expired slot, else the oldest
+        if (e.key == key) {
+            slot = &e;
+            break;
+        }
+    }
+    for (CacheEntry& e : gCache) {
+        if (slot) break;
+        if (!e.ttl || now - e.at >= e.ttl) slot = &e;
+    }
+    if (!slot) {
+        slot = &gCache[0];
+        for (CacheEntry& e : gCache) {
+            if (now - e.at > now - slot->at) slot = &e;
+        }
+    }
+    if (!slot->card) {
+        void* mem = heap_caps_malloc(sizeof(CardData), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!mem) return;
+        slot->card = new (mem) CardData();
+    }
+    slot->key = key;
+    slot->json = json;
+    *slot->card = card;
+    slot->at = now;
+    slot->ttl = ttl;
+}
+
 // ---------------------------------------------------------------- weather
 
 // Each HTTPS round trip costs 2-3 s (TLS handshake), so places already looked up are remembered
@@ -660,6 +726,27 @@ void WebTools::loop() {
             continue;
         }
         const uint32_t t0 = millis();
+        const uint32_t ttl = cacheTtlMs(j.name);
+        PsString key;
+        if (ttl) {
+            key = j.name;
+            key += '\n';
+            key += j.args;
+        }
+        if (const CacheEntry* hit = ttl ? cacheFind(key, t0) : nullptr) {
+            psramFree(j.args);
+            if (hit->card->kind != CardData::None) gCard.show(*hit->card, 30000);
+            Result r{};
+            copyStr(r.id, sizeof(r.id), j.id);
+            copyStr(r.name, sizeof(r.name), j.name);
+            r.tag = j.tag;
+            r.elapsedMs = millis() - t0;
+            r.json = new PsString(hit->json);  // as_of = when it was fetched
+            Serial.printf("[Tool] %s: answered from the last %lu s\n", j.name, (unsigned long)((t0 - hit->at) / 1000));
+            if (xQueueSend(_results, &r, pdMS_TO_TICKS(2000)) != pdTRUE) delete r.json;
+            _busy = uxQueueMessagesWaiting(_jobs) > 0;
+            continue;
+        }
         JsonDocument args(JsonPsramAllocator::instance());
         deserializeJson(args, j.args);
         psramFree(j.args);
@@ -701,6 +788,7 @@ void WebTools::loop() {
         r.elapsedMs = millis() - t0;
         r.json = new PsString();
         serializeJson(out, *r.json);
+        if (ttl && out["error"].isNull()) cacheStore(key, ttl, *r.json, card, t0);
         if (xQueueSend(_results, &r, pdMS_TO_TICKS(2000)) != pdTRUE) delete r.json;
         if (!strcmp(j.name, "price_alert")) {
             alertsKnown = hasPriceAlerts(env);
