@@ -199,6 +199,7 @@ void WakeWord::fetchLoop() {
             _detected = true;
             const int m = r->wakenet_model_index == 2 && _names[1][0] ? 1 : 0;  // which of the two models
             strncpy(_lastWord, _names[m], sizeof(_lastWord) - 1);
+            _lastDetectDb = r->data_volume;
             Serial.printf("[Wake] heard \"%s\" (word %d, %.0f dBFS)\n", _names[m], r->wake_word_index, r->data_volume);
         }
     }

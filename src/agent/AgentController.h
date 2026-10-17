@@ -389,6 +389,7 @@ private:
     void endUtterance(uint32_t now);
     void noteBlip(uint32_t now, bool voice, float level);
     void checkNoReply(uint32_t now);
+    void bargeInNow(uint32_t now);  // the wake word while the AI talks: stop the reply, listen
     void markAnswered() { _replyWatchAt = 0; }
     void startRecording(uint8_t sec);
     void recordPairs(const int16_t* mic, const int16_t* ref, size_t n);

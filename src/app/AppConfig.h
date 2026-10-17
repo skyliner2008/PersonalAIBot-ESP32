@@ -70,6 +70,9 @@
 // Tap the screen (or BOOT) to stop the assistant instead of talking over it.
 #define AGENT_HALF_DUPLEX       1
 #define AGENT_ECHO_TAIL_MS      350
+#define AGENT_BARGE_IN_WORD     1       // phase 3: while the AI talks the mic stays on for the wake word only -
+                                        // "Hi ESP" / "Jarvis" stops the reply and listens (needs the wake word)
+#define AGENT_BARGE_IN_MIN_DBFS (-50.0f)  // a barge-in must be this loud: the AI's own leftover echo fired at -63
 
 // Local voice activity detection ("hybrid VAD" as recommended for the Live API): the device
 // decides when to start streaming and sends audioStreamEnd when speech ends, the server VAD

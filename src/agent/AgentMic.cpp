@@ -125,6 +125,20 @@ void AgentController::noteBlip(uint32_t now, bool voice, float level) {
     _blipPeak = 0;
 }
 
+// Phase 3 (wiki 14): "Hi ESP" / "Jarvis" while the AI talks = like a tap on the face (the rest of this
+// reply is dropped), then the mic streams at once - the command usually follows the word. The server
+// cancels the old answer itself as soon as it hears the user.
+void AgentController::bargeInNow(uint32_t now) {
+    Serial.printf("[Mic] พูดแทรกด้วยคำปลุก (%s) - หยุดคำตอบ ฟังต่อ\n", _wakeWord.lastWord());
+    _audio->clearPlayback();
+    _dropAudio = true;
+    _dropSince = now;
+    flushAgentTurn(true);
+    _followUp.arm(now, AGENT_FOLLOWUP_MS);  // stream without waiting for an onset
+    noteActivity();
+    _face->setHint("หยุดพูดแล้ว ฟังอยู่", 1500);
+}
+
 void AgentController::checkNoReply(uint32_t now) {
     // Google Search runs on the server and sends nothing until the answer: a session that offers it
     // and heard the question (transcript) waits longer before "AI ไม่ตอบ" - speaking again then would
@@ -155,7 +169,12 @@ void AgentController::handleAudioInput() {
         Serial.printf("[Wake] self-test over: heard %u time(s) in total\n", (unsigned)_wakeWord.detections());
     }
     const bool wordTest = _wordTest && _wakeWord.ready();
-    const bool allow = wordTest || (_configOk && !_muted && (!_powerSave || wordOnly) && !(AGENT_HALF_DUPLEX && speaking));
+    // barge-in (phase 3, wiki 14): half duplex keeps the AI's own voice away from Gemini, but the wake word
+    // may still hear the room through our echo removal - it is trained on one word, the AI's echo is not it
+    const bool bargeIn = AGENT_BARGE_IN_WORD && AGENT_HALF_DUPLEX && speaking && !_sleeping && _configOk && !_muted &&
+                         !_powerSave && _cfg.wakeMode != 0 && _wakeWord.ready();
+    const bool allow = wordTest || bargeIn ||
+                       (_configOk && !_muted && (!_powerSave || wordOnly) && !(AGENT_HALF_DUPLEX && speaking));
     if (allow != _gateAllowed) {
         _audio->setCaptureEnabled(allow);
         _gateAllowed = allow;
@@ -200,7 +219,7 @@ void AgentController::handleAudioInput() {
         }
         // wake word (ESP-SR): the raw mic + reference, before our own echo removal changes the chunk.
         // Only while asleep - awake, the session listens itself (and the AFE would cost CPU for nothing)
-        const bool feedWord = _sleeping && _cfg.wakeMode != 0 && _wakeWord.ready();
+        const bool feedWord = (_sleeping || bargeIn) && _cfg.wakeMode != 0 && _wakeWord.ready();
         if (feedWord && !_wordFeeding) _wakeWord.reset();  // no old audio: it starts listening now
         _wordFeeding = feedWord;
         if (feedWord && !_wakeWord.ownAec()) _wakeWord.feed(chunk, refChunk, kChunk);  // "MR": the AFE removes the echo
@@ -253,6 +272,21 @@ void AgentController::handleAudioInput() {
         // "M": WakeNet hears what is left after our echo removal - it relearns as soon as a stream starts
         // (forced while settling), where the AFE's own AEC took about a minute of radio (T064)
         if (feedWord && _wakeWord.ownAec()) _wakeWord.feed(chunk, nullptr, kChunk);
+        if (bargeIn) {  // the AI is talking: only the wake word gets this (no VAD, no noise floor, nothing to Gemini)
+            if (_wakeWord.takeDetection()) {
+                // the AI's own voice: TTS-trained "Jarvis" caught the leftover echo of the AI saying it (-63 dBFS,
+                // and it says its name "จาวิส" often) - with two words only "Hi ESP" interrupts, and only a
+                // voice clearly above that leftover counts (the user is not in the echo reference)
+                const bool jarvis = strstr(_wakeWord.lastWord(), "jarvis") != nullptr;
+                if ((jarvis && _wakeWord.twoWords()) || _wakeWord.lastDetectDb() < AGENT_BARGE_IN_MIN_DBFS) {
+                    Serial.printf("[Mic] ไม่นับพูดแทรก: %s %.0f dBFS (น่าจะเป็นเสียง AI เอง)\n", _wakeWord.lastWord(),
+                                  _wakeWord.lastDetectDb());
+                } else {
+                    bargeInNow(now);
+                }
+            }
+            continue;
+        }
         _threshold = _noise.threshold();
         // follows the background; a level that never pauses for 10 s is background too (a fan switched
         // on used to count as speech for ever). Not while the radio sounds without echo removal: the
