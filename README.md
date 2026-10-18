@@ -82,7 +82,7 @@ Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIB
 
 > The factory image starts at `0x0`, so it also **clears saved settings** on that board (a clean install).
 >
-> **Already running v3.5.0 or later?** Update over Wi-Fi instead: Settings → **อัปเดตเฟิร์มแวร์** (firmware update). The board downloads the latest release's `-app.bin`, checks it (sha256, image header, version marker) and keeps your settings and memory; if the new version fails to start properly it goes back to the old one by itself. See [wiki 13](wiki/13-OTA-Update.md).
+> **Already running v3.5.0 or later?** Update over Wi-Fi instead: Settings → **อัปเดตเฟิร์มแวร์** (firmware update). The board downloads the latest release's `-app.bin`, checks it (sha256, image header, version marker, and the release signature once a signing key is set up) and keeps your settings and memory; if the new version fails to start properly it goes back to the old one by itself. See [wiki 13](wiki/13-OTA-Update.md).
 
 ### Option B — build from source
 
@@ -232,7 +232,7 @@ Portable modules (memory, tools, scheduler, tasks, personas, model fallback, cal
 host_tests\run_tests.bat
 ```
 
-46 suites · 2,036 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+48 suites · 2,066 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
 
 ## 📁 Project layout
@@ -288,7 +288,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 - **Add a tool:** declare it in `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`); network tools go in `src/agent/WebToolsExtra.cpp` and draw a `CardData` (see [wiki/11](wiki/11-Data-Tools-and-Cards.md)).
 - **Test without a board:** `host_tests\run_tests.bat`; on a board, every tool can be called from the Studio's 🧰 tab or the serial console (`tool <name> {json}`).
 - **See the Live API conversation:** `trace on` on the serial console prints one `[Trace]` line per server event (transcripts, tool calls, `generationComplete` / `turnComplete`; audio chunks only counted) and per JSON message the board sends (`trace off` to stop, not saved) — how a doubled answer after tool calls was tracked down ([T071](wiki/07-Troubleshooting-Log.md)).
-- **Publishing a release:** bump `FIRMWARE_VERSION` in `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py`. The script builds the factory image (`tools/make_release.py`), creates the GitHub Release as a draft, uploads the factory image and the OTA `-app.bin` (each with a `.sha256`), publishes it and re-downloads it to check the sha256. The host tests run before anything is published (`--skip-tests` only on a PC without a compiler). Releases here are **immutable**: a published version can never get new files or reuse its tag, so every release needs a new version number. (`--dry-run` only checks.)
+- **Publishing a release:** bump `FIRMWARE_VERSION` in `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py`. The script builds the factory image (`tools/make_release.py`), creates the GitHub Release as a draft, uploads the factory image and the OTA `-app.bin` (each with a `.sha256`, plus the `-app.bin.sig` signature), publishes it and re-downloads it to check the sha256. The host tests run before anything is published (`--skip-tests` only on a PC without a compiler). Releases here are **immutable**: a published version can never get new files or reuse its tag, so every release needs a new version number. (`--dry-run` only checks.) **Once, before the first signed release:** `pip install cryptography` → `python tools/ota_keygen.py` → commit `src/app/OtaPublicKey.h` and back up the private key it prints (outside the repo) — boards built with that key install only updates signed with it ([wiki 13](wiki/13-OTA-Update.md)).
 - **CI:** [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml) does the same on GitHub Actions but is manual-only for now (*Actions → Firmware → Run workflow*); the release job waits for the host-tests job. `tools/make_release.py` refuses to run while `include/secrets.h` holds real values and scans the image for API-key-like strings.
 - **Docs:** the `wiki/` folder is an Obsidian vault; please add problems you solve to [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md).
 

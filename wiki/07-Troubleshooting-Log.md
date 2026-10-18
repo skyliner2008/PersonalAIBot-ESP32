@@ -16,7 +16,8 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
-| T073 | [[#T073 รีวิวรอบ 4 — icy-metaint ติดลบจากสถานีวิทยุเขียนเกิน buffer, ลบโน้ตด้วยคำค้นลบหลายอัน, ไฟล์โน้ตเสียถูกเขียนทับ]] | Radio/Tools/Storage | ✅ Fixed — host tests; รอทดสอบบนบอร์ด |
+| T074 | [[#T074 ปิดงานค้างจากรีวิว — ลายเซ็น OTA (ECDSA P-256), ย้าย I2S ไป i2s_std, redirect แบบ relative ของวิทยุ]] | OTA/Audio/Radio | 🔄 build + host tests ผ่าน — **รอทดสอบบนบอร์ด** (เสียง/ไมค์/AEC หลังย้าย I2S) |
+| T073 | [[#T073 รีวิวรอบ 4 — icy-metaint ติดลบจากสถานีวิทยุเขียนเกิน buffer, ลบโน้ตด้วยคำค้นลบหลายอัน, ไฟล์โน้ตเสียถูกเขียนทับ]] | Radio/Tools/Storage | ✅ Fixed — host tests; รอทดสอบบนบอร์ด · งานค้างทำต่อใน T074 |
 | T072 | [[#T072 get_weather ช้า 8–40 วิ — TLS ถูกแย่ง CPU (priority 2), จับมือซ้ำ, geocode ชื่อไทยพลาด]] | Tools/Network | ✅ Fixed — จังหวัด 2.8 วิ (เดิม 8–23 วิ) |
 | T071 | [[#T071 ถามอากาศแล้ว AI ตอบข้อความเดิม 2 รอบ (3.8 Live) — scheduling SILENT อยู่ผิดที่ใน functionResponse]] | AI/Tools | ✅ Fixed — ทดสอบบนบอร์ด: ตอบครั้งเดียว 3/3 รอบ |
 | T070 | [[#T070 สถานี AAC ทำให้บอร์ดรีบูต (task watchdog) — Helix AAC วนไม่รู้จบใน DecodeSectionData + ตรวจ/เพิ่มสถานีจาก Thailand.json]] | Radio | ✅ Fixed — ทดสอบบนบอร์ด: สถานีเดิมเล่นต่อเนื่อง ไม่รีบูต |
@@ -123,6 +124,24 @@ This page documents common issues encountered during development and their solut
 **ยืนยัน 2026-10-15:** ผู้ใช้เทียบบอร์ดกับ PC app — ตอน `invert = 0` บอร์ดเป็น **พื้นขาว + ตาน้ำเงิน** ส่วนภาพ framebuffer ใน app เป็น
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
+
+## T074: ปิดงานค้างจากรีวิว — ลายเซ็น OTA (ECDSA P-256), ย้าย I2S ไป i2s_std, redirect แบบ relative ของวิทยุ
+
+**วันที่:** 2026-10-18 · ผู้ใช้สั่ง "ปรับปรุงที่ยังไม่ได้ทำ" (จาก T069 / T073) · **SecretBox คงเดิม** (MAC + UID) — ผู้ใช้เลือกไม่เขียน eFuse
+1. **OTA มีลายเซ็นแล้ว** — เดิมความน่าเชื่อถือ = บัญชี GitHub (sha256 อยู่ใน release เดียวกับไฟล์) · ตอนนี้: ECDSA P-256 ของ `-app.bin`
+   (`-app.bin.sig`) ตรวจกับกุญแจสาธารณะใน `src/app/OtaPublicKey.h` ก่อนสลับช่องบูต (`util/OtaVerify.h`, `OtaUpdater::runInstall`)
+   · Ed25519 ตามแผนเดิมใช้ไม่ได้: mbedtls 3.6 ของ IDF 5.5 ไม่มี EdDSA · `tools/ota_keygen.py` สร้างกุญแจ (ส่วนตัวอยู่นอก repo)
+   · `make_release.py` เซ็น + `publish_release.py` แนบ `.sig` + workflow รับ secret `OTA_SIGNING_KEY` · รายละเอียด [[13-OTA-Update#ลายเซ็นของ release (T074)]]
+   · **ยังไม่เปิดใช้:** header ว่างจนกว่าผู้ใช้จะรัน `ota_keygen.py` แล้ว commit (Claude ไม่สร้างกุญแจส่วนตัวแทนผู้ใช้)
+2. **I2S: `driver/i2s.h` (legacy, หายใน IDF 6) → `driver/i2s_std.h`** — ช่องเดียว full duplex `i2s_new_channel(&tx, &rx)`, master,
+   Philips 16-bit stereo, MCLK 256 fs, DMA 8 × 240 frames, `auto_clear` = ค่าเดียวกับเดิมทุกตัว · เปิดทั้งสองช่องใน `initI2S()` ก่อน `ES8311::begin` (ต้องมี MCLK)
+   · `i2s_zero_dma_buffer` ไม่มีใน driver ใหม่ → `clearPlayback()` ปล่อยเสียงที่อยู่ใน DMA (≤ 80 ms) เล่นจนจบ (หยุด TX = หยุด clock ของไมค์ + ES8311)
+   · ลบ `AudioManager::setDataPins` (ไม่มีใครเรียก) · warning deprecated ของ I2S หาย (16 → 0)
+3. **วิทยุ: redirect แบบ relative** (`/stream`, `live.mp3`, `//cdn/x`, `?q`) → `redirect::resolve()` (`util/HttpRedirect.h`)
+**ทดสอบ:** host tests 48 ชุด / 2,066 checks ✓ (+ `ota_signature_asset`, `radio_redirect_resolve`; ASan/UBSan) · `pio run` ผ่านทั้งไม่มีกุญแจ
+(RAM 31.8%, Flash 64.8%) และมีกุญแจทดสอบ (64.9%) · ลายเซ็นจาก Python ตรวจด้วย mbedtls 3.6 + `OtaVerify.h` บน PC: ของแท้ผ่าน, แก้ 1 บิต = `bad signature`
+**ต้องทดสอบบนบอร์ด:** เสียง AI + วิทยุออกลำโพงปกติ · ไมค์ส่งถึง AI (`[Mic]` / `mic` ใน console) · `Echo reference on` และช่องไมค์ยังเป็น L
+(ถ้าสลับ L/R ปลุกด้วยเสียงขณะเปิดวิทยุจะพัง) · แตะจอหยุด AI แล้วเสียงค้างไม่เกิน ~0.1 วิ · หลังรัน `ota_keygen.py`: `ota install` ด้วย release ที่เซ็นแล้ว
 
 ## T073: รีวิวรอบ 4 — icy-metaint ติดลบจากสถานีวิทยุเขียนเกิน buffer, ลบโน้ตด้วยคำค้นลบหลายอัน, ไฟล์โน้ตเสียถูกเขียนทับ
 

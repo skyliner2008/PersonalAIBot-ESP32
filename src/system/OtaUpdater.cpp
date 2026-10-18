@@ -17,7 +17,9 @@
 
 #include "../ai/GoogleRootCA.h"
 #include "../app/AppConfig.h"
+#include "../app/OtaPublicKey.h"
 #include "../util/Deadline.h"
+#include "../util/OtaVerify.h"
 #include "../util/Utf8.h"
 
 OtaUpdater gOta;
@@ -38,6 +40,8 @@ constexpr uint32_t kCheckEveryMs = 24u * 60 * 60 * 1000;
 constexpr uint32_t kStallMs = 20000;                     // no data this long while downloading = failed
 constexpr size_t kChunk = 4096;
 constexpr char kUserAgent[] = "PersonalAIBot-ESP32/" FIRMWARE_VERSION;
+// a release key is built in: every update must carry a .sig that verifies against it (T074)
+constexpr bool kSignedUpdates = sizeof(OTA_SIGNING_PUBKEY_PEM) > 1;
 
 // GET with redirects (release downloads go github.com -> release-assets.githubusercontent.com),
 // TLS verified against the GitHub / Let's Encrypt roots. Returns the final HTTP status.
@@ -78,6 +82,8 @@ struct ImageWriter {
     const char* error = nullptr;
     char sha[65] = "";
     std::function<void(uint8_t)> onProgress;
+    // checked after the whole image was hashed, before esp_ota_end / the boot switch: nullptr = accepted
+    std::function<const char*(const uint8_t digest[32])> verify;
 
     bool run(const std::function<int(uint8_t*, size_t)>& read, size_t len, const char* expectVersion,
              const char* expectSha, bool dryRun) {
@@ -140,11 +146,9 @@ struct ImageWriter {
             lastPct = pct;
             vTaskDelay(1);  // let the idle tasks run (task watchdog)
         }
-        {
-            uint8_t digest[32];
-            mbedtls_sha256_finish(&ctx, digest);
-            toHex(digest, sizeof(digest), sha);
-        }
+        uint8_t digest[32];
+        mbedtls_sha256_finish(&ctx, digest);
+        toHex(digest, sizeof(digest), sha);
         if (!dryRun) {
             if (!marker.found() || strcmp(marker.version(), expectVersion) != 0) {
                 fail(marker.found() ? "เวอร์ชันในไฟล์ไม่ตรงกับ release" : "ไม่ใช่เฟิร์มแวร์ของโปรเจคนี้");
@@ -153,6 +157,12 @@ struct ImageWriter {
             if (expectSha && strcmp(sha, expectSha) != 0) {
                 fail("sha256 ไม่ตรงกับที่ประกาศไว้ (ไฟล์เสีย)");
                 goto out;
+            }
+            if (verify) {
+                if (const char* e = verify(digest)) {
+                    fail(e);
+                    goto out;
+                }
             }
             begun = false;
             if (esp_ota_end(h) != ESP_OK) {  // validates the whole image (segments + appended hash)
@@ -214,8 +224,10 @@ void OtaUpdater::begin() {
         }
         p.end();
     }
-    Serial.printf("[OTA] Firmware %s in %s%s\n", kFirmwareMarker + sizeof(ota::kMarkerPrefix) - 1,
-                  run ? run->label : "?", _pendingVerify ? " (pending verification)" : "");
+    Serial.printf("[OTA] Firmware %s in %s%s - %s\n", kFirmwareMarker + sizeof(ota::kMarkerPrefix) - 1,
+                  run ? run->label : "?", _pendingVerify ? " (pending verification)" : "",
+                  kSignedUpdates ? "updates must be signed by the release key"
+                                 : "no release key built in: updates are not signature-checked");
     xTaskCreatePinnedToCore(taskEntry, "ota", 10240, this, 1, &_task, 1);  // TLS handshakes need the stack
 }
 
@@ -310,6 +322,7 @@ void OtaUpdater::describe(JsonObject out) const {
     out["pending_verify"] = _pendingVerify;
     out["partition"] = run ? run->label : "?";
     out["repo"] = OTA_REPO;
+    out["signed_updates"] = kSignedUpdates;
 }
 
 void OtaUpdater::setRelease(const ota::Release& r) {
@@ -436,6 +449,10 @@ void OtaUpdater::runCheck() {
         fail("%s ไม่มีไฟล์สำหรับอัปเดตผ่าน Wi-Fi (-app.bin)", r.tag);
         return;
     }
+    if (kSignedUpdates && !r.sigUrl[0]) {  // whoever published it does not hold the release key
+        fail("%s ไม่มีลายเซ็น (.sig) - ไม่ติดตั้ง", r.tag);
+        return;
+    }
     _state = State::Available;
     char msg[192];  // Thai text: 3 bytes a character
     snprintf(msg, sizeof(msg), "มีเฟิร์มแวร์ใหม่ %s • เมนูตั้งค่า > อัปเดตเฟิร์มแวร์", r.tag);
@@ -461,6 +478,18 @@ void OtaUpdater::runInstall() {
         fail("โหลด sha256 ไม่ได้ (HTTP %d)", code);
         return;
     }
+    // the sha256 comes from the same release as the image: it catches a damaged download, not a forged
+    // release. The signature does - only the holder of the private key can make one (T074)
+    uint8_t sig[80];
+    size_t sigLen = 0;
+    if (kSignedUpdates) {
+        String sigText;
+        if (!r.sigUrl[0] || !fetchText(r.sigUrl, sigText, code) ||
+            !(sigLen = ota::parseSignature(sigText.c_str(), sigText.length(), sig, sizeof(sig)))) {
+            fail("โหลดลายเซ็นไม่ได้ (HTTP %d)", code);
+            return;
+        }
+    }
     WiFiClientSecure tls;
     tls.setCACert(OTA_ROOT_CA_PEM);
     tls.setTimeout(15);
@@ -482,6 +511,16 @@ void OtaUpdater::runInstall() {
         _progress = p;
         if (p % 10 == 0) Serial.printf("[OTA] %u%%\n", (unsigned)p);
     };
+    if (kSignedUpdates) {
+        w.verify = [&](const uint8_t digest[32]) -> const char* {
+            if (const char* e = ota::verifySignature(OTA_SIGNING_PUBKEY_PEM, digest, sig, sigLen)) {
+                Serial.printf("[OTA] Signature check failed: %s\n", e);
+                return "ลายเซ็นไม่ถูกต้อง (ไม่ใช่ release ของเจ้าของเฟิร์มแวร์) - ไม่ติดตั้ง";
+            }
+            Serial.println("[OTA] Signature OK (release key)");
+            return nullptr;
+        };
+    }
     const uint32_t t0 = millis();
     const bool ok = w.run(
         [&](uint8_t* d, size_t n) -> int {

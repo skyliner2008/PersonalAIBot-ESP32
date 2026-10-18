@@ -18,12 +18,13 @@ status: done
 ## ขั้นตอน
 ```
 check    GET https://api.github.com/repos/<OTA_REPO>/releases/latest  (ไม่นับ draft / pre-release)
-         → tag "vX.Y.Z" > FIRMWARE_VERSION ?  → asset "*-app.bin" + "*-app.bin.sha256"
+         → tag "vX.Y.Z" > FIRMWARE_VERSION ?  → asset "*-app.bin" + "*-app.bin.sha256" (+ "*-app.bin.sig" ถ้าเฟิร์มแวร์มีกุญแจ)
 install  (ผู้ใช้กดเท่านั้น) ปิดวิทยุ + พัก agent (ปิด Live session ระหว่างโหลด)
-         → โหลด .sha256 → โหลด -app.bin (github.com → 302 → release-assets.githubusercontent.com)
+         → โหลด .sha256 (+ .sig) → โหลด -app.bin (github.com → 302 → release-assets.githubusercontent.com)
          → เขียนลงอีกช่องทีละ 4 KB (esp_ota_begin(OTA_WITH_SEQUENTIAL_WRITES))
          → ตรวจ: header ESP32-S3 (magic 0xE9, chip id 9, app descriptor) • marker "PAB-ESP32-FW:<version>" = เวอร์ชันของ release
-                 • sha256 = ไฟล์ .sha256 ที่ประกาศ • esp_ota_end (ตรวจ segment + hash ในตัว image)
+                 • sha256 = ไฟล์ .sha256 ที่ประกาศ • ลายเซ็น ECDSA P-256 ของ sha256 นั้นด้วยกุญแจ release (ถ้ามีกุญแจในเฟิร์มแวร์)
+                 • esp_ota_end (ตรวจ segment + hash ในตัว image)
          → esp_ota_set_boot_partition → บันทึก NVS "ota" {try: เวอร์ชัน, part: ช่อง} → รีสตาร์ทผ่าน agent (ปิด session + flush ความจำ)
 confirm  boot ใหม่ = PENDING_VERIFY → ทำงานปกติ 60 วิ และ agent loop ยังเต้นอยู่ (heartbeat) → esp_ota_mark_app_valid_cancel_rollback
          รีเซ็ตก่อนนั้น (crash / watchdog / ไฟดับ / ผู้ใช้) → bootloader ทำเครื่องหมาย ABORTED แล้วบูตช่องเดิม
@@ -47,6 +48,26 @@ release-assets.githubusercontent.com → **ISRG Root X1** (+ X2) — ตรว�
 
 ## ออก release ให้บอร์ดอัปเดตได้
 `python tools/publish_release.py` แนบ 4 ไฟล์: `-factory.bin` (ติดตั้งใหม่ที่ 0x0, ล้างค่า) + `.sha256` และ **`-app.bin` (สำหรับ OTA) + `.sha256`**
+(+ **`-app.bin.sig`** เมื่อมีกุญแจ release — หัวข้อถัดไป)
+
+## ลายเซ็นของ release (T074)
+sha256 มาจาก release เดียวกับไฟล์ จึงจับได้แค่ไฟล์เสียระหว่างโหลด — คนที่ยึดบัญชี GitHub ได้ก็ปล่อยเฟิร์มแวร์ปลอมพร้อม sha256 ที่ตรงได้
+ลายเซ็นปิดช่องนี้: มีแต่เจ้าของกุญแจส่วนตัว (อยู่ใน PC ไม่ใช่ใน GitHub) ที่ทำได้
+- **อัลกอริทึม:** ECDSA P-256 + SHA-256 (DER, base64 หนึ่งบรรทัด) — mbedtls ของ IDF 5.5 ไม่มี Ed25519 แต่ ECDSA เปิดอยู่แล้วสำหรับ TLS
+  · ตรวจด้วย `ota::verifySignature` (`util/OtaVerify.h`, `mbedtls_pk_verify`) **ก่อน** `esp_ota_end` / สลับช่องบูต
+- **ตั้งครั้งเดียว** (บน PC ที่ออก release): `pip install cryptography` → `python tools/ota_keygen.py`
+  → กุญแจส่วนตัว `~/.pab-esp32/ota_signing_key.pem` (สิทธิ์ 600; เปลี่ยนที่ด้วย `PAB_OTA_SIGNING_KEY`) + กุญแจสาธารณะลง `src/app/OtaPublicKey.h` → **commit header นั้น**
+  · **สำรองกุญแจส่วนตัวไว้** (password manager / USB) — หายแล้วบอร์ดที่มีกุญแจสาธารณะนั้นอัปเดตผ่าน Wi-Fi ไม่ได้อีก (ต้องแฟลช USB)
+  · clone ใหม่ / header ถูกล้าง: `python tools/ota_keygen.py --header` เขียน header จากกุญแจเดิม · สคริปต์ไม่ยอมสร้างกุญแจทับของเดิม
+- `tools/make_release.py` เซ็น `-app.bin` → `dist/...-app.bin.sig` (ตรวจซ้ำด้วย public key ก่อนเขียน) · header มีกุญแจแต่หากุญแจส่วนตัวไม่เจอ/ไม่ตรง = หยุด
+  · header ว่าง = เตือน "NOT signed" แล้วทำต่อแบบเดิม · `publish_release.py` แนบ `.sig` · GitHub Actions: ใส่ PEM ใน secret `OTA_SIGNING_KEY`
+- **บนบอร์ด:** เฟิร์มแวร์ที่ build พร้อมกุญแจ → release ที่ไม่มี `.sig` = "ไม่มีลายเซ็น (.sig) - ไม่ติดตั้ง" · ลายเซ็นไม่ผ่าน =
+  "ลายเซ็นไม่ถูกต้อง ... ไม่ติดตั้ง" (`[OTA] Signature check failed: bad signature`) · ผ่าน = `[OTA] Signature OK (release key)`
+  · boot log บอกโหมด: `updates must be signed by the release key` / `no release key built in` · `ota` (JSON) มี `signed_updates`
+- **ช่วงเปลี่ยน:** บอร์ดที่ยังไม่มีกุญแจ (≤ v4.1.0) รับเวอร์ชันแรกที่มีกุญแจได้ตามปกติ (ตรวจแค่ sha256) — นับจากนั้นต้องมีลายเซ็นทุกครั้ง
+  · ย้อนเวอร์ชันด้วย release ปลอมไม่ได้: marker ในไฟล์ต้องตรงกับ tag และ tag ต้องใหม่กว่าเวอร์ชันที่รันอยู่
+- **ทดสอบ (2026-10-18, บน PC):** ลายเซ็นจาก `make_release.sign_app` ตรวจด้วย mbedtls 3.6 + `OtaVerify.h` ตัวเดียวกับเฟิร์มแวร์: ของแท้ ผ่าน ·
+  แก้ไฟล์ 1 บิต / แก้ลายเซ็น 1 บิต = `bad signature` · `pio run` ผ่านทั้งแบบมีกุญแจทดสอบและไม่มีกุญแจ — **ยังไม่ได้ทดสอบบนบอร์ด**
 release ก่อน v3.5.0 ไม่มี `-app.bin` → บอร์ดบอก "ไม่มีไฟล์สำหรับอัปเดตผ่าน Wi-Fi" — บอร์ดที่ยังเป็น v3.4.x ต้องแฟลช USB ครั้งเดียวเพื่อได้ v3.5.0
 
 ## ทดสอบบนบอร์ด (2026-10-16)
@@ -77,6 +98,7 @@ RAM ภายในต่ำสุด 36 KB
   · ถ้าพอร์ตหลุด อย่าเปิดใหม่ก่อน ~75 วิ: การเปิดพอร์ตอาจรีเซ็ตบอร์ด และรีเซ็ตก่อนยืนยัน 60 วิ = bootloader rollback
 
 ## ข้อจำกัด / ต่อยอด
-- ความน่าเชื่อถือของไฟล์ = บัญชี GitHub + TLS + sha256 ใน release เดียวกัน (ยังไม่มีลายเซ็นแยก) → ต่อยอด: เซ็น Ed25519 แล้วฝัง public key ในเฟิร์มแวร์
+- ความน่าเชื่อถือของไฟล์ = บัญชี GitHub + TLS + sha256 ใน release เดียวกัน **จนกว่าจะรัน `tools/ota_keygen.py`** — จากนั้น = ลายเซ็นของกุญแจ release (T074)
+- เปลี่ยนกุญแจ (rotation) ยังไม่รองรับ: บอร์ดรู้จักกุญแจเดียว — ต้องการเปลี่ยนต้องแฟลช USB หรือออก release ที่เซ็นด้วยกุญแจเก่าแต่ฝังกุญแจใหม่ (ทำมือ)
 - `pio run -t upload` เขียน `boot_app0.bin` = กลับไปบูต app0 เสมอ (ช่อง app1 อาจยังมีเวอร์ชัน OTA เก่า — `ota rollback` จะบูตตัวนั้น)
 - ยังไม่มีการอัปเดตด้วยเสียง (ตั้งใจ: ต้องกดยืนยันบนจอ / Studio / console)

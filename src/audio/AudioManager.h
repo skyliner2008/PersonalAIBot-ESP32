@@ -15,7 +15,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include <driver/i2s.h>
+#include <driver/i2s_std.h>  // the channel driver (IDF 5+); the legacy driver/i2s.h goes away in IDF 6
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -144,8 +144,6 @@ public:
     bool codecReady() const { return _codec.ready(); }
     bool i2sReady() const { return _i2sReady; }
 
-    /** Re-route the I2S data pins at runtime (diagnostics). */
-    bool setDataPins(int doutPin, int dinPin);
     ES8311& codec() { return _codec; }
 
     /** Queue a sine tone (self-test / feedback beep). */
@@ -169,6 +167,8 @@ private:
     bool _echoRef = false;
 
     bool _i2sReady = false;
+    i2s_chan_handle_t _tx = nullptr;  // one full-duplex port: TX and RX share MCLK / BCLK / WS
+    i2s_chan_handle_t _rx = nullptr;
     volatile bool _playing = false;
     volatile bool _flush = false;
     volatile bool _captureOn = false;

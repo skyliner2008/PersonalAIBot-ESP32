@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "Base64.h"
+
 namespace ota {
 
 /** Marker compiled into every image ("PAB-ESP32-FW:<version>"): an update must carry it, with the
@@ -66,6 +68,7 @@ struct Release {
     char tag[24] = "";       // "v3.5.0"
     char appUrl[256] = "";   // browser_download_url of *-app.bin
     char shaUrl[256] = "";   // ... of *-app.bin.sha256
+    char sigUrl[256] = "";   // ... of *-app.bin.sig (ECDSA P-256 signature; optional here - see OtaUpdater)
     uint32_t appSize = 0;
 };
 
@@ -99,9 +102,30 @@ inline bool parseRelease(const char* json, size_t len, Release& r) {
             r.appSize = a["size"] | 0u;
         } else if (n > 15 && !strcmp(name + n - 15, "-app.bin.sha256")) {
             strcpy(r.shaUrl, url);
+        } else if (n > 12 && !strcmp(name + n - 12, "-app.bin.sig")) {
+            strcpy(r.sigUrl, url);
         }
     }
     return r.appUrl[0] && r.shaUrl[0];
+}
+
+/**
+ * "<base64 DER signature>\n" (the .sig asset written by tools/make_release.py) -> the DER bytes in out[cap].
+ * Returns their length, 0 when it is not one plausible base64 line (an ECDSA P-256 DER signature is 8-72 bytes).
+ */
+inline size_t parseSignature(const char* text, size_t len, uint8_t* out, size_t cap) {
+    size_t i = 0;
+    while (i < len && isspace((unsigned char)text[i])) i++;
+    size_t end = i;
+    while (end < len && !isspace((unsigned char)text[end])) end++;
+    for (size_t k = end; k < len; k++) {
+        if (!isspace((unsigned char)text[k])) return 0;  // one line only
+    }
+    const size_t n = end - i;
+    if (n < 12 || n > 100 || n % 4 || b64::decodedMaxLength(n) > cap) return 0;
+    const size_t got = b64::decode(text + i, n, out);
+    if (got == b64::kError || got < 8 || got > 72 || out[0] != 0x30) return 0;  // DER SEQUENCE
+    return got;
 }
 
 /**

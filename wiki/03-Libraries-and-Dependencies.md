@@ -31,14 +31,14 @@ status: done
 | Component | ใช้ใน |
 |---|---|
 | `esp_websocket_client` (IDF) | `GeminiLiveClient` — WSS, ping, auto-reconnect, ข้อความขนาดใหญ่ |
-| `driver/i2s.h` (legacy, IDF 4.4) | `AudioManager` — I2S 24 kHz stereo full-duplex |
+| `driver/i2s_std.h` (channel driver, IDF 5; จนถึง v4.1.0 ใช้ `driver/i2s.h` แบบเก่า — T074) | `AudioManager` — I2S 24 kHz stereo full-duplex (TX + RX ช่องเดียวกัน) |
 | `SD_MMC`, `LittleFS`, `FS` | `Storage` — ไฟล์ความจำ |
 | `Wire` | `I2cBus` — ทัช FT6336G + ES8311 |
 | `WiFi`, `Preferences` (NVS), `configTzTime` (SNTP) | การเชื่อมต่อ, volume, นาฬิกา UTC+7 |
 
 > `driver/i2s.h` ใน IDF 4.4 ยังเป็น API หลัก (ไม่มี deprecation warning); ถ้าย้ายไป Arduino-ESP32 3.x ควรเปลี่ยนเป็น `ESP_I2S`/`i2s_std`
 >
-> **บน IDF 5.5 (v4.0.0):** `driver/i2s.h` ยังใช้ได้ (มี warning deprecated) · mbedtls 3: `mbedtls_sha256_*_ret` → `mbedtls_sha256_*` ·
+> **บน IDF 5.5 (v4.0.0):** `driver/i2s.h` ยังใช้ได้ (มี warning deprecated) — **ย้ายไป `i2s_std` แล้วใน T074** · mbedtls 3: `mbedtls_sha256_*_ret` → `mbedtls_sha256_*` ·
 > `esp_efuse_mac_get_default` ย้ายไป `<esp_mac.h>` · RAM ภายในหายไป ~35 KB → stack ของ `geminiIO` / `textModel` / `radio` อยู่ใน PSRAM
 > (`system/PsramTask.h`, task ที่ไม่เขียน flash เอง) · package `framework-arduinoespressif32` ของ pioarduino **ทับ**ของ 2.0.17 — สลับกลับ `main` ต้องดาวน์โหลดใหม่ (~11 นาที)
 

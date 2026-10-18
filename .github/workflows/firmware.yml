@@ -35,7 +35,7 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
 
       - name: Install PlatformIO + esptool
-        run: pip install --upgrade platformio esptool
+        run: pip install --upgrade platformio esptool cryptography
 
       - name: Read firmware version
         id: ver
@@ -50,8 +50,19 @@ jobs:
           fi
           echo "Firmware $v (already released: $(git rev-parse -q --verify "refs/tags/v$v" >/dev/null && echo yes || echo no))"
 
-      - name: Build factory image (refuses secrets, scans the image)
-        run: python tools/make_release.py
+      # With a release key in src/app/OtaPublicKey.h the -app.bin must be signed: the private key comes from
+      # the repository secret OTA_SIGNING_KEY (PEM). Without the secret, make_release.py stops (T074).
+      - name: Build factory image (refuses secrets, scans the image, signs the app)
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          if [ -n "$OTA_SIGNING_KEY" ]; then
+            umask 077
+            printf '%s\n' "$OTA_SIGNING_KEY" > "$RUNNER_TEMP/ota_signing_key.pem"
+            export PAB_OTA_SIGNING_KEY="$RUNNER_TEMP/ota_signing_key.pem"
+          fi
+          python tools/make_release.py
+          rm -f "$RUNNER_TEMP/ota_signing_key.pem"
 
       - name: Keep the image as a workflow artifact
         uses: actions/upload-artifact@v4

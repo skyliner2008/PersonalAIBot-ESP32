@@ -8,7 +8,7 @@ Publish the factory firmware as a GitHub Release - manual path (GitHub Actions c
 
 The repository uses IMMUTABLE releases, so the order matters and is fixed here:
     1. create the release as a DRAFT        (assets can only be attached to drafts)
-    2. upload the .bin and .sha256
+    2. upload the .bin, .sha256 and the -app.bin.sig (tools/ota_keygen.py)
     3. publish (and mark it latest)
     4. download it again and compare the sha256
 A tag that ever belonged to a published release can never be reused (v3.2.0 is burned that way):
@@ -123,6 +123,13 @@ def main() -> None:
              ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-factory.bin.sha256",
              ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-app.bin",  # what boards download to update themselves
              ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-app.bin.sha256"]
+    sig = ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-app.bin.sig"  # boards with the release key require it
+    sys.path.insert(0, str(ROOT / "tools"))
+    import ota_keygen
+    if ota_keygen.header_pem():
+        files.append(sig)
+    else:
+        print("WARNING: no release key (tools/ota_keygen.py): this release is not signed")
     for f in files:
         if not f.exists():
             sys.exit(f"missing {f}")
@@ -136,7 +143,7 @@ def main() -> None:
     upload = rel["upload_url"].split("{")[0]
     for f in files:
         st, a = gh.call("POST", f"{upload}?name={f.name}", raw=f.read_bytes(),
-                        ctype="application/octet-stream" if f.suffix == ".bin" else "text/plain")
+                        ctype="application/octet-stream" if f.suffix == ".bin" else "text/plain")  # .sha256 / .sig
         if st != 201:
             sys.exit(f"upload {f.name} failed: {st} {a} (draft {rel['id']} left for inspection)")
     print("2/3 files uploaded")

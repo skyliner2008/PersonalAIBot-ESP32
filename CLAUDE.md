@@ -10,6 +10,7 @@
 - PC Studio: `python tools/pc_app/esp32_ai_studio.py`
 - ออก Release (GitHub Actions ใช้ไม่ได้ — บัญชีติด billing): แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → push →
   `python tools/publish_release.py` (build + host tests + draft → upload → publish; release เป็น immutable ต้องขึ้นเลขใหม่ทุกครั้ง)
+  · ลายเซ็น OTA: ครั้งเดียว `python tools/ota_keygen.py` (กุญแจส่วนตัวอยู่นอก repo — ห้าม commit / ห้ามสร้างแทนผู้ใช้) แล้ว make_release เซ็น `-app.bin` ให้
 
 ## โครงสร้างหลัก
 - `src/agent/` — `AgentController.cpp` (setup/loop) + `AgentSession.cpp` / `AgentMic.cpp` / `AgentRoutines.cpp` / `AgentDevice.cpp`,

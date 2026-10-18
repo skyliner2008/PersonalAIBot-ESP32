@@ -1,5 +1,8 @@
 # Secrets (NEVER commit)
 include/secrets.h
+# OTA release signing key (tools/ota_keygen.py keeps it in ~/.pab-esp32 - never in the repo)
+*.pem
+ota_signing_key*
 
 # PlatformIO
 .pio/

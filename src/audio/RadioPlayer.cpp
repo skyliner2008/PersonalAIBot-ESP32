@@ -14,6 +14,7 @@
 #include <mp3dec.h>
 
 #include "../system/PsramTask.h"
+#include "../util/HttpRedirect.h"
 #include "../util/IcyMeta.h"
 #include "../util/RadioResampler.h"
 #include "../util/Utf8.h"
@@ -209,10 +210,11 @@ bool RadioPlayer::session(uint32_t gen) {
         http.addHeader("Icy-MetaData", "1");
         code = http.GET();
         if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
-            String loc = http.header("location");
+            const String loc = http.header("location");
             http.end();
-            if (loc.isEmpty()) break;
-            copyStr(url, sizeof(url), loc.c_str());
+            char next[sizeof(url)];  // "/stream" or "live.mp3" is relative to this URL (T074)
+            if (!redirect::resolve(url, loc.c_str(), next, sizeof(next))) break;  // reported as "HTTP 30x"
+            copyStr(url, sizeof(url), next);
             continue;
         }
         break;

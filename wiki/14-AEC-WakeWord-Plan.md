@@ -35,7 +35,7 @@ status: in-progress
 | ส่วน | งาน |
 |---|---|
 | mbedtls 3 | `mbedtls_sha256_*_ret` → ชื่อใหม่ (SecretBox, OtaUpdater) |
-| I2S | driver แบบเก่า (`driver/i2s.h`) ยังใช้ได้ใน IDF 5 (deprecated) — ห้ามปนกับ driver ใหม่ · ภายหลังย้ายไป `i2s_std` |
+| I2S | driver แบบเก่า (`driver/i2s.h`) ยังใช้ได้ใน IDF 5 (deprecated) — ห้ามปนกับ driver ใหม่ · **ย้ายไป `i2s_std` แล้ว (T074)** |
 | Gemini client | `esp_transport` / `esp_transport_ws` ยังอยู่ — ต้องทดสอบซ้ำจุดที่เคยพัง (T039 race, T044 frame reader, T047 keep-alive pointer) |
 | WiFi / HTTPClient / WiFiClientSecure / Preferences / LovyanGFX | API เดิมเกือบทั้งหมด (LovyanGFX 1.2 รองรับ 3.x) — ทดสอบ |
 | OTA | ใช้ต่อได้ (`verifyRollbackLater` ยังมี) · release แรกบน IDF 5 + partition ใหม่ = แฟลช USB · หลังจากนั้น OTA ตามปกติ |

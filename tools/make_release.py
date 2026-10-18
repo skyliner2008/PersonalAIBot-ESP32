@@ -6,7 +6,9 @@ Build a single "factory" firmware image for a GitHub release.
                                                dist/PersonalAIBot-ESP32-v<ver>-app.bin     (+ .sha256)
 
 The app image (the application alone, for the next OTA slot) is what a board downloads when it
-updates itself (src/system/OtaUpdater.cpp): its settings and memory stay.
+updates itself (src/system/OtaUpdater.cpp): its settings and memory stay. With a release key in
+src/app/OtaPublicKey.h (tools/ota_keygen.py) it is also signed: dist/...-app.bin.sig (ECDSA P-256,
+base64 DER), which boards built with that key require.
 
 The image (bootloader + partition table + boot_app0 + app + the ESP-SR wake word models in the "model"
 partition, merged at 0x0) can be flashed by anyone
@@ -19,6 +21,7 @@ image) and scans the result for API-key-like strings. Wi-Fi / API key are entere
 
 from __future__ import annotations
 
+import base64
 import csv
 import hashlib
 import re
@@ -82,6 +85,33 @@ def version() -> str:
     return re.search(r'FIRMWARE_VERSION\s+"([^"]+)"', text).group(1)
 
 
+def sign_app(app: Path) -> None:
+    """<app>.sig for boards that carry the release key (src/app/OtaPublicKey.h); none while there is no key."""
+    sig_file = app.parent / (app.name + ".sig")
+    sig_file.unlink(missing_ok=True)
+    sys.path.insert(0, str(ROOT / "tools"))
+    import ota_keygen
+    public = ota_keygen.header_pem()
+    if not public:
+        print("\nWARNING: no release key in src/app/OtaPublicKey.h - the -app.bin is NOT signed "
+              "(run tools/ota_keygen.py once)")
+        return
+    key_path = ota_keygen.key_path()
+    if not key_path.exists():
+        sys.exit(f"This firmware carries a release key but the private key is not at {key_path}\n"
+                 "(set PAB_OTA_SIGNING_KEY, or restore it from your backup): boards would refuse the update.")
+    key = ota_keygen.load_private(key_path)
+    if ota_keygen.public_pem(key).strip() != public.strip():
+        sys.exit(f"{key_path} does not match the public key in src/app/OtaPublicKey.h")
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    data = app.read_bytes()
+    sig = key.sign(data, ec.ECDSA(hashes.SHA256()))  # what OtaVerify.h checks: SHA-256 of the image, DER
+    key.public_key().verify(sig, data, ec.ECDSA(hashes.SHA256()))
+    sig_file.write_text(base64.b64encode(sig).decode("ascii") + "\n", encoding="ascii")
+    print(f"\nOK  {sig_file}  (signed with {key_path.name})")
+
+
 def main() -> None:
     check_secrets_header()
     pio = find_pio()
@@ -113,6 +143,7 @@ def main() -> None:
         (image.parent / (image.name + ".sha256")).write_text(f"{digest}  {image.name}\n", encoding="ascii")
         print(f"\nOK  {image}  ({len(data) / 1024:.0f} KB)\nsha256 {digest}")
     print("No secrets found in the image.")
+    sign_app(app)
 
 
 if __name__ == "__main__":

@@ -22,3 +22,4 @@ plus a Python/Tkinter PC companion app. Gemini Live for voice, on-device memory,
 - When you change behaviour, update the matching wiki page, the change log in `wiki/00-Home-Dashboard.md`,
   and both READMEs (`README.md`, `README.th.md`). Keep both copies of `PROJECT_ARCHITECTURE_SPEC.md` identical.
 - Releases are manual: bump `FIRMWARE_VERSION`, commit, push, `python tools/publish_release.py` (immutable releases).
+  OTA images are signed (ECDSA P-256) with a private key that lives outside the repo (`tools/ota_keygen.py`, once); never commit it.

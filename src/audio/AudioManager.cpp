@@ -22,7 +22,7 @@ constexpr size_t kInChunkSamples = 480;   // 20 ms @ 24 kHz -> 320 samples @ 16 
 
 // The bus runs as 16-bit STEREO frames: mono playback is duplicated to L/R, and
 // the mic channel is picked automatically (which slot the ES8311 ADC data lands
-// in, and how the legacy driver maps ONLY_LEFT/ONLY_RIGHT, differ between setups).
+// in differs between setups).
 
 float rms(const int16_t* s, size_t n) {
     if (n == 0) return 0.0f;
@@ -121,50 +121,36 @@ bool AudioManager::begin(I2cBus* bus) {
     return true;
 }
 
+// Same bus as the legacy driver had (T074): master, Philips 16-bit stereo (16-bit slots: BCLK = 32 fs),
+// MCLK = 256 fs (the ES8311 coefficients assume it), 8 x 240-frame DMA buffers each way, silence on underrun
 bool AudioManager::initI2S() {
-    i2s_config_t cfg = {};
-    cfg.mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX | I2S_MODE_RX);
-    cfg.sample_rate = AUDIO_I2S_RATE;
-    cfg.bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT;
-    cfg.channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT;
-    cfg.communication_format = I2S_COMM_FORMAT_STAND_I2S;
-    cfg.intr_alloc_flags = ESP_INTR_FLAG_LEVEL1;
-    cfg.dma_buf_count = kDmaBufCount;
-    cfg.dma_buf_len = kDmaBufLen;
-    cfg.use_apll = false;  // the ESP32-S3 has no APLL
-    cfg.tx_desc_auto_clear = true;  // output silence on underrun
-    cfg.fixed_mclk = 0;
-    cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;  // ES8311 coefficients assume 256*fs
-
-    esp_err_t err = i2s_driver_install(kPort, &cfg, 0, nullptr);
+    i2s_chan_config_t chan = I2S_CHANNEL_DEFAULT_CONFIG(kPort, I2S_ROLE_MASTER);
+    chan.dma_desc_num = kDmaBufCount;
+    chan.dma_frame_num = kDmaBufLen;
+    chan.auto_clear = true;  // TX sends zeros when nothing new was written (was tx_desc_auto_clear)
+    esp_err_t err = i2s_new_channel(&chan, &_tx, &_rx);
     if (err != ESP_OK) {
-        Serial.printf("[Audio] i2s_driver_install failed: %d\n", err);
+        Serial.printf("[Audio] i2s_new_channel failed: %d\n", err);
         return false;
     }
-
-    i2s_pin_config_t pins = {};
-    pins.mck_io_num = I2S_MCLK;
-    pins.bck_io_num = I2S_BCLK;
-    pins.ws_io_num = I2S_LRCK;
-    pins.data_out_num = I2S_DOUT;
-    pins.data_in_num = I2S_DIN;
-    err = i2s_set_pin(kPort, &pins);
-    if (err != ESP_OK) {
-        Serial.printf("[Audio] i2s_set_pin failed: %d\n", err);
+    i2s_std_config_t cfg = {};
+    cfg.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_I2S_RATE);  // PLL source (the ESP32-S3 has no APLL), MCLK 256 fs
+    cfg.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
+    cfg.gpio_cfg.mclk = (gpio_num_t)I2S_MCLK;
+    cfg.gpio_cfg.bclk = (gpio_num_t)I2S_BCLK;
+    cfg.gpio_cfg.ws = (gpio_num_t)I2S_LRCK;
+    cfg.gpio_cfg.dout = (gpio_num_t)I2S_DOUT;
+    cfg.gpio_cfg.din = (gpio_num_t)I2S_DIN;
+    if ((err = i2s_channel_init_std_mode(_tx, &cfg)) != ESP_OK || (err = i2s_channel_init_std_mode(_rx, &cfg)) != ESP_OK) {
+        Serial.printf("[Audio] i2s_channel_init_std_mode failed: %d\n", err);
         return false;
     }
-    i2s_zero_dma_buffer(kPort);
+    // the clocks run from here on: the codec needs MCLK while its clock tree is set up (begin())
+    if ((err = i2s_channel_enable(_tx)) != ESP_OK || (err = i2s_channel_enable(_rx)) != ESP_OK) {
+        Serial.printf("[Audio] i2s_channel_enable failed: %d\n", err);
+        return false;
+    }
     return true;
-}
-
-bool AudioManager::setDataPins(int doutPin, int dinPin) {
-    i2s_pin_config_t pins = {};
-    pins.mck_io_num = I2S_MCLK;
-    pins.bck_io_num = I2S_BCLK;
-    pins.ws_io_num = I2S_LRCK;
-    pins.data_out_num = doutPin;
-    pins.data_in_num = dinPin;
-    return i2s_set_pin(kPort, &pins) == ESP_OK;
 }
 
 void AudioManager::startTasks() {
@@ -263,7 +249,7 @@ void AudioManager::outLoop() {
         const uint32_t t = millis();
         if (lastWrite && t - lastWrite > _maxOutGapMs) _maxOutGapMs = t - lastWrite;  // loop held up?
         if (nv && lastWrite && t - lastWrite > _replyOutGap) _replyOutGap = t - lastWrite;
-        i2s_write(kPort, stereo, n * 4, &written, portMAX_DELAY);  // paced by the DMA
+        i2s_channel_write(_tx, stereo, n * 4, &written, portMAX_DELAY);  // paced by the DMA
         lastWrite = millis();
         if (nv) _lastPlayMs = millis();  // "speaker busy" = the assistant, not the radio
     }
@@ -280,7 +266,7 @@ void AudioManager::inLoop() {
 
     for (;;) {
         size_t bytesRead = 0;
-        if (i2s_read(kPort, frames, sizeof(frames), &bytesRead, portMAX_DELAY) != ESP_OK || bytesRead == 0) {
+        if (i2s_channel_read(_rx, frames, sizeof(frames), &bytesRead, portMAX_DELAY) != ESP_OK || bytesRead == 0) {
             vTaskDelay(pdMS_TO_TICKS(5));
             continue;
         }
@@ -365,7 +351,8 @@ void AudioManager::clearPlayback() {
     _playback.clear();
     _flush = false;
     _starved = false;  // interrupted on purpose: not a gap
-    i2s_zero_dma_buffer(kPort);
+    // what is already in the TX DMA buffers (<= 80 ms) still plays out: the channel driver cannot zero them
+    // in place, and stopping the TX channel would also stop the clocks the mic (RX) and the ES8311 run on
 }
 
 void AudioManager::setCaptureEnabled(bool on) {

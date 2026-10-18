@@ -1541,3 +1541,66 @@ TEST(json_file_status) {
     CHECK_EQ(tmp["notes"][0]["id"].as<int>(), 7);
     fs::remove_all(dir);
 }
+
+// ============================================================
+// Signed updates, radio redirects (T074)
+// ============================================================
+
+#include "util/HttpRedirect.h"
+
+TEST(ota_signature_asset) {
+    const char* json =
+        "{\"tag_name\":\"v4.2.0\",\"assets\":["
+        "{\"name\":\"PersonalAIBot-ESP32-v4.2.0-app.bin\",\"size\":3398455,\"browser_download_url\":\"https://g/a-app.bin\"},"
+        "{\"name\":\"PersonalAIBot-ESP32-v4.2.0-app.bin.sha256\",\"browser_download_url\":\"https://g/a-app.bin.sha256\"},"
+        "{\"name\":\"PersonalAIBot-ESP32-v4.2.0-app.bin.sig\",\"browser_download_url\":\"https://g/a-app.bin.sig\"}]}";
+    ota::Release r;
+    CHECK(ota::parseRelease(json, strlen(json), r));
+    CHECK(std::string(r.sigUrl) == "https://g/a-app.bin.sig");
+    CHECK(std::string(r.appUrl) == "https://g/a-app.bin");
+    const char* unsignedRel =
+        "{\"tag_name\":\"v4.1.0\",\"assets\":["
+        "{\"name\":\"x-app.bin\",\"browser_download_url\":\"https://g/x-app.bin\"},"
+        "{\"name\":\"x-app.bin.sha256\",\"browser_download_url\":\"https://g/x-app.bin.sha256\"}]}";
+    CHECK(ota::parseRelease(unsignedRel, strlen(unsignedRel), r));  // complete; a board with a key refuses it
+    CHECK(r.sigUrl[0] == '\0');
+
+    // tools/make_release.py writes base64(DER) + newline - a real one (71 bytes)
+    const char* sigText = "MEUCIQCspirxglv2EUsXBN/psNOZFUvjIoaWghoTsWz2RRS+2gIgfsUXhQRrUlTug6lx60CG9/8Ram2kvDJG5jydDL+TKZo=\n";
+    uint8_t sig[80];
+    CHECK_EQ(ota::parseSignature(sigText, strlen(sigText), sig, sizeof(sig)), (size_t)71);
+    CHECK_EQ(sig[0], 0x30);
+    const std::string padded = "  " + std::string(sigText, strlen(sigText) - 1) + "\r\n";  // CRLF from a Windows PC
+    CHECK_EQ(ota::parseSignature(padded.c_str(), padded.size(), sig, sizeof(sig)), (size_t)71);
+    CHECK_EQ(ota::parseSignature("", 0, sig, sizeof(sig)), (size_t)0);
+    CHECK_EQ(ota::parseSignature("not base64!!", 12, sig, sizeof(sig)), (size_t)0);
+    CHECK_EQ(ota::parseSignature("QUJDREVGR0hJSktM", 16, sig, sizeof(sig)), (size_t)0);  // base64, not DER
+    const std::string twoLines = std::string(sigText) + "MEUCIQ==\n";
+    CHECK_EQ(ota::parseSignature(twoLines.c_str(), twoLines.size(), sig, sizeof(sig)), (size_t)0);
+    const std::string html = "<html><body>Not Found</body></html>";  // an error page instead of the asset
+    CHECK_EQ(ota::parseSignature(html.c_str(), html.size(), sig, sizeof(sig)), (size_t)0);
+    uint8_t small[16];
+    CHECK_EQ(ota::parseSignature(sigText, strlen(sigText), small, sizeof(small)), (size_t)0);  // never overruns
+}
+
+TEST(radio_redirect_resolve) {
+    char out[128];
+    auto is = [&](const char* base, const char* loc, const char* want) {
+        return redirect::resolve(base, loc, out, sizeof(out)) && !strcmp(out, want);
+    };
+    CHECK(is("http://a.com/x", "https://cdn.b.com/live.mp3", "https://cdn.b.com/live.mp3"));
+    CHECK(is("https://a.com:8000/x/y.pls", "/stream", "https://a.com:8000/stream"));
+    CHECK(is("http://a.com/x/y.pls?id=3", "live.mp3", "http://a.com/x/live.mp3"));
+    CHECK(is("http://a.com/x/", "live.mp3", "http://a.com/x/live.mp3"));
+    CHECK(is("http://a.com", "live.mp3", "http://a.com/live.mp3"));
+    CHECK(is("http://a.com:8000", "/;", "http://a.com:8000/;"));
+    CHECK(is("https://a.com/x", "//cdn.b.com/s", "https://cdn.b.com/s"));
+    CHECK(is("http://a.com/radio?x=1", "?x=2", "http://a.com/radio?x=2"));
+    CHECK(is("http://a.com/x", " /stream \r", "http://a.com/stream"));  // stray spaces / CR from the header
+    CHECK(!redirect::resolve("http://a.com/x", "", out, sizeof(out)));
+    CHECK(!redirect::resolve("not a url", "/stream", out, sizeof(out)));
+    CHECK(!redirect::resolve(nullptr, "/s", out, sizeof(out)));
+    char tiny[16];
+    CHECK(!redirect::resolve("http://a.com/x", "/a-very-long-stream-path", tiny, sizeof(tiny)));  // never overruns
+    CHECK(redirect::resolve("http://a.com/x", "/s", tiny, sizeof(tiny)) && !strcmp(tiny, "http://a.com/s"));
+}

@@ -73,7 +73,7 @@
 ## 3. เฟิร์มแวร์และหน่วยความจำ
 
 - Platform pioarduino `55.03.312` (Arduino-ESP32 3.3.12 / IDF 5.5.5 ตั้งแต่ v4.0.0 — v3.x: `espressif32 @ 7.1.3` = Arduino 2.0.17 / IDF 4.4), C++17 · task ที่ไม่เขียน flash (`geminiIO`, `textModel`, `radio`) มี stack ใน PSRAM
-- Partition `partitions_sr.csv` (v4.0.0): app 5 MB × 2 (OTA) + `model` 3.25 MB (คำปลุก ESP-SR) + LittleFS 2.6 MB (v3.x: `default_16MB.csv`) · v3.5.0: OTA จาก GitHub Releases (`OtaUpdater`, ตรวจ sha256/header/marker, ยืนยันหลัง 60 วิ ไม่งั้น bootloader rollback — wiki 13)
+- Partition `partitions_sr.csv` (v4.0.0): app 5 MB × 2 (OTA) + `model` 3.25 MB (คำปลุก ESP-SR) + LittleFS 2.6 MB (v3.x: `default_16MB.csv`) · v3.5.0: OTA จาก GitHub Releases (`OtaUpdater`, ตรวจ sha256/header/marker + ลายเซ็น ECDSA P-256 เมื่อมีกุญแจใน `app/OtaPublicKey.h` (T074), ยืนยันหลัง 60 วิ ไม่งั้น bootloader rollback — wiki 13)
 - Firmware 1.24 MB (18.9%), static RAM 17.8%
 
 | ส่วน | ที่อยู่ | ขนาด |
@@ -96,7 +96,7 @@
 | Task | Core | Prio | หน้าที่ |
 |---|---|---|---|
 | audioOut | 0 | 6 | playback ring → I2S (mono→stereo), prebuffer 120 ms |
-| audioIn | 0 | 6 | I2S → เลือกช่อง L/R → 24→16 kHz → capture ring |
+| audioIn | 0 | 6 | I2S (`i2s_std` full duplex, T074) → เลือกช่อง L/R → 24→16 kHz → capture ring |
 | geminiIO | — | 5 | เจ้าของการเชื่อมต่อคนเดียว: esp_transport_ws + TLS, outbox, ping, reconnect, ประกอบข้อความ, close handshake |
 | agent | 1 | 4 | AgentController: session, tools, memory, mic gate, derived state |
 | ui | 1 | 3 | AvatarUI 30 FPS, ทัช, BOOT, แบตเตอรี่ |

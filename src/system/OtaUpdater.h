@@ -6,7 +6,8 @@
  *   check    GET api.github.com/repos/<OTA_REPO>/releases/latest -> tag + "*-app.bin" (+ ".sha256")
  *   install  download the app image straight into the other OTA slot (settings, memory and the SD card
  *            are not touched), verify it (ESP32-S3 image header, the "PAB-ESP32-FW:<version>" marker =
- *            the release's version, sha256 = the published one, esp_ota_end's own image check), switch
+ *            the release's version, sha256 = the published one, the ECDSA P-256 signature (.sig) by the
+ *            release key in app/OtaPublicKey.h when one is built in, esp_ota_end's own image check), switch
  *            the boot slot, restart through the agent (clean Live close + memory flush)
  *   confirm  the new image boots as PENDING_VERIFY; it is marked valid once it has run 60 s with the
  *            agent loop alive. Any reset before that (crash, watchdog, power) makes the bootloader go
