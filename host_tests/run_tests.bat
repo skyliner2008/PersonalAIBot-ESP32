@@ -29,6 +29,7 @@ cl /nologo /std:c++17 /EHsc /utf-8 /O2 /W3 /D_CRT_SECURE_NO_WARNINGS ^
   /I "%ROOT%\src" /I "%AJSON%" ^
   "%~dp0test_main.cpp" ^
   "%~dp0test_assistant.cpp" ^
+  "%~dp0test_vehicle.cpp" ^
   "%ROOT%\src\util\Base64.cpp" ^
   "%ROOT%\src\memory\TextFeatures.cpp" ^
   "%ROOT%\src\memory\MemoryStore.cpp" ^
@@ -40,6 +41,10 @@ cl /nologo /std:c++17 /EHsc /utf-8 /O2 /W3 /D_CRT_SECURE_NO_WARNINGS ^
   "%ROOT%\src\agent\Consolidation.cpp" ^
   "%ROOT%\src\agent\ThaiProvinces.cpp" ^
   "%ROOT%\src\ai\ModelFallback.cpp" ^
+  "%ROOT%\src\vehicle\DashModel.cpp" ^
+  "%ROOT%\src\vehicle\SimEngine.cpp" ^
+  "%ROOT%\src\vehicle\Elm327.cpp" ^
+  "%ROOT%\src\vehicle\HondaKline.cpp" ^
   /Fo"%OUT%\\" /Fe"%OUT%\host_tests.exe"
 if errorlevel 1 exit /b 1
 

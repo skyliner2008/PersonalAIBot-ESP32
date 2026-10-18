@@ -16,6 +16,7 @@ mkdir -p "$OUT"
 "$CXX" -std=c++17 -O2 -Wall -Wno-unused-function -I "$ROOT/src" -I "$AJSON" \
     "$ROOT/host_tests/test_main.cpp" \
     "$ROOT/host_tests/test_assistant.cpp" \
+    "$ROOT/host_tests/test_vehicle.cpp" \
     "$ROOT/src/util/Base64.cpp" \
     "$ROOT/src/memory/TextFeatures.cpp" \
     "$ROOT/src/memory/MemoryStore.cpp" \
@@ -27,6 +28,10 @@ mkdir -p "$OUT"
     "$ROOT/src/agent/Consolidation.cpp" \
     "$ROOT/src/agent/ThaiProvinces.cpp" \
     "$ROOT/src/ai/ModelFallback.cpp" \
+    "$ROOT/src/vehicle/DashModel.cpp" \
+    "$ROOT/src/vehicle/SimEngine.cpp" \
+    "$ROOT/src/vehicle/Elm327.cpp" \
+    "$ROOT/src/vehicle/HondaKline.cpp" \
     -o "$OUT/host_tests"
 
 "$OUT/host_tests"

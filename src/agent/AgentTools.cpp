@@ -112,6 +112,7 @@ const AgentTools::Entry AgentTools::kHandlers[] = {
     {"stop_radio", &AgentTools::stopRadio},
     {"play_radio", &AgentTools::playRadio},
     {"device", &AgentTools::device},
+    {"vehicle", &AgentTools::vehicle},
     {nullptr, nullptr},
 };
 
@@ -260,6 +261,15 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
             {"value", "STRING", "set: on/off, or 0-100 for a dimmer.", false, nullptr},
         };
         declare(d, b, "device", "Read or switch the devices wired to the board (relay, dimmer, sensor).", devp, 3);
+    }
+    if (_device.vehicleEnabled()) {  // only once a dash source is chosen (menu / console): no cost otherwise
+        static const char* const kVehActions[] = {"status", "open", "close", "set_source", nullptr};
+        static const char* const kVehSources[] = {"off", "sim", "touch", "kline", "obd_ble", "obd_uart", "serial", nullptr};
+        static const Param vehp[] = {
+            {"action", "STRING", nullptr, true, kVehActions},
+            {"source", "STRING", nullptr, false, kVehSources},
+        };
+        declare(d, b, "vehicle", "Car / motorcycle dash: live rpm, speed, engine temp, battery; show or hide it.", vehp, 2);
     }
 
     // ---- Live data with on-screen graphics (run by webtools::WebTools, answered asynchronously) ----
@@ -764,6 +774,15 @@ bool AgentTools::device(JsonObjectConst a, JsonObject r, const char*& e) {
     const char* name = a["name"] | "";
     if (!*name) return (e = "name is required"), false;
     if (const char* why = _device.deviceAction(action, name, a["value"], r)) return (e = why), false;
+    return true;
+}
+
+bool AgentTools::vehicle(JsonObjectConst a, JsonObject r, const char*& e) {
+    const char* action = a["action"] | "status";
+    if (strcmp(action, "status") && strcmp(action, "open") && strcmp(action, "close") && strcmp(action, "set_source")) {
+        return (e = "action must be status, open, close or set_source"), false;
+    }
+    if (const char* why = _device.vehicleAction(action, a["source"] | "", r)) return (e = why), false;
     return true;
 }
 

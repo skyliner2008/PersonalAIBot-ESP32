@@ -288,6 +288,7 @@ void AgentController::loop() {
         const uint32_t now = millis();
         handleScheduler(now);
         handleDevices(now);
+        handleVehicle(now);
         lap("scheduler");
         handleSleepAndRestarts(now);
         lap("sleep");

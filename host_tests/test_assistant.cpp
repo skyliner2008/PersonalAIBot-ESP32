@@ -195,6 +195,16 @@ public:
         return nullptr;
     }
     void fillStatus(JsonObject out) override { out["battery_percent"] = 80; }
+    bool vehicleOn = false;
+    std::string vehicleCall;
+    bool vehicleEnabled() override { return vehicleOn; }
+    const char* vehicleAction(const char* action, const char* source, JsonObject r) override {
+        vehicleCall = std::string(action) + ":" + source;
+        if (!strcmp(action, "set_source") && !strcmp(source, "nope")) return "unknown source";
+        r["status"] = "LIVE";
+        r["readings"]["rpm"] = 2500;
+        return nullptr;
+    }
     bool setExpression(const char* e) override { return expression = e, true; }
     void requestSleep() override { sleepRequested = true; }
     bool applyAssistantChange(const AssistantChange& c, JsonObject result) override {
@@ -277,6 +287,22 @@ TEST(tool_declarations_per_model) {
     CHECK(recall == "BLOCKING" && expr == "NON_BLOCKING");
     CHECK(bytes < 15000);  // billed every turn: keep the declarations compact
     printf("    tool declarations: %u bytes JSON\n", (unsigned)bytes);
+
+    // the vehicle dash: declared only while a source is on (a board without a car pays nothing)
+    rig.dev.vehicleOn = true;
+    const size_t withVehicle = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
+    CHECK_EQ(count, (size_t)43);
+    // an opt-in pack like `device`: the base set stays under 15 KB, the dash adds one small tool
+    CHECK(withVehicle - bytes < 400);
+    printf("    + vehicle dash tool: %u bytes JSON\n", (unsigned)(withVehicle - bytes));
+    JsonDocument vr;
+    CHECK(callTool(rig.tools, "vehicle", "{\"action\":\"status\"}", vr));
+    CHECK(rig.dev.vehicleCall == "status:" && vr["result"]["readings"]["rpm"] == 2500);
+    CHECK(callTool(rig.tools, "vehicle", "{\"action\":\"set_source\",\"source\":\"kline\"}", vr));
+    CHECK(rig.dev.vehicleCall == "set_source:kline");
+    CHECK(!callTool(rig.tools, "vehicle", "{\"action\":\"set_source\",\"source\":\"nope\"}", vr));
+    CHECK(!callTool(rig.tools, "vehicle", "{\"action\":\"drive\"}", vr));
+    rig.dev.vehicleOn = false;
 
     // optional finance pack off -> 36 (no trading tools exist at all)
     rig.tools.setFinancePack(false);

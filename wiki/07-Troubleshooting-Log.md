@@ -16,6 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T076 | [[#T076 หน้าปัดรถ — ฟีเจอร์ใหม่ เขียนเองทั้งหมด (MIT) จากแนวคิดของ redline-gauge]] | Vehicle/UI/BLE | 🔄 host tests + build + ภาพ preview ผ่าน — **รอทดสอบบนบอร์ด/กับรถจริง** |
 | T075 | [[#T075 สร้างกุญแจเซ็นอัปเดตจาก ESP32-AI Studio ด้วยปุ่มเดียว]] | Studio/OTA | ✅ Done — ทดสอบทุกปุ่มบน Xvfb (Linux); รอลองบน Windows |
 | T074 | [[#T074 ปิดงานค้างจากรีวิว — ลายเซ็น OTA (ECDSA P-256), ย้าย I2S ไป i2s_std, redirect แบบ relative ของวิทยุ]] | OTA/Audio/Radio | 🔄 build + host tests ผ่าน — **รอทดสอบบนบอร์ด** (เสียง/ไมค์/AEC หลังย้าย I2S) |
 | T073 | [[#T073 รีวิวรอบ 4 — icy-metaint ติดลบจากสถานีวิทยุเขียนเกิน buffer, ลบโน้ตด้วยคำค้นลบหลายอัน, ไฟล์โน้ตเสียถูกเขียนทับ]] | Radio/Tools/Storage | ✅ Fixed — host tests; รอทดสอบบนบอร์ด · งานค้างทำต่อใน T074 |
@@ -125,6 +126,29 @@ This page documents common issues encountered during development and their solut
 **ยืนยัน 2026-10-15:** ผู้ใช้เทียบบอร์ดกับ PC app — ตอน `invert = 0` บอร์ดเป็น **พื้นขาว + ตาน้ำเงิน** ส่วนภาพ framebuffer ใน app เป็น
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
+
+## T076: หน้าปัดรถ — ฟีเจอร์ใหม่ เขียนเองทั้งหมด (MIT) จากแนวคิดของ redline-gauge
+
+**วันที่:** 2026-10-18 · **ผู้ใช้:** "อยากเพิ่ม repo นี้ (moomdate/redline-gauge) เข้ากับโปรเจคเป็นอีกฟีเจอร์" → เลือก **เขียนใหม่เอง (MIT)** + แหล่งข้อมูล SIM/TOUCH,
+Honda K-Line, OBD ELM327 BLE และ "วางโปรเจคให้ครอบคลุมหลายแบบ ใช้ได้ทั้งมอเตอร์ไซค์และรถยนต์"
+- **ทำไมไม่คัดลอก:** REDLINE เป็น PolyForm Noncommercial (ห้ามใช้เชิงพาณิชย์ + ต้องคงหน้า splash credit) ไม่เข้ากับ MIT → ไม่มีโค้ด/ภาพ/ฟอนต์ของเขาใน repo
+- **ทำไมไม่ใช้ ELM327 Bluetooth Classic แบบต้นฉบับ:** ESP32-S3 มีแค่ BLE 5.0 (`SOC_BT_CLASSIC_SUPPORTED` ไม่มีใน soc_caps ของ S3)
+  ผู้ใช้แจ้งว่าบอร์ดมี "Bluetooth 4.2 BR/EDR + LE" — เป็นสเปกของ ESP32 รุ่นแรก (CYD) ส่วน ES3C28P คือ ESP32-S3 (wiki 01) → ใช้ adapter รุ่น BLE
+- **RAM ของ BLE:** Arduino 3.3 คืน ~36 KB RAM ภายในของ BLE ตอนบูตถ้า `bleInUse()` เป็น false → override `bleInUse()` (strong, `VehicleLink.cpp`) อ่าน NVS `veh/src`
+  ตอนบูต: เก็บไว้เฉพาะเมื่อแหล่งข้อมูลเป็น `obd_ble` (เลือกแล้วรีสตาร์ท 1 ครั้ง) · ตรวจใน `firmware.elf`: `T bleInUse` = ของเรา, `W btInUse` = ของ core
+  · ราคาที่จ่ายเสมอ: RAM คงที่ +2.9 KB (ไลบรารี BLE + หน้าปัด), flash +300 KB (64.8 → 70.6%)
+- **ส่วนที่ทำ:** `src/vehicle/` — `VehicleData.h` (ช่องข้อมูล + เวลาสด 2.5 วิ, แหล่งข้อมูล, parser ข้อความ), `DashModel` (รอบลื่น, peak, shift light กระพริบ,
+  ระดับเตือน, ประมาณเกียร์), `SimEngine` (แรงบิด, คลัตช์, เกียร์อัตโนมัติ, ลม/ล้อ, เบรก, อุ่นเครื่อง, ไดชาร์จ — รถเก๋ง/มอเตอร์ไซค์ 110-125cc),
+  `Elm327` (init, PID ที่รถรองรับ, รอบทุกคำสั่งเว้นคำสั่ง, ATRV, timeout/เริ่มใหม่), `HondaKline` (ปลุก/hello/ตาราง, checksum, ตัด echo, layout ปรับได้),
+  `Vehicle` (task เฉพาะเมื่อเลือกแหล่ง, NVS `veh`, `agent/vehicle.json`, แจ้งเตือน), `VehicleLink` (UART1 GPIO 43/44 + K-Line wake pulse, BLE scan/connect/notify)
+  · `src/ui/DashScreen` · เมนู "หน้าปัดรถ" · console `dash ...` · tool `vehicle` (ประกาศเฉพาะเมื่อเปิด, +370 bytes) · AI พูดเตือนเครื่องร้อน/แบต · `Peripherals::usesPin`
+  (แหล่ง UART ไม่ชนอุปกรณ์ใน devices.json)
+- **`tools/dash_preview/`:** คอมไพล์ `DashScreen.cpp` ตัวจริง + LovyanGFX บน PC (SDL2) แล้วบันทึก PNG — ใช้ตรวจ layout ไม่ต้องมีบอร์ด (ภาพใน wiki 16)
+  · ระหว่างตรวจพบ: ฟอนต์ GFX ไม่มีเครื่องหมายองศา → วาดวงกลมเล็กเอง · ขนาดตัวอักษรค้างจากเลขตัวใหญ่ → `setTextSize(1)` ก่อนข้อความไทย
+- **ไม่ได้ทำ / เสี่ยง:** ยังไม่ได้ทดสอบบนบอร์ดและกับรถจริงเลย (BLE adapter แต่ละยี่ห้อ, layout ตาราง K-Line ของแต่ละรุ่น, ระดับแรงดันของโมดูล K-Line,
+  RAM ตอน BLE + Live + คำปลุก 2 คำ) · ขาช่อง UART ยัง "สันนิษฐาน" ว่าเป็น 43/44 (wiki 15) · ESP32-AI Studio ยังไม่มีแท็บหน้าปัด (ใช้ console `dash`)
+**ทดสอบ:** host tests 53 ชุด / 2,213 checks ✓ (ASan + UBSan; `vehicle_*` 5 ชุด + tool `vehicle`) · `pio run` ผ่าน (RAM 32.7%, Flash 70.6%, ไม่มี warning ในไฟล์ใหม่)
+· ภาพ 5 ฉากจาก `tools/dash_preview` (เมือง, shift light, เตือน, มอเตอร์ไซค์ K-Line, รอ Bluetooth)
 
 ## T075: สร้างกุญแจเซ็นอัปเดตจาก ESP32-AI Studio ด้วยปุ่มเดียว
 

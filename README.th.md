@@ -36,6 +36,7 @@
 | 👀 **ใบหน้ามีชีวิต** | ดวงตาสไตล์ Cozmo 14 อารมณ์, ซับไตเติลภาษาไทย, ปุ่มเปิด/ปิดไมค์บนจอ, โหมดมืด — พักนานจะเปลี่ยนเป็น**นาฬิกาหรี่แสง** (ประหยัดไฟ) และตื่นพร้อมจอสว่างทันทีที่ได้ยินเสียง |
 | 📊 **การ์ดข้อมูลสด** | อากาศ + PM2.5, ราคาน้ำมันไทย, หุ้น/ทอง/คริปโต/ค่าเงิน, วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, ข่าว, Wikipedia — วาดเป็นกราฟิกขณะ AI พูด |
 | 📻 **วิทยุออนไลน์** | หน้าจอแบบแอปวิทยุ พร้อม 16 สถานีไทยที่ทดสอบแล้ว (เพิ่มได้ถึง 40 — `python tools/radio_check.py` ตรวจรายชื่อสถานีแบบเดียวกับที่บอร์ดเล่น; ถอดรหัส AAC ที่เฟรมเสียไม่ค้างจนรีบูตแล้ว): เลื่อนแล้วแตะเลือกสถานี ปุ่มเพิ่ม/ลดเสียง ปุ่ม ⏸ หยุดชั่วคราว ปุ่ม ⏻ ปิดวิทยุ (สีแดง) และแตะกลางจอเพื่อสั่งงาน AI ได้เหมือนเดิม พูด "เปิดวิทยุลูกทุ่ง" หรือ "สถานีที่ 4" แล้ว AI จะเลือกจากรายการให้ แก้รายการ (เพิ่ม แก้ ลบ เรียงลำดับ ทดสอบ URL) ได้ใน ESP32-AI Studio ถอดรหัส MP3/AAC ด้วย Helix และวิทยุจะเบาลงเหลือ 12% ระหว่างคุย ปุ่มปรับเสียงและคำสั่ง "เบาเสียงหน่อย" ปรับเฉพาะวิทยุ — เสียง AI ล็อกไว้ที่ระดับของตัวเอง (ค่าเริ่มต้น 80, `set aivolume`) สั่งเปิดวิทยุแล้ว AI บอกชื่อสถานีแล้วพักทันที (ไม่ฟังหรือตอบเสียงดีเจ) และสั่ง "เปิดวิทยุ" เฉยๆ จะเล่นสถานีล่าสุด [wiki/12](wiki/12-Internet-Radio.md) |
+| 🏁 **หน้าปัดรถ** (ใหม่) | หน้าปัดแบบรถแข่งสำหรับรถยนต์และมอเตอร์ไซค์: บาร์รอบเครื่อง + shift light, ความเร็วตัวใหญ่, เกียร์, ช่องอุณหภูมิเครื่อง / แบต / อากาศเข้า เปลี่ยนเป็นเหลือง/แดงเมื่อเกินเกณฑ์ ข้อมูลจาก OBD-II ผ่าน **ELM327 Bluetooth LE**, **Honda K-Line** (Wave 110i / 125i, Click, PCX ... ผ่านบอร์ดแปลงแบบ L9637D), ELM327 ต่อสาย, ข้อความจากบอร์ดอื่น หรือตัวจำลองในตัว (นิ้วเป็นคันเร่ง) AI อ่านค่าสดได้ ("เครื่องร้อนไหม") และพูดเตือนเองเมื่อเครื่องร้อนจัดหรือไดชาร์จไม่ชาร์จ — ยังไม่ได้ทดสอบกับรถจริง [wiki/16](wiki/16-Vehicle-Dash.md) |
 | ⏰ **ผู้ช่วยส่วนตัว** | ตั้งเวลา, แจ้งเตือน (ทุกวัน/วันทำงาน/ทุกสัปดาห์), รายการงาน, สมุดโน้ต, แจ้งเตือนราคาด้วยเสียง, เครื่องคิดเลข, แปลงหน่วย, เวลาต่างประเทศ |
 | 🔁 **ซ่อมตัวเองได้** | สลับโมเดลอัตโนมัติ, หยุดพักเมื่อติดโควตา, ปิด Google Search อัตโนมัติเมื่อโควตาหมด, resume เซสชัน, ต่อ Wi-Fi ใหม่ |
 | 🖥️ **ESP32-AI Studio** | แอป PC โหมดมืด: ตั้งค่าทุกอย่าง, debug log สด, แชท, จอเสมือนแตะได้, อัดเสียงไมค์, รัน tool, build & flash |
@@ -166,7 +167,7 @@ AI เลือกเรียกเองตามบทสนทนา tool �
 |---|---|
 | **ความจำ** | `save_memory` · `save_relation` · `recall_memory` · `forget_memory` · `recall_conversation` |
 | **เวลา & งาน** | `set_timer` · `set_reminder` · `list_reminders` · `cancel_reminder` · `add_task` · `list_tasks` · `update_task` |
-| **ผู้ช่วย & เครื่อง** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (ระบุค่าหรือปรับ +/-) · `configure_device` (ไมค์, เวลาพัก, โหมดนาฬิกา) · `rest_screen` (พักหน้าจอทันที) · `play_radio` / `stop_radio` (วิทยุออนไลน์) · `mute_microphone` · `control_led` · `go_to_sleep` |
+| **ผู้ช่วย & เครื่อง** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (ระบุค่าหรือปรับ +/-) · `configure_device` (ไมค์, เวลาพัก, โหมดนาฬิกา) · `rest_screen` (พักหน้าจอทันที) · `play_radio` / `stop_radio` (วิทยุออนไลน์) · `mute_microphone` · `control_led` · `go_to_sleep` · `device` (เมื่อมี `agent/devices.json`) · `vehicle` (เมื่อเลือกแหล่งข้อมูลหน้าปัดแล้ว) |
 | **ข้อมูลสด** 🖼️ | `get_weather` (Open-Meteo + PM2.5, ไม่ระบุที่ = ใช้ตำแหน่งจาก IP) · `get_oil_price` (บางจาก) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
 | **เครื่องมือทั่วไป** 🖼️ | `calculate` · `convert_units` (รวม ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (รองรับ DST) · `get_location` · `search_knowledge` (Wikipedia ไทย/อังกฤษ) · `notes` |
 | **ชุดการเงิน** 🖼️ | `market_overview` (+ ดัชนีกลัว/โลภคริปโต) · `market_analysis` (RSI, MACD, EMA, ADX, หลายกรอบเวลา, P/E, ปันผล) · `market_scan` (ขึ้นแรง/ลงแรง/วอลุ่ม/RSI — ไทย/สหรัฐ/คริปโต) · `economic_calendar` (ForexFactory เวลาไทย) · `position_size` · `price_alert` |
@@ -233,7 +234,7 @@ flowchart LR
 host_tests\run_tests.bat
 ```
 
-48 ชุดทดสอบ · 2,066 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
+53 ชุดทดสอบ · 2,213 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ หรือ clang++)
 
 ## 📁 โครงสร้างโปรเจกต์
@@ -248,6 +249,7 @@ src/audio      AudioManager (I2S), ไดรเวอร์ ES8311, resampler
 src/memory     MemoryStore (BM25 + กราฟ), EpisodicLog
 src/display    ตั้งค่า LovyanGFX, ไดรเวอร์ทัช, ฟอนต์ไทย 26/20 px
 src/system     บัส I2C, ที่เก็บข้อมูล (SD / LittleFS) · src/util  UTF-8, เครื่องคิดเลข, หน่วย, เวลา, JSON
+src/vehicle    หน้าปัดรถ: ค่าจากรถ, โมเดลหน้าปัด, ตัวจำลอง, ELM327, Honda K-Line, UART / BLE (+ src/ui/DashScreen)
 tools/pc_app   ESP32-AI Studio (Python + Tkinter + pyserial)
 tools/         gen_thai_font.py, gen_root_ca.py
 host_tests/    unit tests บน PC
@@ -266,6 +268,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 | [10 PC Studio](wiki/10-PC-Studio-App.md) · [07 บันทึกการแก้ปัญหา](wiki/07-Troubleshooting-Log.md) | เครื่องมือ และปัญหาที่แก้แล้ว 40+ เรื่อง |
 | [12 วิทยุออนไลน์](wiki/12-Internet-Radio.md) | สตรีม, ผสม/ลดเสียง, ปลุกด้วยเสียงขณะเปิดเพลง |
 | [13 อัปเดตเฟิร์มแวร์ (OTA)](wiki/13-OTA-Update.md) | ผ่าน Wi-Fi จาก GitHub Releases, ตรวจไฟล์, กลับเวอร์ชันเดิมอัตโนมัติ |
+| [16 หน้าปัดรถ](wiki/16-Vehicle-Dash.md) | OBD-II (ELM327 BLE / สาย), Honda K-Line, ตัวจำลอง; การต่อสาย, layout, tool `vehicle` |
 
 ## 🔒 ความปลอดภัย & ความเป็นส่วนตัว
 

@@ -137,6 +137,14 @@ const char* Peripherals::set(const char* name, JsonVariantConst value, JsonObjec
     return nullptr;
 }
 
+bool Peripherals::usesPin(int pin) {
+    Guard g(_lock);
+    for (int i = 0; i < _count; i++) {
+        if (_devs[i].spec.pin == pin) return true;
+    }
+    return false;
+}
+
 void Peripherals::summary(String& out) {
     Guard g(_lock);
     out = "";

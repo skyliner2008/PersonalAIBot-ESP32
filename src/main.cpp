@@ -33,6 +33,7 @@
 #include "system/Peripherals.h"
 #include "system/Storage.h"
 #include "ui/CardScreen.h"
+#include "ui/DashScreen.h"
 #include "ui/FaceScreen.h"
 #include "ui/KeyboardScreen.h"
 #include "ui/RadioScreen.h"
@@ -40,6 +41,7 @@
 #include "ui/UiManager.h"
 #include "util/JsonFile.h"
 #include "util/Utf8.h"
+#include "vehicle/Vehicle.h"
 
 static LGFX_ES3C28P lcd;
 static I2cBus i2c;
@@ -172,6 +174,13 @@ static void uiTask(void*) {
         } else if (gUi.top() == &gCard && (gCard.expired(now) || agent.powerSave())) {
             gUi.pop();  // power save: the clock face must not stay hidden under a card
         }
+
+        // vehicle dash: opened / closed by voice, console or its menu entry (wiki 16)
+        if (gVehicle.takeOpenRequest() && gUi.top() != &gDashUi) {
+            gUi.popToRoot();
+            gUi.push(&gDashUi);
+        }
+        if (gVehicle.takeCloseRequest() && gUi.top() == &gDashUi) gUi.pop();
 
         // radio player screen: opens when a station starts (voice or console) over the face; the power-save
         // clock is the face itself, so the player steps aside while dimmed and comes back on wake
@@ -519,6 +528,8 @@ static void handleConsoleLine(String line) {
         Serial.println("time <unix-epoch> (set clock offline) | devices [reload | save <json>] | device <name> [on|off|0-100] | mem (internal RAM + task stacks) | wakeword [threshold x | test [sec]] | reboot");
         Serial.println("ota (status: OTA <json>) | ota check | ota install | ota rollback | ota fetch <https-url> | ota selftest");
         Serial.println("radio list: radiolist | radioadd name|url|genre | radioedit <n> name|url|genre | radiodel <n> | radiomove <from> <to> | radioreset | radio <n>");
+        Serial.println("vehicle dash: dash (DASH <json>) | dash open|close | dash source <off|sim|touch|kline|obd_ble|obd_uart|serial>");
+        Serial.println("     dash kind <car|moto> | dash shift <rpm> | dash max <rpm> | dash kdump | dash ble forget | dash baud <elm|text> <n>");
     } else if (cmd == "config") {
         printConfig();
     } else if (cmd == "options") {
@@ -587,6 +598,39 @@ static void handleConsoleLine(String line) {
         }
         if (why) d["error"] = why;
         printTagged("DEVICE", d);
+    } else if (cmd == "dash") {  // vehicle dash (wiki 16): status / open / source / settings
+        const int sp2 = rest.indexOf(' ');
+        const String sub = sp2 < 0 ? rest : rest.substring(0, sp2);
+        String arg = sp2 < 0 ? String() : rest.substring(sp2 + 1);
+        arg.trim();
+        JsonDocument d;
+        if (sub == "open") {
+            gVehicle.requestOpen();
+        } else if (sub == "close") {
+            gVehicle.requestClose();
+        } else if (sub == "source") {
+            vehicle::SourceId id;
+            if (!vehicle::parseSource(arg.c_str(), id)) d["error"] = "unknown source";
+            else if (const char* why = gVehicle.setSource(id)) d["error"] = why;
+        } else if (sub == "kind") {
+            gVehicle.setKind(arg.startsWith("m") ? vehicle::Kind::Motorcycle : vehicle::Kind::Car);
+        } else if (sub == "shift") {
+            gVehicle.setShiftRpm(arg.toInt());
+        } else if (sub == "max") {
+            gVehicle.setRpmMax(arg.toInt());
+        } else if (sub == "kdump") {  // raw Honda K-Line table: which byte is what on this bike
+            d["kline_table"] = gVehicle.klineDump();
+        } else if (sub == "ble" && arg == "forget") {
+            gVehicle.forgetBleAdapter();
+        } else if (sub == "baud") {
+            const int sp3 = arg.indexOf(' ');
+            gVehicle.setBaud(arg.startsWith("elm"), (uint32_t)(sp3 > 0 ? arg.substring(sp3 + 1).toInt() : 0));
+        } else if (sub.length()) {
+            d["error"] = "dash open|close|source|kind|shift|max|kdump|ble forget|baud";
+        }
+        if (!d.is<JsonObject>()) d.to<JsonObject>();  // keeps an "error" set above
+        gVehicle.describe(d.as<JsonObject>());
+        printTagged("DASH", d);
     } else if (cmd == "mem") {
         printMemory();
     } else if (cmd == "ota") {  // firmware update from GitHub Releases (see system/OtaUpdater.h)
@@ -913,6 +957,7 @@ void setup() {
     gStations.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // radio_stations.json
     gRadio.begin(&audio);  // Internet radio task (idle until play_radio)
     agent.begin(&audio, &gFace, &storage);
+    gVehicle.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // after the devices (GPIO 43/44)
 
     // Firmware updates from GitHub Releases: quiet the assistant for the download, restart through the
     // agent (clean Live close + memory flush), report on the face. Also confirms / reports a fresh update.

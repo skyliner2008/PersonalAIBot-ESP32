@@ -32,6 +32,8 @@ public:
     const char* set(const char* name, JsonVariantConst value, JsonObject out);
     /** One line for the system prompt: "พัดลม (switch, ปิด), ประตู (input, ...)" - "" without devices. */
     void summary(String& out);
+    /** A device in the file uses this GPIO (the vehicle dash needs 43 / 44 for its UART sources). */
+    bool usesPin(int pin);
 
     /**
      * Debounced inputs with "notify": calls `changed(name, active)` for each confirmed change (at most one

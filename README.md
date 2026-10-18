@@ -36,6 +36,7 @@ Everything runs on the board itself: **no server, no Raspberry Pi, no vector dat
 | 👀 **Expressive face** | Cozmo-style eyes with 14 emotions, Thai subtitles, on-screen mic button, dark theme. After a while asleep it turns into a **dim clock** (power save) and wakes up — full brightness — as soon as it hears you. |
 | 📊 **Live data cards** | Weather + PM2.5, Thai fuel prices, stocks / gold / crypto / FX, technical analysis, market scanner, economic calendar, news, Wikipedia — drawn as graphics while the AI talks. |
 | 📻 **Internet radio** | A radio-app screen with 16 tested Thai stations (up to 40; `python tools/radio_check.py` checks a station export the way the board plays it): swipe and tap a station, ± volume, ⏸ pause, a red ⏻ button to switch the radio off, and tap the middle of the screen to talk to the assistant as usual. Say "play the luk thung station" or "station 4" and the assistant picks from your list. Edit the list (add, edit, delete, reorder, test URL) in ESP32-AI Studio. MP3/AAC via the Helix decoder; the radio dips to 12 % while you talk. Volume buttons and "turn it down" change the radio only — the assistant's voice stays at its own level (80 by default, `set aivolume`). After "play the radio" the assistant names the station and goes to sleep at once (it never answers the DJ), and "play the radio" with no station resumes the last one. [wiki/12](wiki/12-Internet-Radio.md) |
+| 🏁 **Vehicle dash** (new) | A racing-style dash for a car or motorcycle: rpm bar with shift light, big speed, gear, engine / battery / intake tiles that turn yellow / red. Data from OBD-II through an **ELM327 Bluetooth LE** adapter, **Honda K-Line** (Wave 110i / 125i, Click, PCX ... through an L9637D-type adapter), a wired ELM327, text lines from another board, or the built-in simulator (finger = throttle). The assistant reads the live values ("what's the engine temperature?") and warns out loud when the engine overheats or the battery stops charging. Not yet tested on a real vehicle. [wiki/16](wiki/16-Vehicle-Dash.md) |
 | ⏰ **Personal assistant** | Timers, reminders (daily / weekdays / weekly), to-do list, notes, price alerts that speak up, calculator, unit & world-time conversion. |
 | 🔁 **Self-healing** | Automatic model fallback, quota-aware back-off, Google Search pause on quota (if enabled), session resumption, Wi-Fi reconnect. |
 | 🖥️ **ESP32-AI Studio** | Dark-mode PC app: all settings, live debug log, chat, remote screen with touch, mic recorder, tool runner, build & flash. |
@@ -165,7 +166,7 @@ The model calls these by itself. Data tools run in a background task and draw a 
 |---|---|
 | **Memory** | `save_memory` · `save_relation` · `recall_memory` · `forget_memory` · `recall_conversation` |
 | **Time & tasks** | `set_timer` · `set_reminder` · `list_reminders` · `cancel_reminder` · `add_task` · `list_tasks` · `update_task` |
-| **Assistant & device** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (level or +/- change) · `configure_device` (mic, sleep, clock mode) · `rest_screen` (clock now) · `play_radio` / `stop_radio` (Internet radio) · `mute_microphone` · `control_led` · `go_to_sleep` |
+| **Assistant & device** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (level or +/- change) · `configure_device` (mic, sleep, clock mode) · `rest_screen` (clock now) · `play_radio` / `stop_radio` (Internet radio) · `mute_microphone` · `control_led` · `go_to_sleep` · `device` (only with `agent/devices.json`) · `vehicle` (only with a dash source chosen) |
 | **Live data** 🖼️ | `get_weather` (Open-Meteo + PM2.5, IP location by default) · `get_oil_price` (Bangchak) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
 | **Utilities** 🖼️ | `calculate` · `convert_units` (incl. Thai ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (DST-aware) · `get_location` · `search_knowledge` (Wikipedia th/en) · `notes` |
 | **Finance pack** 🖼️ | `market_overview` (+ crypto Fear & Greed) · `market_analysis` (RSI, MACD, EMA, ADX, multi-timeframe, P/E, dividend) · `market_scan` (gainers / losers / volume / RSI, TH-US-crypto) · `economic_calendar` (ForexFactory, Thai time) · `position_size` · `price_alert` |
@@ -232,7 +233,7 @@ Portable modules (memory, tools, scheduler, tasks, personas, model fallback, cal
 host_tests\run_tests.bat
 ```
 
-48 suites · 2,066 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+53 suites · 2,213 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
 
 ## 📁 Project layout
@@ -247,6 +248,7 @@ src/audio      AudioManager (I2S), ES8311 driver, resampler
 src/memory     MemoryStore (BM25 + graph), EpisodicLog
 src/display    LovyanGFX config, touch driver, Thai fonts 26/20 px
 src/system     I2C bus, storage (SD / LittleFS) · src/util  UTF-8, calculator, units, time, JSON helpers
+src/vehicle    vehicle dash: readings, dash model, simulator, ELM327, Honda K-Line, UART / BLE links (+ src/ui/DashScreen)
 tools/pc_app   ESP32-AI Studio (Python + Tkinter + pyserial)
 tools/         gen_thai_font.py, gen_root_ca.py
 host_tests/    PC unit tests
@@ -265,6 +267,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 | [10 PC Studio](wiki/10-PC-Studio-App.md) · [07 Troubleshooting log](wiki/07-Troubleshooting-Log.md) | Tools and 40+ solved problems |
 | [12 Internet radio](wiki/12-Internet-Radio.md) | Streaming, mixing/ducking, voice wake over music |
 | [13 Firmware update (OTA)](wiki/13-OTA-Update.md) | Over Wi-Fi from GitHub Releases, verified, automatic rollback |
+| [16 Vehicle dash](wiki/16-Vehicle-Dash.md) | OBD-II (ELM327 BLE / wired), Honda K-Line, simulator; wiring, layouts, the `vehicle` tool |
 
 ## 🔒 Security & privacy
 

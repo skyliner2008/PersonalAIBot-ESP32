@@ -33,6 +33,7 @@ status: done
 | `esp_websocket_client` (IDF) | `GeminiLiveClient` — WSS, ping, auto-reconnect, ข้อความขนาดใหญ่ |
 | `driver/i2s_std.h` (channel driver, IDF 5; จนถึง v4.1.0 ใช้ `driver/i2s.h` แบบเก่า — T074) | `AudioManager` — I2S 24 kHz stereo full-duplex (TX + RX ช่องเดียวกัน) |
 | `SD_MMC`, `LittleFS`, `FS` | `Storage` — ไฟล์ความจำ |
+| `BLE` (Arduino 3.3, NimBLE) | `BleElmLink` — ELM327 BLE ของหน้าปัดรถ; หน่วยความจำ BLE จองเฉพาะเมื่อเลือกแหล่งนี้ (`bleInUse()`, wiki 16) |
 | `Wire` | `I2cBus` — ทัช FT6336G + ES8311 |
 | `WiFi`, `Preferences` (NVS), `configTzTime` (SNTP) | การเชื่อมต่อ, volume, นาฬิกา UTC+7 |
 

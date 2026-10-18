@@ -26,6 +26,7 @@
 #include "../util/JsonAlloc.h"
 #include "../util/TimeFmt.h"
 #include "../util/TranscriptClean.h"
+#include "../vehicle/Vehicle.h"
 #include "Personas.h"
 #include "WebTools.h"
 

@@ -18,7 +18,9 @@
 #include "KeyboardScreen.h"
 #include "ListScreen.h"
 #include "RadioScreen.h"
+#include "DashScreen.h"
 #include "../audio/RadioPlayer.h"
+#include "../vehicle/Vehicle.h"
 
 namespace {
 
@@ -28,6 +30,7 @@ ListScreen gSubPicker;
 ListScreen gWifi;
 ListScreen gMemory;
 ListScreen gUpdate;
+ListScreen gVehicleMenu;
 ConfirmScreen gConfirm;
 InfoScreen gInfo;
 CalibrationScreen gCalibration;
@@ -185,6 +188,70 @@ void openNumberPicker(const char* title, int from, int to, int step, int current
         l.reveal(sel);
     });
     gUi.push(&gPicker);
+}
+
+// ---- vehicle dash (wiki 16) ----
+void openVehicleSources() {
+    gPicker.setup("แหล่งข้อมูลรถ", [](ListScreen& l) {
+        const vehicle::SourceId cur = gVehicle.source();
+        static const char* const kHint[] = {"ไม่ใช้หน้าปัด", "ทดลองดูหน้าปัด", "นิ้วคือคันเร่ง",
+                                            "มอเตอร์ไซค์ Honda หัวฉีด (GPIO 43/44)", "ELM327 รุ่น BLE (รีสตาร์ท 1 ครั้ง)",
+                                            "ELM327 ต่อสาย (GPIO 43/44)", "บอร์ดอื่นส่ง rpm=... (GPIO 43/44)"};
+        for (uint8_t i = 0; i < (uint8_t)vehicle::SourceId::Count; i++) {
+            const vehicle::SourceId id = (vehicle::SourceId)i;
+            ListScreen::Item& it = l.add(vehicle::sourceNameTh(id), kHint[i], [id]() {
+                const char* err = gVehicle.setSource(id);
+                gUi.pop();
+                if (err) {
+                    gConfirm.ask("แหล่งข้อมูลรถ", err, "ตกลง", nullptr);
+                } else if (gVehicle.needsRestart()) {
+                    gConfirm.ask("Bluetooth", "ต้องรีสตาร์ทบอร์ด 1 ครั้งเพื่อเปิด Bluetooth (จองหน่วยความจำ) รีสตาร์ทเลยไหม?",
+                                 "รีสตาร์ท", []() {
+                                     if (gUi.host()) gUi.host()->uiRestart();
+                                 });
+                }
+                gVehicleMenu.rebuild();
+            });
+            it.checked = id == cur;
+        }
+    });
+    gUi.push(&gPicker);
+}
+
+void buildVehicleMenu(ListScreen& l) {
+    const Vehicle::Settings vs = gVehicle.settings();
+    const vehicle::DashConfig cfg = gVehicle.dashConfig();
+    l.add("เปิดหน้าปัด", "", []() {
+        gUi.pop();  // opened from the dash itself: back to it; from the main menu: the UI task shows it
+        gVehicle.requestOpen();
+    });
+    l.addSubmenu("แหล่งข้อมูล", vehicle::sourceNameTh(vs.source), openVehicleSources);
+    l.add("สถานะ", gVehicle.status(), nullptr).valueColor = gVehicle.snapshot().anyFresh(millis()) ? ui::OK : ui::DIM;
+    l.add("ประเภทรถ (แตะ)", vs.kind == vehicle::Kind::Car ? "รถยนต์" : "มอเตอร์ไซค์", []() {
+        const Vehicle::Settings now = gVehicle.settings();
+        gVehicle.setKind(now.kind == vehicle::Kind::Car ? vehicle::Kind::Motorcycle : vehicle::Kind::Car);
+        gVehicleMenu.rebuild();
+    });
+    l.addSubmenu("รอบเตือนเปลี่ยนเกียร์", String(cfg.shiftRpm), []() {
+        const vehicle::DashConfig c = gVehicle.dashConfig();
+        openNumberPicker("รอบเตือนเปลี่ยนเกียร์", 2000, c.rpmMax, 250, c.shiftRpm / 250 * 250, " rpm",
+                         [](int v) { gVehicle.setShiftRpm(v); gVehicleMenu.rebuild(); });
+    });
+    l.addSubmenu("รอบเต็มสเกล", String(cfg.rpmMax), []() {
+        openNumberPicker("รอบเต็มสเกล", 4000, 16000, 1000, gVehicle.dashConfig().rpmMax / 1000 * 1000, " rpm",
+                         [](int v) { gVehicle.setRpmMax(v); gVehicleMenu.rebuild(); });
+    });
+    if (vs.source == vehicle::SourceId::ObdBle) {
+        l.add("ค้นหา adapter Bluetooth ใหม่", vs.bleAddr[0] ? vs.bleAddr : "ยังไม่พบ", []() {
+            gVehicle.forgetBleAdapter();
+            gVehicleMenu.rebuild();
+        });
+    }
+}
+
+void openVehicle() {
+    gVehicleMenu.setup("หน้าปัดรถ", buildVehicleMenu);
+    gUi.push(&gVehicleMenu);
 }
 
 void openSleep() {
@@ -472,6 +539,7 @@ void buildMenu(ListScreen& l) {
         l.addSubmenu("ระดับการคิด", thinkingLevelId(s.thinking), openThinking);
     }
     l.addSubmenu("วิทยุออนไลน์", gRadio.active() ? "กำลังเล่น" : "เลือกสถานี", []() { gUi.push(&gRadioUi); });
+    l.addSubmenu("หน้าปัดรถ", gVehicle.enabled() ? vehicle::sourceNameTh(gVehicle.source()) : "ปิด", openVehicle);
     l.addSubmenu("เสียงวิทยุ", String(s.volume) + "%", []() {  // the voice stays at aiVolume
         openNumberPicker("เสียงวิทยุ", 0, 100, 10, gSettings.get().volume / 10 * 10, "%",
                          [](int v) { gSettings.update([&](SettingsData& d) { d.volume = (uint8_t)v; }); });
@@ -757,6 +825,7 @@ bool openPage(const char* page) {
     else if (!strcmp(page, "info")) gUi.push(&gInfo);
     else if (!strcmp(page, "update")) openUpdate();
     else if (!strcmp(page, "calibrate")) openCalibration();
+    else if (!strcmp(page, "vehicle")) openVehicle();
     else if (!strcmp(page, "agent") || !strcmp(page, "user") || !strcmp(page, "apikey")) {
         openMenu();
         const SettingsData d = gSettings.get();

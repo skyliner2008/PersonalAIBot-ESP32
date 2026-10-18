@@ -81,6 +81,13 @@ public:
         (void)action, (void)name, (void)value, (void)result;
         return "no devices are configured";
     }
+    // ---- vehicle dash (wiki 16) ----
+    virtual bool vehicleEnabled() { return false; }  // false = the `vehicle` tool is not declared at all
+    /** action "status" / "open" / "close" / "set_source". nullptr = ok, else why not. */
+    virtual const char* vehicleAction(const char* action, const char* source, JsonObject result) {
+        (void)action, (void)source, (void)result;
+        return "the vehicle dash is off";
+    }
 };
 
 class AgentTools {
@@ -158,5 +165,6 @@ private:
     bool restScreen(JsonObjectConst a, JsonObject r, const char*& e);
     bool stopRadio(JsonObjectConst a, JsonObject r, const char*& e);
     bool device(JsonObjectConst a, JsonObject r, const char*& e);
+    bool vehicle(JsonObjectConst a, JsonObject r, const char*& e);
     bool playRadio(JsonObjectConst a, JsonObject r, const char*& e);
 };
