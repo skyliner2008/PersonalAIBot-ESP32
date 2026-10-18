@@ -5,12 +5,14 @@
 
 #include "VehicleLink.h"
 
-#include <BLEDevice.h>
 #include <driver/gpio.h>
-#include <esp_heap_caps.h>
-#include <nvs.h>
 
 #include "VehicleData.h"
+
+#if VEHICLE_BLE
+#include <BLEDevice.h>
+#include <esp_heap_caps.h>
+#include <nvs.h>
 
 // ---------------------------------------------------------------- BLE memory at boot
 
@@ -32,6 +34,10 @@ extern "C" bool bleInUse(void) {
 }
 
 bool vehicleBleKeptAtBoot() { return gBleKept; }
+#else
+// no BLE library linked: Arduino's own bleInUse() is false and releases the controller memory at boot
+bool vehicleBleKeptAtBoot() { return false; }
+#endif  // VEHICLE_BLE
 
 // ---------------------------------------------------------------- UART
 
@@ -74,6 +80,7 @@ void UartLink::wakePulse(uint32_t lowMs, uint32_t highMs) {
 
 // ---------------------------------------------------------------- BLE ELM327
 
+#if VEHICLE_BLE
 namespace {
 
 constexpr size_t kMinInternalHeap = 40 * 1024;  // NimBLE host + a connection need about this much
@@ -241,3 +248,4 @@ bool BleElmLink::write(const uint8_t* data, size_t n) {
     if (!isOpen()) return false;
     return static_cast<BLERemoteCharacteristic*>(_writeChar)->writeValue(const_cast<uint8_t*>(data), n, _writeWithResponse);
 }
+#endif  // VEHICLE_BLE

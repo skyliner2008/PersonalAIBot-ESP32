@@ -33,14 +33,17 @@ void copyUtf8(char* dst, size_t cap, const char* src) {
 }
 
 constexpr int kSubtitleY = 174;
+constexpr int kDashX = 297, kDashY = 216;  // vehicle dash shortcut (bottom right), centre
 constexpr float kEyesYIdle = 112.0f;
 constexpr float kEyesYSubtitle = 90.0f;
 
 }  // namespace
 
-void FaceScreen::begin(std::function<void()> openMenu, std::function<void()> openRadio) {
+void FaceScreen::begin(std::function<void()> openMenu, std::function<void()> openRadio,
+                       std::function<void()> openDash) {
     _openMenu = openMenu;
     _openRadio = openRadio;
+    _openDash = openDash;
     _lock = xSemaphoreCreateMutex();
     _eyes.begin(ui::W, ui::H);
 }
@@ -113,10 +116,13 @@ void FaceScreen::setExpression(Emotion e, uint32_t holdMs) {
 void FaceScreen::onTouch(const TouchEvent& e) {
     const bool gear = e.startX >= 266 && e.startY <= 56;
     const bool mic = e.startX <= 64 && e.startY <= 60;
+    const bool dash = e.startX >= kDashX - 34 && e.startY >= kDashY - 30 && _dashShown;
     const bool radioBar = e.startY >= 204 && _radioShown;
     if (e.type == TouchEvent::Tap) {
         if (gear) {
             if (_openMenu) _openMenu();
+        } else if (dash) {
+            _openDash();
         } else if (mic) {
             if (gUi.host()) gUi.host()->uiToggleMic();
         } else if (radioBar && _openRadio) {
@@ -124,7 +130,7 @@ void FaceScreen::onTouch(const TouchEvent& e) {
         } else if (gUi.host()) {
             gUi.host()->uiTap();
         }
-    } else if (e.type == TouchEvent::LongPress && !gear && !mic && gUi.host()) {
+    } else if (e.type == TouchEvent::LongPress && !gear && !mic && !dash && gUi.host()) {
         gUi.host()->uiLongPress();
     }
 }
@@ -325,9 +331,20 @@ void FaceScreen::drawRadioIcon(LGFX_Sprite& c, int cx, int cy, uint16_t color) {
     c.drawLine(cx - 6, cy - 6, cx + 4, cy - 11, color);
 }
 
+// Vehicle dash shortcut: a round button with a small gauge (arc, red zone, needle)
+void FaceScreen::drawDashButton(LGFX_Sprite& c, int cx, int cy) {
+    c.fillSmoothCircle(cx, cy, 17, ui::PANEL_HI);
+    const int gy = cy + 4;  // the half dial sits a little low to look centred
+    c.fillArc(cx, gy, 9, 11, 180, 315, ui::DIM);
+    c.fillArc(cx, gy, 9, 11, 315, 360, ui::ERR);
+    const float a = 290 * 0.0174533f;
+    c.drawWideLine(cx, gy, cx + cosf(a) * 9, gy + sinf(a) * 9, 2.0f, ui::TEXT);
+    c.fillCircle(cx, gy, 2, ui::TEXT);
+}
+
 void FaceScreen::draw(LGFX_Sprite& c) {
     if (_powerSave) {
-        _radioShown = false;
+        _radioShown = _dashShown = false;
         drawClock(c);
         return;
     }
@@ -345,10 +362,13 @@ void FaceScreen::draw(LGFX_Sprite& c) {
     }
     drawStatus(c, status);
 
+    _dashShown = _openDash && !_subtitleVisible;
+    if (_dashShown) drawDashButton(c, kDashX, kDashY);
     _radioShown = status.radio[0] && !_subtitleVisible;
     if (status.radio[0] && !_subtitleVisible) {  // Internet radio: what is playing, under the eyes
         drawRadioIcon(c, 22, 222, ui::ACCENT);
-        gUi.drawFitted(c, status.radio, 40, 222, ui::W - 48, gUi.thai20(), ui::DIM, textdatum_t::middle_left);
+        const int w = _dashShown ? kDashX - 22 - 40 : ui::W - 48;  // stops short of the dash button
+        gUi.drawFitted(c, status.radio, 40, 222, w, gUi.thai20(), ui::DIM, textdatum_t::middle_left);
     }
 
     if (_subtitleVisible && _lineCount > 0) {

@@ -486,11 +486,12 @@ void AgentController::handleDevices(uint32_t now) {
 }
 
 // ---- vehicle dash (wiki 16) ----
-bool AgentController::vehicleEnabled() { return gVehicle.enabled(); }
+bool AgentController::vehicleEnabled() { return true; }  // always declared: "เปิดหน้าปัด" works before a source is set
 
 const char* AgentController::vehicleAction(const char* action, const char* source, JsonObject r) {
+    bool simStarted = false;
     if (!strcmp(action, "open")) {
-        gVehicle.requestOpen();
+        simStarted = gVehicle.openDash();
     } else if (!strcmp(action, "close")) {
         gVehicle.requestClose();
     } else if (!strcmp(action, "set_source")) {
@@ -500,23 +501,20 @@ const char* AgentController::vehicleAction(const char* action, const char* sourc
         gVehicle.requestOpen();
     }
     gVehicle.describe(r);
-    if (r["simulated"] | false) r["note"] = "simulated data, not the user's real vehicle";
+    if (simStarted) {
+        r["note"] = "no data source was set up, so the dash shows the built-in simulator (not the user's vehicle); "
+                    "a real car / motorcycle is chosen in Settings > หน้าปัดรถ";
+    } else if (r["simulated"] | false) {
+        r["note"] = "simulated data, not the user's real vehicle";
+    }
     return nullptr;
 }
 
 // a warning that holds for a few seconds (engine too hot, not charging): say it, at most every 5 minutes each
 void AgentController::handleVehicle(uint32_t now) {
     static uint32_t next = 0;
-    static int declared = -1;  // the `vehicle` tool is declared only while a source is on
     if ((int32_t)(now - next) < 0) return;
     next = now + 1000;
-    const int on = gVehicle.enabled() ? 1 : 0;
-    if (declared >= 0 && on != declared && _gemini.started()) {
-        _restartPending = true;  // the tool list changed: fresh session after the current reply
-        _restartAt = millis() + 1500;
-        _resumeHandle = "";
-    }
-    declared = on;
     String msg;
     if (!gVehicle.takeAlert(msg, now)) return;
     Serial.printf("[Vehicle] Alert: %s\n", msg.c_str());

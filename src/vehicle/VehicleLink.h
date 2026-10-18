@@ -10,7 +10,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/stream_buffer.h>
 
-/** The saved source was OBD over BLE at boot, so the BLE controller memory was kept (bleInUse()). */
+#include "VehicleData.h"  // VEHICLE_BLE
+
+/** The saved source was OBD over BLE at boot, so the BLE controller memory was kept (bleInUse()). False when
+ *  the firmware is built without BLE (VEHICLE_BLE = 0, the default). */
 bool vehicleBleKeptAtBoot();
 
 class VehicleLink {
@@ -45,6 +48,8 @@ private:
     bool _open = false;
 };
 
+#if VEHICLE_BLE
+
 /**
  * ELM327 Bluetooth LE adapter (Vgate iCar Pro BLE, Veepeak BLE, Konnwei, "V-LINK", most "OBDII" BLE
  * clones). Scans for a name / service that looks like one (or uses the saved address), then talks over its
@@ -78,3 +83,4 @@ private:
     void* _writeChar = nullptr;  // BLERemoteCharacteristic*
     bool _writeWithResponse = false;
 };
+#endif  // VEHICLE_BLE

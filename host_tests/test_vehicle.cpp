@@ -50,6 +50,7 @@ TEST(vehicle_readings_and_text_lines) {
         CHECK(parseSource(sourceKey((SourceId)i), id) && id == (SourceId)i);  // every key reads back
     }
     CHECK(usesUart(SourceId::HondaK) && usesUart(SourceId::ObdUart) && !usesUart(SourceId::ObdBle));
+    CHECK(!kBleBuilt);  // default build: no BLE stack (its IRAM would starve the assistant's TLS, T078)
 
     DashStyle st;
     for (uint8_t i = 0; i < (uint8_t)DashStyle::Count; i++) {

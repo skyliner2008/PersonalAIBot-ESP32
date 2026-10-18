@@ -240,7 +240,7 @@ ESP32-AI/
 │   ├── memory/             MemoryStore, EpisodicLog, TextFeatures, AppendSink, AsyncFileSink
 │   ├── system/             I2cBus, Storage
 │   ├── util/               Utf8, Base64, TextWrap, TimeFmt, JsonFrame, PsramAlloc, JsonAlloc
-│   └── vehicle/            หน้าปัดรถ (T076): VehicleData, DashModel, SimEngine, Elm327, HondaKline, Vehicle (task), VehicleLink (UART / BLE)
+│   └── vehicle/            หน้าปัดรถ (T076): VehicleData, DashModel, SimEngine, Elm327, HondaKline, Vehicle (task), VehicleLink (UART; BLE เฉพาะ -DVEHICLE_BLE=1, T078)
 ├── host_tests/     test_main.cpp, run_tests.bat
 ├── tools/          gen_thai_font.py, gen_root_ca.py
 │   └── pc_app/     esp32_ai_studio.py (ESP32-AI Studio), run_studio.bat, requirements.txt

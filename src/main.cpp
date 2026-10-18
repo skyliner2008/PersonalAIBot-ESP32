@@ -937,7 +937,8 @@ void setup() {
         cal.rotation = cfg.calRot;
         gUi.setCalibration(cal);
     }
-    gFace.begin([]() { settingsui::openMenu(); }, []() { gUi.push(&gRadioUi); });
+    gFace.begin([]() { settingsui::openMenu(); }, []() { gUi.push(&gRadioUi); },
+                []() { gVehicle.openDash(); });  // the UI task's open request shows it (sim if no source yet)
     gRadioUi.begin(&audio);
     gCard.begin();
     gUi.push(&gFace);

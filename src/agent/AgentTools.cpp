@@ -10,6 +10,7 @@
 
 #include "../ui/Emotion.h"
 #include "../util/TimeFmt.h"
+#include "../vehicle/VehicleData.h"  // VEHICLE_BLE
 #include "Personas.h"
 
 namespace {
@@ -262,14 +263,19 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
         };
         declare(d, b, "device", "Read or switch the devices wired to the board (relay, dimmer, sensor).", devp, 3);
     }
-    if (_device.vehicleEnabled()) {  // only once a dash source is chosen (menu / console): no cost otherwise
+    if (_device.vehicleEnabled()) {  // firmware with the dash: always, so "เปิดหน้าปัด" works before a source is set
         static const char* const kVehActions[] = {"status", "open", "close", "set_source", nullptr};
-        static const char* const kVehSources[] = {"off", "sim", "touch", "kline", "obd_ble", "obd_uart", "serial", nullptr};
+        static const char* const kVehSources[] = {"off", "sim", "touch", "kline",
+#if VEHICLE_BLE
+                                                  "obd_ble",
+#endif
+                                                  "obd_uart", "serial", nullptr};
         static const Param vehp[] = {
             {"action", "STRING", nullptr, true, kVehActions},
             {"source", "STRING", nullptr, false, kVehSources},
         };
-        declare(d, b, "vehicle", "Car / motorcycle dash: live rpm, speed, engine temp, battery; show or hide it.", vehp, 2);
+        declare(d, b, "vehicle", "Vehicle dash (หน้าปัด, Smart Gauge): open/close; live rpm, speed, engine temp, battery.",
+                vehp, 2);
     }
 
     // ---- Live data with on-screen graphics (run by webtools::WebTools, answered asynchronously) ----

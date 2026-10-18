@@ -16,6 +16,8 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T079 | [[#T079 เปิดหน้าปัดรถไม่เป็น — ไม่มีปุ่ม และสั่ง AI แล้วตอบว่า "ไม่รู้จัก"]] | Vehicle/UI/Tools | ✅ Fixed — ปุ่มลัด + tool ทุก session, ผู้ใช้ลองแตะ/พูดแล้ว |
+| T078 | [[#T078 หน้าปัดรถทำให้ Gemini ต่อไม่ได้ — "esp-aes: Failed to allocate memory" เพราะโค้ด BLE กิน IRAM 22 KB]] | Vehicle/Memory/TLS | ✅ Fixed — BLE เป็น build flag, ทดสอบบนบอร์ด |
 | T077 | [[#T077 หน้าปัดรถ 3 รูปแบบ — วงกลมดิจิทัล สปอร์ต, เข็มวงกลม คลาสสิก, รถแข่ง]] | Vehicle/UI | ✅ host tests + build + ภาพ preview ทุกแบบ — รอดูบนบอร์ด |
 | T076 | [[#T076 หน้าปัดรถ — ฟีเจอร์ใหม่ เขียนเองทั้งหมด (MIT) จากแนวคิดของ redline-gauge]] | Vehicle/UI/BLE | 🔄 host tests + build + ภาพ preview ผ่าน — **รอทดสอบบนบอร์ด/กับรถจริง** |
 | T075 | [[#T075 สร้างกุญแจเซ็นอัปเดตจาก ESP32-AI Studio ด้วยปุ่มเดียว]] | Studio/OTA | ✅ Done — ทดสอบทุกปุ่มบน Xvfb (Linux); รอลองบน Windows |
@@ -128,6 +130,50 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T079: เปิดหน้าปัดรถไม่เป็น — ไม่มีปุ่ม และสั่ง AI แล้วตอบว่า "ไม่รู้จัก"
+
+**วันที่:** 2026-10-19 · **ผู้ใช้:** "ฉันจะเปิด Smart Gauge บนบอร์ดยังไง ไม่มีปุ่มเปิด สั่งให้ ai เปิด มันบอกไม่รู้จัก"
+→ "แก้ให้ AI เปิดหน้าปัดได้ และมีปุ่มทางลัด ด้านล่างมุมขวา"
+**สาเหตุ:** tool `vehicle` ถูกประกาศเฉพาะเมื่อเลือกแหล่งข้อมูลแล้ว (ตั้งใจประหยัด token) — แหล่งเป็น `off` → โมเดลไม่มี tool นี้เลย ·
+ทางเข้าเดียวคือ เฟือง → หน้าปัดรถ → แหล่งข้อมูล → เปิดหน้าปัด
+**แก้:**
+- `Vehicle::openDash()` — แหล่งเป็น `off` = เริ่ม `sim` แล้วขอเปิดหน้าปัด (ให้มีภาพทันที) · ใช้ทั้งปุ่มลัดและ AI
+- tool `vehicle` ประกาศทุก session (`AgentController::vehicleEnabled()` = true) · คำอธิบายมี "หน้าปัด, Smart Gauge" ·
+  `open` ที่เริ่มตัวจำลองตอบ `note` ว่าไม่ใช่รถจริง + บอกทางตั้งค่า · เอาการเริ่ม session ใหม่ตอนเปลี่ยนแหล่งออก (รายการ tool ไม่เปลี่ยนแล้ว)
+- งบ declaration: base 14,928 + `vehicle` 384 bytes → เพดาน host test สำหรับชุดที่ส่งจริง 15,400 bytes (ไม่ย่อคำอธิบาย tool อื่นที่จูนไว้แล้ว)
+- `FaceScreen`: ปุ่มกลมรูปหน้าปัด (ส่วนโค้ง + โซนแดง + เข็ม) ที่ (297, 216) r 17 · พื้นที่แตะ x ≥ 263, y ≥ 186 ·
+  ซ่อนตอนมีซับไตเติลหรือพักจอ · บรรทัด "กำลังเล่น" ของวิทยุสั้นลงไม่ทับปุ่ม · กดค้างบนปุ่มไม่เริ่ม session ใหม่
+**ทดสอบ:** host tests 2,230 checks ✓ (+ `open`, ชุดจริง < 15,400) · `pio run` (Flash 66.0%) · บนบอร์ด: setup 25,098 bytes ตั้งแต่บูต (มี `vehicle`),
+`tool vehicle {"action":"open"}` ตอนแหล่งปิด → `sim` + `note`, `close` ผ่าน, heap 40 KB · ✅ ผู้ใช้แตะปุ่มแล้วหน้าปัดเปิด และสั่งด้วยเสียงได้ (2026-10-19)
+
+## T078: หน้าปัดรถทำให้ Gemini ต่อไม่ได้ — "esp-aes: Failed to allocate memory" เพราะโค้ด BLE กิน IRAM 22 KB
+
+**วันที่:** 2026-10-19 · **ผู้ใช้:** "ต่อ wifi ได้แต่ มัน error" (หลังแฟลช branch หน้าปัดรถ T076/T077 ลงบอร์ด)
+**อาการ:** ต่อ Wi-Fi ได้ แต่ `[Gemini] Setup sent (24620 bytes)` → `Send failed - reconnecting` วนทุกโมเดล
+(`E esp-aes: Failed to allocate memory` · `esp-tls-mbedtls: write error :-0x0001` · `transport_ws: Error write header`)
+→ `[Fallback] all live models cooling down -> pausing 101 s` — แม้แหล่งข้อมูลรถเป็น `off`
+**วัดบนบอร์ด (`mem`):**
+
+| เฟิร์มแวร์ | heap ภายในตอนบูต | ระหว่าง session: free / ก้อนใหญ่สุด |
+|---|---|---|
+| main (ec0ba74) | 55 KB | 43 / 30 KB |
+| branch หน้าปัด (T077) | **31 KB** | **19 / 8 KB** ← AES ของ TLS ขอ buffer DMA ไม่ได้ |
+| หลังแก้ (T078) | 52 KB | 40 / 27 KB |
+
+**สาเหตุ:** โค้ดอ้างถึง `BLEDevice` (แหล่ง `obd_ble`) → linker ดึง BT controller + NimBLE เข้ามา: **`.iram0.text` 98.9 → 121.1 KB**
+(`r_lld_*_hack`, `btdm_controller_task`, `coex_pti_v2` … รวม ~20 KB จาก `xtensa-esp32s3-elf-nm`) — บน S3 IRAM กับ heap ภายในใช้ SRAM ก้อนเดียวกัน
+คืนตอนรันไม่ได้ (override `bleInUse()` คืนได้แค่หน่วยความจำ controller ~36 KB ส่วนโค้ดใน IRAM ยังอยู่) ·
+ตัวเลข "RAM 32.7%" ของ `pio run` นับแค่ `.dram0.data/.bss` จึงไม่มีใครเห็น (+3 KB)
+และถ้าเปิด BLE จริงจะกินเพิ่มอีก ~40 KB (NimBLE host + connection) — ไปพร้อมกับ TLS ของ Gemini บนบอร์ดนี้ไม่ได้
+**แก้:** OBD ผ่าน BLE เป็นตัวเลือกตอน build `-DVEHICLE_BLE=1` (ค่าเริ่มต้น **ปิด**, บรรทัด comment ใน `platformio.ini`)
+- `VehicleData.h`: `VEHICLE_BLE` / `vehicle::kBleBuilt` · `VehicleLink.*`: `BleElmLink` + override `bleInUse()` อยู่ใน `#if VEHICLE_BLE`
+- `Vehicle::setSource(obd_ble)` ตอบ error ภาษาไทย (แนะนำ ELM327 แบบสาย) · ค่า `obd_ble` ที่บันทึกไว้ใน NVS → ปิดตอนบูต
+- เมนู "แหล่งข้อมูลรถ" ซ่อน BLE · enum `source` ของ tool `vehicle` ไม่มี `obd_ble`
+**ทดสอบ:** host tests 2,227 checks ✓ (+ไม่มี `obd_ble` ใน declaration, `!kBleBuilt`) · `pio run` IRAM 99.5 KB, Flash 70.7 → 66.0% ·
+build `-DVEHICLE_BLE=1` ผ่าน · บนบอร์ด: Gemini session ready, `dash source sim` → session ใหม่พร้อม tool `vehicle` ผ่าน,
+classic / digital ผ่าน, `dash source obd_ble` → error, heap คงที่ 39–40 KB
+**บทเรียน:** ฟีเจอร์ที่ลิงก์ไลบรารีใหม่ ให้เทียบ `xtensa-esp32s3-elf-size -A firmware.elf` (`.iram0.text`) และ `mem` บนบอร์ดระหว่าง Live session ด้วย ไม่ใช่ดูแค่ RAM % ของ pio
+
 ## T077: หน้าปัดรถ 3 รูปแบบ — วงกลมดิจิทัล สปอร์ต, เข็มวงกลม คลาสสิก, รถแข่ง
 
 **วันที่:** 2026-10-18 · **ผู้ใช้:** "ยังมีพื้นที่เหลือ พอจะเพิ่ม theme มัน อยากได้หน้าตาหลายๆแบบ วงกลมแบบดิจิตอล สปอร์ต, วงกลมแบบเข็ม คลาสสิก, สไตล์รถแข่ง"
@@ -153,7 +199,7 @@ Honda K-Line, OBD ELM327 BLE และ "วางโปรเจคให้ค�
   ระดับเตือน, ประมาณเกียร์), `SimEngine` (แรงบิด, คลัตช์, เกียร์อัตโนมัติ, ลม/ล้อ, เบรก, อุ่นเครื่อง, ไดชาร์จ — รถเก๋ง/มอเตอร์ไซค์ 110-125cc),
   `Elm327` (init, PID ที่รถรองรับ, รอบทุกคำสั่งเว้นคำสั่ง, ATRV, timeout/เริ่มใหม่), `HondaKline` (ปลุก/hello/ตาราง, checksum, ตัด echo, layout ปรับได้),
   `Vehicle` (task เฉพาะเมื่อเลือกแหล่ง, NVS `veh`, `agent/vehicle.json`, แจ้งเตือน), `VehicleLink` (UART1 GPIO 43/44 + K-Line wake pulse, BLE scan/connect/notify)
-  · `src/ui/DashScreen` · เมนู "หน้าปัดรถ" · console `dash ...` · tool `vehicle` (ประกาศเฉพาะเมื่อเปิด, +370 bytes) · AI พูดเตือนเครื่องร้อน/แบต · `Peripherals::usesPin`
+  · `src/ui/DashScreen` · เมนู "หน้าปัดรถ" · console `dash ...` · tool `vehicle` (เดิมประกาศเฉพาะเมื่อเปิด +370 bytes — ตั้งแต่ T079 ประกาศทุก session) · AI พูดเตือนเครื่องร้อน/แบต · `Peripherals::usesPin`
   (แหล่ง UART ไม่ชนอุปกรณ์ใน devices.json)
 - **`tools/dash_preview/`:** คอมไพล์ `DashScreen.cpp` ตัวจริง + LovyanGFX บน PC (SDL2) แล้วบันทึก PNG — ใช้ตรวจ layout ไม่ต้องมีบอร์ด (ภาพใน wiki 16)
   · ระหว่างตรวจพบ: ฟอนต์ GFX ไม่มีเครื่องหมายองศา → วาดวงกลมเล็กเอง · ขนาดตัวอักษรค้างจากเลขตัวใหญ่ → `setTextSize(1)` ก่อนข้อความไทย
