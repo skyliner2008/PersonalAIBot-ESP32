@@ -148,6 +148,7 @@ HTTP(S) stream ──► ICY metadata strip (StreamTitle, TIS-620 → UTF-8) ─
 
 | ปัญหาที่เจอ | สาเหตุ | แก้ |
 |---|---|---|
+| (รีวิว T073) `icy-metaint` ติดลบจาก server → เขียนเกิน buffer สตรีม 16 KB | ค่า header ใช้ตรงๆ: ขนาดอ่านติดลบ = `size_t` มหาศาล | `icy::metaInterval()` รับเฉพาะ 1–262,144 อย่างอื่น = ไม่มีชื่อเพลง · ตัวอ่าน body ไม่อ่านเมื่อขอ ≤ 0 ไบต์ |
 | อัตราเสียงกระโดด 44.1 → 22.05 → 48 kHz, เสียงสะดุด | สถานี (CDN byteark) ส่ง `Transfer-Encoding: chunked` + ICY — ตัวเลขขนาด chunk ปนในข้อมูลเสียง → false sync | ตัวอ่าน body ถอด chunk ก่อนตัด ICY + ล็อก rate/ช่องเสียงหลังเฟรมแรก (เปลี่ยนเมื่อเจอซ้ำ 8 เฟรม) |
 | บอร์ดรีบูต: `task_wdt: IDLE0 (CPU 0)` ขณะ `webTools` ทำงาน | ช่วงเติมบัฟเฟอร์ ตัวถอดรหัสไม่ได้รอเลย + TLS handshake/JSON ของ webTools บน core 0 เดียวกัน → idle task ของ core 0 ไม่ได้รัน > 5 วิ (Arduino เฝ้าเฉพาะ IDLE0) | `vTaskDelay(1)` ทุกเฟรม + ย้าย `webTools` และ `textModel` ไป core 1 (core 0 = เสียง, วิทยุ, Wi-Fi) |
 | ตื่นเองหลังเข้าพัก | ดูหัวข้อการปลุกด้านบน | ประมาณเสียงสะท้อน |

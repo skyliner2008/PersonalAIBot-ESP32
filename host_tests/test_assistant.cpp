@@ -1462,3 +1462,82 @@ TEST(thai_provinces) {
     CHECK(findProvince("") == nullptr);
     CHECK(findProvince(nullptr) == nullptr);
 }
+
+// ============================================================
+// Radio stream header, notes, state files (T073)
+// ============================================================
+
+#include <filesystem>
+
+#include "util/IcyMeta.h"
+#include "util/JsonFile.h"
+#include "util/NoteSearch.h"
+
+TEST(icy_meta_interval) {
+    CHECK_EQ(icy::metaInterval("16000"), 16000);
+    CHECK_EQ(icy::metaInterval(" 8192 "), 8192);
+    CHECK_EQ(icy::metaInterval(""), 0);  // no header: no titles
+    CHECK_EQ(icy::metaInterval(nullptr), 0);
+    // from the server (or anyone on a plain http link): never a negative or absurd read size
+    CHECK_EQ(icy::metaInterval("-5"), 0);
+    CHECK_EQ(icy::metaInterval("-2147483648"), 0);
+    CHECK_EQ(icy::metaInterval("+16000"), 0);
+    CHECK_EQ(icy::metaInterval("0"), 0);
+    CHECK_EQ(icy::metaInterval("16000abc"), 0);
+    CHECK_EQ(icy::metaInterval("abc"), 0);
+    CHECK_EQ(icy::metaInterval("262144"), 262144);
+    CHECK_EQ(icy::metaInterval("262145"), 0);
+    CHECK_EQ(icy::metaInterval("99999999999999999999"), 0);
+}
+
+TEST(notes_delete_pick) {
+    JsonDocument doc;
+    deserializeJson(doc, R"({"notes":[
+        {"id":1,"title":"ซื้อของ","text":"นม ไข่"},
+        {"id":2,"title":"สูตรแกง","text":"พริกแกง กะทิ"},
+        {"id":5,"title":"ซื้อของขวัญ","text":"วันเกิดแม่"}]})");
+    JsonArrayConst notes = doc["notes"];
+    CHECK_EQ(notebook::pickForDelete(notes, 2, ""), 1);
+    CHECK_EQ(notebook::pickForDelete(notes, 5, "ไม่เกี่ยว"), 2);  // the id wins over the query
+    CHECK_EQ(notebook::pickForDelete(notes, 9, ""), notebook::kNone);
+    CHECK_EQ(notebook::pickForDelete(notes, 0, "แกง"), 1);       // one match: that one
+    CHECK_EQ(notebook::pickForDelete(notes, 0, "ซื้อ"), notebook::kAmbiguous);  // used to delete both
+    CHECK_EQ(notebook::pickForDelete(notes, 0, "ไม่มี"), notebook::kNone);
+    CHECK_EQ(notebook::pickForDelete(notes, 0, ""), notebook::kNone);  // nothing given: nothing picked
+    CHECK(notebook::matches(notes[0], 0, "นม"));                     // text counts too
+    CHECK(!notebook::matches(notes[0], 0, nullptr));
+}
+
+TEST(json_file_status) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "pab_jsonfile_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const std::string path = (dir / "notes.json").string();
+    auto write = [](const std::string& p, const char* text) {
+        FILE* f = fopen(p.c_str(), "wb");
+        fputs(text, f);
+        fclose(f);
+    };
+    JsonDocument doc;
+    CHECK(jsonfile::loadStatus(path.c_str(), doc) == jsonfile::Status::Missing);
+    write(path, "");
+    CHECK(jsonfile::loadStatus(path.c_str(), doc) == jsonfile::Status::Missing);  // empty: nothing to lose
+    write(path, "{\"notes\":[{\"id\":1,\"text\":\"a\"");                          // cut short / damaged
+    CHECK(jsonfile::loadStatus(path.c_str(), doc) == jsonfile::Status::Unreadable);
+    CHECK(!jsonfile::load(path.c_str(), doc));
+
+    doc.clear();
+    doc["notes"].to<JsonArray>().add<JsonObject>()["id"] = 7;
+    CHECK(jsonfile::save(path.c_str(), doc));
+    JsonDocument back;
+    CHECK(jsonfile::loadStatus(path.c_str(), back) == jsonfile::Status::Ok);
+    CHECK_EQ(back["notes"][0]["id"].as<int>(), 7);
+
+    // power cut between "remove" and "rename": the .tmp copy is read
+    fs::rename(path, path + ".tmp");
+    JsonDocument tmp;
+    CHECK(jsonfile::loadStatus(path.c_str(), tmp) == jsonfile::Status::Ok);
+    CHECK_EQ(tmp["notes"][0]["id"].as<int>(), 7);
+    fs::remove_all(dir);
+}

@@ -60,7 +60,7 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 | `get_world_time(city)` | เวลาท้องถิ่น ~40 เมือง/ประเทศ (ชื่อไทย/อังกฤษ) **รองรับ DST** EU/US/AU/NZ + ต่างจากไทยกี่ ชม. | ตารางในตัว + นาฬิกา NTP | 0 วิ |
 | `get_location()` | ตำแหน่งโดยประมาณจาก IP (ไม่มี GPS) — ใช้เป็นค่าเริ่มต้นของ `get_weather` | `ipwho.is` (แคช 1 ชม.) | ~2.6 วิ |
 | `search_knowledge(query)` | สรุปสารานุกรม (ไทยก่อน แล้วอังกฤษ) | Wikipedia `action=query&generator=search&prop=extracts` | ~8 วิ |
-| `notes(action, …)` | สมุดโน้ตบนบอร์ด: add / list / search / read / delete (สูงสุด 100) | `<agentDir>/notes.json` (SD หรือ LittleFS) | 0 วิ |
+| `notes(action, …)` | สมุดโน้ตบนบอร์ด: add / list / search / read / delete (สูงสุด 100) · **delete ทีละโน้ต**: `id` หรือ query ที่ตรงโน้ตเดียว (ตรงหลายอัน = error + `candidates`) · ไฟล์อ่านไม่ได้ = error ไม่เขียนทับ (T073) | `<agentDir>/notes.json` (SD หรือ LittleFS) | 0 วิ |
 
 ### Finance pack
 

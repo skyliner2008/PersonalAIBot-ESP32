@@ -14,6 +14,7 @@
 #include <mp3dec.h>
 
 #include "../system/PsramTask.h"
+#include "../util/IcyMeta.h"
 #include "../util/RadioResampler.h"
 #include "../util/Utf8.h"
 #include "AudioManager.h"
@@ -227,7 +228,7 @@ bool RadioPlayer::session(uint32_t gen) {
 
     String ctype = http.header("content-type");
     ctype.toLowerCase();
-    const int metaint = http.header("icy-metaint").toInt();
+    const int metaint = icy::metaInterval(http.header("icy-metaint").c_str());  // a bad one = no titles (T073)
     bool aac = ctype.indexOf("aac") >= 0 || ctype.indexOf("mp4a") >= 0;
     const bool mp3 = ctype.indexOf("mpeg") >= 0 || ctype.indexOf("mp3") >= 0;
     if (!aac && !mp3) {
@@ -295,6 +296,7 @@ bool RadioPlayer::session(uint32_t gen) {
     };
     // up to n payload bytes that are already here (0 = none yet, -1 = stream over)
     auto body = [&](uint8_t* d, int n) -> int {
+        if (n <= 0) return 0;  // read(d, size_t) would take a negative size as "the whole socket"
         if (!chunked) {
             const int r = stream->read(d, n);
             return r < 0 ? 0 : r;

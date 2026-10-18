@@ -11,6 +11,7 @@
 #include "../app/Settings.h"
 #include "../util/Calc.h"
 #include "../util/JsonFile.h"
+#include "../util/NoteSearch.h"
 #include "../util/TimeFmt.h"
 #include "../util/Units.h"
 #include "WebToolsCommon.h"
@@ -747,6 +748,16 @@ void runPositionSize(JsonObjectConst a, JsonDocument& out, CardData& card) {
 
 namespace {
 String filePath(const ToolEnv& env, const char* name) { return String(env.storageDir) + "/" + name; }
+
+// A file that is there but cannot be read (damaged, card error) is not "empty": the next add used to save
+// a new list over it and every old note / alert was gone (T073). It is left as it is for the user to fix.
+bool loadStore(const String& path, JsonDocument& db, JsonDocument& out) {
+    if (jsonfile::loadStatus(path.c_str(), db) != jsonfile::Status::Unreadable) return true;
+    Serial.printf("[Tool] %s cannot be read - not touched (fix or remove it)\n", path.c_str());
+    setError(out, "ไฟล์ข้อมูลเสียหรืออ่านไม่ได้ (ยังไม่ได้แก้ไขอะไร) บอกผู้ใช้ให้ตรวจการ์ด SD หรือไฟล์นี้");
+    out["file"] = path;
+    return false;
+}
 }  // namespace
 
 void runNotes(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, CardData& card) {
@@ -756,7 +767,7 @@ void runNotes(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, CardData
     }
     const String path = filePath(env, "notes.json");
     JsonDocument db(JsonPsramAllocator::instance());
-    jsonfile::load(path.c_str(), db);
+    if (!loadStore(path, db, out)) return;
     if (!db["notes"].is<JsonArray>()) db["notes"].to<JsonArray>();
     JsonArray notes = db["notes"];
     // titles cut by bytes before v3.4.2 could end in half a Thai character: invalid UTF-8 in the
@@ -776,11 +787,7 @@ void runNotes(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, CardData
     const char* content = a["content"] | "";
     const char* query = a["query"] | "";
     const int id = a["id"] | 0;
-    auto matches = [&](JsonObjectConst n) {
-        if (id) return (n["id"] | 0) == id;
-        if (!*query) return false;
-        return strstr(n["title"] | "", query) || strstr(n["text"] | "", query);
-    };
+    auto matches = [&](JsonObjectConst n) { return notebook::matches(n, id, query); };
     if (action == "add") {
         if (!*content) {
             setError(out, "ต้องมี content");
@@ -804,15 +811,32 @@ void runNotes(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, CardData
         return;
     }
     if (action == "delete") {
-        int removed = 0;
-        for (size_t i = notes.size(); i-- > 0;) {
-            if (matches(notes[i])) {
-                notes.remove(i);
-                removed++;
-            }
+        // one note at a time: a query used to delete every note that contained it (T073)
+        if (!id && !*query) {
+            setError(out, "ต้องระบุ id ของโน้ต (ดูจาก action list) หรือ query");
+            return;
         }
-        jsonfile::save(path.c_str(), db);
-        out["result"]["deleted"] = removed;
+        const int i = notebook::pickForDelete(notes, id, query);
+        if (i == notebook::kNone) {
+            setError(out, "ไม่พบโน้ต");
+            return;
+        }
+        if (i == notebook::kAmbiguous) {
+            setError(out, "หลายโน้ตตรงกับคำนี้ ถามผู้ใช้ว่าลบอันไหน แล้วลบด้วย id");
+            JsonArray cand = out["candidates"].to<JsonArray>();
+            for (JsonObjectConst n : notes) {
+                if (!matches(n) || cand.size() >= 10) continue;
+                JsonObject o = cand.add<JsonObject>();
+                o["id"] = n["id"];
+                o["title"] = n["title"];
+            }
+            return;
+        }
+        JsonObject gone = notes[(size_t)i];
+        out["result"]["deleted_id"] = gone["id"] | 0;
+        out["result"]["title"] = String(gone["title"] | "");
+        notes.remove((size_t)i);
+        if (!jsonfile::save(path.c_str(), db)) setError(out, "บันทึกไฟล์โน้ตไม่สำเร็จ");
         return;
     }
     if (action == "read" || action == "search") {
@@ -871,7 +895,7 @@ void runPriceAlert(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, Car
     }
     const String path = filePath(env, "alerts.json");
     JsonDocument db(JsonPsramAllocator::instance());
-    jsonfile::load(path.c_str(), db);
+    if (!loadStore(path, db, out)) return;
     if (!db["alerts"].is<JsonArray>()) db["alerts"].to<JsonArray>();
     JsonArray alerts = db["alerts"];
     String action = a["action"] | "list";

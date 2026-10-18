@@ -16,6 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T073 | [[#T073 รีวิวรอบ 4 — icy-metaint ติดลบจากสถานีวิทยุเขียนเกิน buffer, ลบโน้ตด้วยคำค้นลบหลายอัน, ไฟล์โน้ตเสียถูกเขียนทับ]] | Radio/Tools/Storage | ✅ Fixed — host tests; รอทดสอบบนบอร์ด |
 | T072 | [[#T072 get_weather ช้า 8–40 วิ — TLS ถูกแย่ง CPU (priority 2), จับมือซ้ำ, geocode ชื่อไทยพลาด]] | Tools/Network | ✅ Fixed — จังหวัด 2.8 วิ (เดิม 8–23 วิ) |
 | T071 | [[#T071 ถามอากาศแล้ว AI ตอบข้อความเดิม 2 รอบ (3.8 Live) — scheduling SILENT อยู่ผิดที่ใน functionResponse]] | AI/Tools | ✅ Fixed — ทดสอบบนบอร์ด: ตอบครั้งเดียว 3/3 รอบ |
 | T070 | [[#T070 สถานี AAC ทำให้บอร์ดรีบูต (task watchdog) — Helix AAC วนไม่รู้จบใน DecodeSectionData + ตรวจ/เพิ่มสถานีจาก Thailand.json]] | Radio | ✅ Fixed — ทดสอบบนบอร์ด: สถานีเดิมเล่นต่อเนื่อง ไม่รีบูต |
@@ -122,6 +123,24 @@ This page documents common issues encountered during development and their solut
 **ยืนยัน 2026-10-15:** ผู้ใช้เทียบบอร์ดกับ PC app — ตอน `invert = 0` บอร์ดเป็น **พื้นขาว + ตาน้ำเงิน** ส่วนภาพ framebuffer ใน app เป็น
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
+
+## T073: รีวิวรอบ 4 — icy-metaint ติดลบจากสถานีวิทยุเขียนเกิน buffer, ลบโน้ตด้วยคำค้นลบหลายอัน, ไฟล์โน้ตเสียถูกเขียนทับ
+
+**วันที่:** 2026-10-18 · รีวิวทั้งโปรเจครอบ 4 (เน้นโค้ด v4.0–4.1 และจุดที่รับข้อมูลจากภายนอก) · ผู้ใช้สั่ง "แก้ไขได้"
+1. **`icy-metaint` จาก server วิทยุไม่ถูกตรวจ** (`RadioPlayer::session`) — ค่าติดลบ (`icy-metaint: -5`) ทำให้ `want` ติดลบ → `stream->read(d, n)`
+   รับขนาดเป็น `size_t` = "อ่านทั้ง socket" → เขียนเกินท้าย buffer สตรีม 16 KB (PSRAM) หลาย KB · ส่งได้ทั้ง server ของสถานี
+   และคนในวง LAN (สถานีส่วนใหญ่เป็น `http://`, `https://` ก็ `setInsecure()`)
+   → `util/IcyMeta.h` `icy::metaInterval()`: รับเฉพาะตัวเลขล้วน 1–262,144 อย่างอื่น = 0 (ไม่มีชื่อเพลง แต่เสียงยังเล่น)
+   + ตัวอ่าน body คืน 0 ทันทีเมื่อขอ ≤ 0 ไบต์ (host test `icy_meta_interval`)
+2. **`notes` `delete` ด้วย `query` ลบทุกโน้ตที่มีคำนั้น** ("ซื้อ" = รายการซื้อของทุกอัน) แบบเดียวกับ `price_alert remove` ใน T069 ข้อ 9
+   → ลบทีละโน้ต: `id` หรือ query ที่ตรง**โน้ตเดียว** · ตรงหลายอัน = error + `candidates` (id/title) ให้โมเดลถามผู้ใช้ ·
+   ไม่ใส่ทั้ง id และ query = error (เดิมตอบ deleted 0) · ผลเป็น `deleted_id` + `title` (`util/NoteSearch.h`, host test `notes_delete_pick`)
+3. **ไฟล์ `notes.json` / `alerts.json` ที่อ่านไม่ได้ถูกมองเป็น "ว่าง"** → `add` ครั้งถัดไปเขียนรายการใหม่ทับ = โน้ต/แจ้งเตือนเก่าหายหมด
+   → `jsonfile::loadStatus()` แยก `Missing` (ไม่มีไฟล์ / ไฟล์ว่าง) กับ `Unreadable` (JSON เสีย, ใหญ่เกิน 256 KB, มีไฟล์แต่เปิดไม่ได้)
+   · `Unreadable` = tool ตอบ error + `file` และไม่แตะไฟล์ (log `[Tool] ... cannot be read - not touched`) (host test `json_file_status`)
+**ยังไม่ได้ทำ:** redirect ของสถานีวิทยุที่เป็น path แบบ relative (`Location: /stream`) ยังขึ้น "bad URL" • ความเสี่ยงเดิมจาก T069
+(OTA ไม่มีลายเซ็น, legacy I2S driver, กุญแจ SecretBox จาก MAC + UID) • เนื้อหาเว็บ (ข่าว/Wikipedia) เข้าโมเดลตัวเดียวกับที่สั่ง relay ได้
+**ทดสอบ:** host tests 46 ชุด / 2,036 checks ✓ (รันแบบ AddressSanitizer + UBSan ด้วย) · `pio run` ผ่าน (RAM 31.8%, Flash 64.8%, ไม่มี warning ใหม่)
 
 ## T072: get_weather ช้า 8–40 วิ — TLS ถูกแย่ง CPU (priority 2), จับมือซ้ำ, geocode ชื่อไทยพลาด
 
