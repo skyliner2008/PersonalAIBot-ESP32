@@ -20,8 +20,10 @@ static const char* gStatus = "SIM";
 static vehicle::SourceId gSrc = vehicle::SourceId::SimAuto;
 static vehicle::Kind gKind = vehicle::Kind::Car;
 static bool gRestart = false;
+static vehicle::DashStyle gStyle = vehicle::DashStyle::Race;
 vehicle::DashConfig Vehicle::dashConfig() { return vehicle::defaultConfig(gKind); }
-Vehicle::Settings Vehicle::settings() { Settings s; s.source = gSrc; s.kind = gKind; return s; }
+Vehicle::Settings Vehicle::settings() { Settings s; s.source = gSrc; s.kind = gKind; s.style = gStyle; return s; }
+void Vehicle::setStyle(vehicle::DashStyle s) { gStyle = s; }
 vehicle::Snapshot Vehicle::snapshot() { return gSnap; }
 String Vehicle::status() { return String(gStatus); }
 bool Vehicle::needsRestart() { return gRestart; }
@@ -64,11 +66,15 @@ int main(int argc, char** argv) {
     gUi.begin(nullptr, 1, nullptr);
     LGFX_Sprite& c = gUi.canvas();
     char path[256];
-    auto scene = [&](const char* name) {
-        gDashUi.tick(gNow, 0.03f);
-        gDashUi.draw(c);
-        snprintf(path, sizeof(path), "%s/dash_%s.png", out, name);
-        savePng(c, path);
+    auto scene = [&](const char* name) {  // the same moment in every style
+        for (uint8_t st = 0; st < (uint8_t)vehicle::DashStyle::Count; st++) {
+            gStyle = (vehicle::DashStyle)st;
+            gDashUi.onEnter();  // picks the style up now (it is read once a second)
+            gDashUi.tick(gNow, 0.03f);
+            gDashUi.draw(c);
+            snprintf(path, sizeof(path), "%s/dash_%s_%s.png", out, vehicle::styleKey(gStyle), name);
+            savePng(c, path);
+        }
     };
     gUi.push(&gDashUi);
     // car, simulator: city driving, then the full-throttle pull with the shift light
@@ -77,7 +83,7 @@ int main(int argc, char** argv) {
     sim.setAutoDrive(true);
     for (int i = 0; i < 9 * 50; i++) { sim.step(0.02f); gNow += 20; sim.write(gSnap, gNow); if (i % 5 == 0) gDashUi.tick(gNow, 0.02f); }
     scene("car_city");
-    for (int i = 0; i < 1000 && sim.rpm() < 6100; i++) { sim.step(0.02f); gNow += 20; sim.write(gSnap, gNow); if (i % 5 == 0) gDashUi.tick(gNow, 0.02f); }
+    for (int i = 0; i < 1000 && sim.rpm() < vehicle::defaultConfig(gKind).shiftRpm + 20; i++) { sim.step(0.02f); gNow += 20; sim.write(gSnap, gNow); if (i % 5 == 0) gDashUi.tick(gNow, 0.02f); }
     gNow = (gNow / 140) * 140;  // the "on" phase of the shift flash
     sim.write(gSnap, gNow);
     scene("car_shift");

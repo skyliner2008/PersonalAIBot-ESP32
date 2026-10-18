@@ -13,10 +13,24 @@ status: active
 ค่าเตือนเปลี่ยนสี (เหลือง = สูง, แดงกระพริบ = วิกฤต, ฟ้า = เครื่องยังไม่ร้อน) · ค่าไหนไม่อัปเดต 2.5 วิ ขึ้น `--` (ไม่ค้างค่าเก่า)
 และ AI รู้ค่าจริง: ถาม "รอบเครื่องเท่าไหร่" / "เครื่องร้อนไหม" ได้ · เครื่องร้อนจัดหรือไดชาร์จไม่ชาร์จ **AI พูดเตือนเอง** (ทุก 5 นาทีต่อเรื่อง)
 
-![[images/dash_car_city.png]] ![[images/dash_car_shift.png]]
-![[images/dash_car_warnings.png]] ![[images/dash_moto_kline.png]]
+## รูปแบบหน้าปัด 3 แบบ (T077)
 
-*ภาพเรนเดอร์จากโค้ดจริง (`DashScreen.cpp`) ด้วย `tools/dash_preview/run.sh` บน PC — ยังไม่ได้ถ่ายจากบอร์ด*
+ค่าและคำเตือนเหมือนกันทุกแบบ เปลี่ยนได้ทันที: **แตะข้อความสถานะบนแถบหัว** (วนไปแบบถัดไป + ป้ายบอกชื่อ 1.5 วิ) · เมนู "หน้าปัดรถ → รูปแบบหน้าปัด" ·
+console `dash style <race|digital|classic>` · จำใน NVS `veh/style` · วาดด้วยโค้ดล้วน (ไม่มีรูปภาพ: flash +6 KB)
+
+| แบบ | หน้าตา |
+|---|---|
+| **รถแข่ง** (`race`, ค่าเริ่มต้น) | บาร์รอบเครื่องเต็มความกว้างด้านบน, รอบ/ความเร็ว/เกียร์ตัวใหญ่, 3 ช่องด้านล่าง |
+| **วงกลมดิจิทัล สปอร์ต** (`digital`) | วงแหวนไฟ 34 ช่อง 270° (ช่องที่ติดยื่นออกมา, เขียว/เหลือง/แดง, กะพริบขาวเมื่อถึง shift), รอบ + ความเร็วดิจิทัลกลางวง, เกียร์ในช่องว่างใต้วง, 3 ช่องด้านขวา |
+| **เข็มวงกลม คลาสสิก** (`classic`) | หน้าปัดวัดรอบ (โซนแดงเริ่มที่รอบ shift, ช่องเกียร์) + หน้าปัดความเร็ว (0–200 รถยนต์ / 0–140 มอเตอร์ไซค์ + ตัวเลขดิจิทัล), เข็มเรียวลบรอยหยัก + เข็มความเร็วเลื่อนนุ่ม, ไฟ **SHIFT** ระหว่างหน้าปัด, 3 ช่องด้านล่าง · ขีด/ตัวเลขวาดครั้งเดียวลง sprite ใน PSRAM (150 KB) แล้วคัดลอกทุกเฟรม |
+
+![[images/dash_race_car_city.png]] ![[images/dash_digital_car_city.png]] ![[images/dash_classic_car_city.png]]
+![[images/dash_race_car_shift.png]] ![[images/dash_digital_car_shift.png]] ![[images/dash_classic_car_shift.png]]
+![[images/dash_race_moto_kline.png]] ![[images/dash_digital_moto_kline.png]] ![[images/dash_classic_moto_kline.png]]
+![[images/dash_race_car_warnings.png]]
+
+*ภาพเรนเดอร์จากโค้ดจริง (`DashScreen.cpp`) ด้วย `tools/dash_preview/run.sh` บน PC (แถว: รถยนต์ในเมือง / เร่งถึง shift light / มอเตอร์ไซค์ K-Line
+ที่ไม่มีความเร็ว / เตือนเครื่องร้อน + แบตต่ำ) — ยังไม่ได้ถ่ายจากบอร์ด*
 
 ## ที่มา / license
 
@@ -80,7 +94,7 @@ ELM327 ราคาถูกส่วนใหญ่เป็น **Bluetooth Cla
   · จำลอง = `simulated: true` (AI ไม่เข้าใจผิดว่าเป็นรถจริง)
 
 ## Console
-`dash` → `DASH {json}` · `dash open|close` · `dash source <off|sim|touch|kline|obd_ble|obd_uart|serial>` · `dash kind <car|moto>` ·
+`dash` → `DASH {json}` · `dash open|close` · `dash style <race|digital|classic>` · `dash source <off|sim|touch|kline|obd_ble|obd_uart|serial>` · `dash kind <car|moto>` ·
 `dash shift <rpm>` · `dash max <rpm>` · `dash kdump` (ตาราง K-Line ดิบ) · `dash ble forget` · `dash baud <elm|text> <n>`
 
 ## โครงสร้าง (สำหรับต่อยอด)
@@ -93,7 +107,8 @@ ELM327 ราคาถูกส่วนใหญ่เป็น **Bluetooth Cla
 - เพิ่มแหล่งข้อมูลใหม่ (เช่น ELM327 Wi-Fi, CAN ด้วย TWAI ในตัว ESP32-S3 + transceiver, เซนเซอร์ต่อตรง): เพิ่มใน `SourceId` (ต่อท้ายเท่านั้น — เก็บใน NVS)
   + ฟังก์ชัน `run...` ใน `Vehicle.cpp` ที่เขียน `Snapshot`
 - ส่วนที่ไม่ผูกฮาร์ดแวร์ทดสอบบน PC: host test `vehicle_*` (ข้อความ serial, โมเดลหน้าปัด, ตัวจำลอง 10 นาที, ELM327 แบบตอบทีละท่อนเหมือน BLE, K-Line พร้อม echo)
-- ดูหน้าจอโดยไม่ต้องมีบอร์ด: `bash tools/dash_preview/run.sh` (ต้องมี SDL2 headers + `pio run` ก่อน) → PNG ใน `tools/dash_preview/out/`
+- ดูหน้าจอโดยไม่ต้องมีบอร์ด: `bash tools/dash_preview/run.sh` (ต้องมี SDL2 headers + `pio run` ก่อน) → PNG ทุกแบบ × ทุกฉากใน `tools/dash_preview/out/`
+- เพิ่มรูปแบบใหม่: ต่อท้าย `DashStyle` (`VehicleData.h`) + ชื่อ/คีย์ + ฟังก์ชัน `draw...` ใน `DashScreen.cpp` (ใช้ `drawHeader` / `drawReadout` / `auxValues` ร่วมกัน)
 
 ## สถานะการทดสอบ (2026-10-18)
 - ✅ host tests + `pio run` · ✅ ภาพหน้าจอจาก preview

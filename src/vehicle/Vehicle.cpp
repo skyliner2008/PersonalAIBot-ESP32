@@ -50,6 +50,8 @@ void Vehicle::begin(const char* agentDir) {
         _s.bleType = p.getUChar("bletype", 0);
         _s.elmBaud = p.getULong("elmbaud", _s.elmBaud);
         _s.textBaud = p.getULong("txtbaud", _s.textBaud);
+        const uint8_t style = p.getUChar("style", 0);
+        _s.style = style < (uint8_t)DashStyle::Count ? (DashStyle)style : DashStyle::Race;
         p.end();
     }
     // agent/vehicle.json: {"kline": {"table": 17, "rpm": 0, "coolant": 5, ...}} - which byte holds what on your bike
@@ -83,6 +85,7 @@ void Vehicle::save() {  // the caller's task: NVS needs an internal stack (conso
     p.putUChar("bletype", s.bleType);
     p.putULong("elmbaud", s.elmBaud);
     p.putULong("txtbaud", s.textBaud);
+    p.putUChar("style", (uint8_t)s.style);
     p.end();
 }
 
@@ -156,6 +159,15 @@ void Vehicle::forgetBleAdapter() {
     if (_task) xTaskNotifyGive(_task);
 }
 
+void Vehicle::setStyle(DashStyle s) {
+    if ((uint8_t)s >= (uint8_t)DashStyle::Count) return;
+    {
+        Guard g(_lock);
+        _s.style = s;
+    }
+    save();
+}
+
 void Vehicle::setBaud(bool elm, uint32_t baud) {
     if (baud < 1200 || baud > 2000000) return;
     {
@@ -221,6 +233,7 @@ void Vehicle::describe(JsonObject out) {
     out["source_name"] = sourceNameTh(s.source);
     out["status"] = status();
     out["kind"] = s.kind == Kind::Car ? "car" : "motorcycle";
+    out["style"] = styleKey(s.style);
     if (s.source == SourceId::SimAuto || s.source == SourceId::SimTouch) out["simulated"] = true;  // not a real vehicle
     if (needsRestart()) out["needs_restart"] = "restart the board once to start Bluetooth";
     JsonObject r = out["readings"].to<JsonObject>();

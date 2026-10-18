@@ -1,6 +1,6 @@
 /**
  * @file DashScreen.cpp
- * @brief Vehicle dash screen (see DashScreen.h)
+ * @brief Vehicle dash screen, three styles (see DashScreen.h)
  */
 
 #include "DashScreen.h"
@@ -17,21 +17,32 @@ using namespace vehicle;
 namespace {
 
 constexpr int kHeaderH = 26;
+constexpr int kSetupX = 246;
+constexpr float kPi = 3.14159265f;
+
+// race
 constexpr int kBarTop = 30, kBarBottom = 64, kSegments = 30;
 constexpr int kMainTop = 80, kMainBottom = 178;
 constexpr int kTileY = 184, kTileH = 52, kTileW = 100, kTileGap = 6;
-constexpr int kSetupX = 246;
+
+// digital: one LED ring for the rpm (270 degrees, open at the bottom)
+constexpr int kRingX = 116, kRingY = 134, kRingOuter = 102, kRingInner = 82, kRingSegs = 34;
+constexpr float kArcStart = 135.0f, kArcSweep = 270.0f;  // degrees, 0 = 3 o'clock, clockwise
+
+// classic: two dials with needles
+constexpr int kDialR = 74, kTachX = 80, kSpeedX = 240, kDialY = 124;
+constexpr int kStripY = 204, kStripH = 32;
 
 // palette (RGB565)
 constexpr uint16_t kGreen = 0x47E8, kYellow = 0xFEA0, kRed = 0xF8E4, kOff = 0x18E3, kCold = 0x3D9F;
 constexpr uint16_t kRpmText = 0x5F1F, kShiftWhite = 0xFFFF;
+constexpr uint16_t kDialFace = 0x0861, kDialRim = 0x52AA, kNeedle = 0xFB40, kRedZone = 0xB000;
 
-enum Hit { kNone = 0, kBack, kSetup, kMain };
+enum Hit { kNone = 0, kBack, kSetup, kStyle, kMain };
 
 Hit hitTest(int x, int y) {
-    if (y < kHeaderH) return x < 48 ? kBack : (x >= kSetupX ? kSetup : kNone);
-    if (y >= kBarTop && y < kMainBottom) return kMain;
-    return kNone;
+    if (y < kHeaderH) return x < 48 ? kBack : (x >= kSetupX ? kSetup : kStyle);
+    return kMain;
 }
 
 uint16_t levelColor(Level l, uint32_t now) {
@@ -42,6 +53,11 @@ uint16_t levelColor(Level l, uint32_t now) {
         case Level::None: return ui::DIM;
         default: return ui::TEXT;
     }
+}
+
+/** Colour of a stretch of the rpm scale: green, yellow from 3/4 of the shift point, red from it. */
+uint16_t rpmZoneColor(float rpm, const DashConfig& cfg) {
+    return rpm >= cfg.shiftRpm ? kRed : (rpm >= cfg.shiftRpm * 0.75f ? kYellow : kGreen);
 }
 
 /** "3,250" */
@@ -63,7 +79,24 @@ float fitSize(LGFX_Sprite& c, const lgfx::IFont* font, const char* text, int w, 
     return s < maxSize ? s : maxSize;
 }
 
+/** Point at `r` from (cx, cy) in direction `deg` (0 = 3 o'clock, clockwise: the screen's y grows down). */
+void polar(int cx, int cy, float r, float deg, int& x, int& y) {
+    const float a = deg * kPi / 180.0f;
+    x = cx + (int)lroundf(r * cosf(a));
+    y = cy + (int)lroundf(r * sinf(a));
+}
+
+float clamp01(float v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
+/** Speedometer full scale. */
+int speedMax(bool moto) { return moto ? 140 : 200; }
+
+/** Thousands per rpm label: one per 1000, or per 2000 on a scale above 10000. */
+int rpmLabelStep(int rpmMax) { return rpmMax > 10000 ? 2000 : 1000; }
+
 }  // namespace
+
+// ============================================================ state, touch
 
 void DashScreen::onEnter() {
     _nextConfig = 0;
@@ -71,6 +104,12 @@ void DashScreen::onEnter() {
     _pressed = kNone;
     gVehicle.setTouchThrottle(0);
     tick(millis(), 0);
+}
+
+void DashScreen::cycleStyle() {
+    _style = (DashStyle)(((uint8_t)_style + 1) % (uint8_t)DashStyle::Count);
+    gVehicle.setStyle(_style);  // UI task: an internal stack, NVS may be written
+    _toastUntil = _now + 1500;
 }
 
 void DashScreen::onTouch(const TouchEvent& e) {
@@ -92,10 +131,11 @@ void DashScreen::onTouch(const TouchEvent& e) {
             _pressed = kNone;
             break;
         case TouchEvent::Tap:
-            if (hitTest(e.x, e.y) == kBack) {
-                gUi.pop();
-            } else if (hitTest(e.x, e.y) == kSetup) {
-                settingsui::openPage("vehicle");
+            switch (hitTest(e.x, e.y)) {
+                case kBack: gUi.pop(); break;
+                case kSetup: settingsui::openPage("vehicle"); break;
+                case kStyle: cycleStyle(); break;
+                default: break;
             }
             break;
         case TouchEvent::LongPress:
@@ -105,20 +145,25 @@ void DashScreen::onTouch(const TouchEvent& e) {
 }
 
 void DashScreen::tick(uint32_t now, float dt) {
-    (void)dt;
     _now = now;
     if ((int32_t)(now - _nextConfig) >= 0) {  // settings may change from the menu, voice or console
         _nextConfig = now + 1000;
         _model.setConfig(gVehicle.dashConfig());
-        const uint8_t src = (uint8_t)gVehicle.source();
+        const Vehicle::Settings s = gVehicle.settings();
+        const uint8_t src = (uint8_t)s.source;
         if (src != _source) _model.resetPeak();  // a peak from the simulator is not this car's
         _source = src;
+        _style = s.style;
         _touchSource = _source == (uint8_t)SourceId::SimTouch;
         _needsRestart = gVehicle.needsRestart();
     }
     _status = gVehicle.status();
     const Snapshot s = gVehicle.snapshot();
     const DashView& v = _model.update(s, now);
+    // the speedometer needle glides between readings (OBD / K-Line speed comes a few times a second)
+    const float target = v.speedValid ? v.speed : 0;
+    const float a = dt <= 0 ? 1.0f : clamp01(dt / 0.15f);
+    _speedNeedle += (target - _speedNeedle) * a;
     // a dash in use keeps the screen awake (the power-save clock would hide it while driving)
     if (v.live && (int32_t)(now - _nextActivity) >= 0) {
         _nextActivity = now + 10000;
@@ -126,64 +171,24 @@ void DashScreen::tick(uint32_t now, float dt) {
     }
 }
 
-void DashScreen::drawBar(LGFX_Sprite& c, const DashView& v) {
-    const DashConfig& cfg = _model.config();
-    const float pitch = (ui::W - 12) / (float)kSegments;
-    const float lit = v.rpmValid ? v.rpm / cfg.rpmMax * kSegments : 0;
-    for (int i = 0; i < kSegments; i++) {
-        const int x = 6 + (int)(i * pitch);
-        const int w = (int)((i + 1) * pitch) - (int)(i * pitch) - 2;
-        const int h = 14 + (kBarBottom - kBarTop - 14) * i / (kSegments - 1);  // rising toward the redline
-        const float segRpm = (i + 0.5f) * cfg.rpmMax / kSegments;
-        uint16_t col = segRpm >= cfg.shiftRpm ? kRed : (segRpm >= cfg.shiftRpm * 0.75f ? kYellow : kGreen);
-        if (v.shift) col = v.shiftOn ? kShiftWhite : kRed;  // shift light: the whole bar flashes
-        if (i + 0.5f > lit && !(v.shift && v.shiftOn)) col = segRpm >= cfg.shiftRpm ? 0x4800 : kOff;
-        c.fillRect(x, kBarBottom - h, w, h, col);
+// ============================================================ shared parts
+
+void DashScreen::auxValues(const DashView& v, bool moto, Aux out[3]) const {
+    out[0] = {moto ? "อุณหภูมิเครื่อง" : "เครื่องยนต์", "เครื่อง", "--", "C", v.coolantLevel};
+    if (v.coolantLevel != Level::None) snprintf(out[0].value, sizeof(out[0].value), "%.0f", v.coolant);
+    out[1] = {"แบตเตอรี่", "แบต", "--", "V", v.batteryLevel};
+    if (v.batteryLevel != Level::None) snprintf(out[1].value, sizeof(out[1].value), "%.1f", v.battery);
+    if (v.intakeLevel != Level::None) {
+        out[2] = {"อากาศเข้า", "อากาศ", "", "C", v.intakeLevel};
+        snprintf(out[2].value, sizeof(out[2].value), "%.0f", v.intake);
+    } else {
+        out[2] = {"คันเร่ง", "คันเร่ง", "--", "%", v.throttleLevel};
+        if (v.throttleLevel != Level::None) snprintf(out[2].value, sizeof(out[2].value), "%.0f", v.throttle);
     }
-    // scale: one mark per 1000 rpm
-    c.setFont(&fonts::Font0);
-    c.setTextSize(1);
-    c.setTextColor(ui::DIM);
-    c.setTextDatum(textdatum_t::top_center);
-    for (int k = 0; k * 1000 <= cfg.rpmMax; k++) {
-        const int x = 6 + (int)((ui::W - 12) * (k * 1000.0f / cfg.rpmMax));
-        char t[4];
-        snprintf(t, sizeof(t), "%d", k);
-        c.drawString(t, x < 8 ? 8 : (x > ui::W - 8 ? ui::W - 8 : x), kBarBottom + 3);
-    }
-    c.setTextDatum(textdatum_t::top_right);
-    c.drawString("x1000 rpm", ui::W - 6, kBarBottom + 3 + 9);
 }
 
-void DashScreen::drawTile(LGFX_Sprite& c, int x, const char* label, const char* value, const char* unit, Level level) {
-    c.fillRoundRect(x, kTileY, kTileW, kTileH, 8, level == Level::Crit ? 0x4000 : ui::PANEL);
-    c.setTextSize(1);  // the big numbers above leave a scale behind
-    gUi.drawFitted(c, label, x + 8, kTileY + 13, kTileW - 12, gUi.thai20(), ui::DIM);
-    const uint16_t col = levelColor(level, _now);
-    const bool degrees = unit[0] == 'C';  // the GFX fonts have no degree sign: a small ring before "C"
-    c.setFont(&fonts::Font2);
-    c.setTextSize(1);
-    const int unitW = level == Level::None ? 0 : c.textWidth(unit) + (degrees ? 6 : 2);
-    const int right = x + kTileW - 8;
-    if (unitW) {
-        c.setTextColor(col);
-        c.setTextDatum(textdatum_t::bottom_right);
-        c.drawString(unit, right, kTileY + kTileH - 8);
-        if (degrees) c.drawCircle(right - c.textWidth(unit) - 4, kTileY + kTileH - 21, 2, col);
-    }
-    c.setFont(&fonts::FreeSansBold12pt7b);
-    c.setTextColor(col);
-    c.setTextDatum(textdatum_t::bottom_right);
-    c.drawString(value, right - unitW, kTileY + kTileH - 6);
-}
-
-void DashScreen::draw(LGFX_Sprite& c) {
-    const DashView& v = _model.view();
-    const bool moto = _model.config().kind == Kind::Motorcycle;
-    c.fillScreen(ui::BG);
-
-    // ---- header: back, status dot + source, settings ----
-    c.setFont(gUi.thai20());
+void DashScreen::drawHeader(LGFX_Sprite& c, const DashView& v) {
+    c.fillRect(0, 0, ui::W, kHeaderH, ui::BG);
     c.setTextSize(1);
     const uint16_t chevron = _pressed == kBack ? ui::ACCENT : ui::TEXT;
     for (int t = 0; t < 3; t++) {  // "<" like the title bars
@@ -195,10 +200,104 @@ void DashScreen::draw(LGFX_Sprite& c) {
     c.fillCircle(44, kHeaderH / 2, 5, dot);
     char head[96];
     snprintf(head, sizeof(head), "%s  %s", _status.c_str(), sourceNameTh((SourceId)_source));
-    gUi.drawFitted(c, head, 56, kHeaderH / 2, kSetupX - 62, gUi.thai20(), v.live ? ui::TEXT : ui::DIM);
+    gUi.drawFitted(c, head, 56, kHeaderH / 2, kSetupX - 62, gUi.thai20(),
+                   _pressed == kStyle ? ui::ACCENT : (v.live ? ui::TEXT : ui::DIM));
     gUi.drawButton(c, kSetupX, 2, ui::W - kSetupX - 4, kHeaderH - 4, "ตั้งค่า", _pressed == kSetup ? ui::PANEL_HI : ui::PANEL);
+}
 
-    drawBar(c, v);
+void DashScreen::drawWaiting(LGFX_Sprite& c, int y) {
+    const char* why = _source == (uint8_t)SourceId::Off ? "ยังไม่ได้เลือกแหล่งข้อมูล — แตะ ตั้งค่า"
+                      : _needsRestart                   ? "รีสตาร์ทบอร์ด 1 ครั้งเพื่อเปิด Bluetooth"
+                                                        : "กำลังรอข้อมูลจากรถ...";
+    c.fillRoundRect(20, y - 22, ui::W - 40, 44, 8, ui::PANEL);
+    c.setTextDatum(textdatum_t::middle_center);
+    c.setTextSize(1);
+    c.setFont(gUi.thai20());
+    c.setTextColor(ui::WARN);
+    c.drawString(why, ui::W / 2, y);
+}
+
+void DashScreen::drawToast(LGFX_Sprite& c) {
+    if ((int32_t)(_now - _toastUntil) >= 0) return;
+    char t[64];
+    snprintf(t, sizeof(t), "หน้าปัด: %s", styleNameTh(_style));
+    c.setFont(gUi.thai20());
+    c.setTextSize(1);
+    const int w = c.textWidth(t) + 28;
+    c.fillRoundRect((ui::W - w) / 2, kHeaderH + 4, w, 30, 15, ui::PANEL_HI);
+    c.setTextColor(ui::TEXT);
+    c.setTextDatum(textdatum_t::middle_center);
+    c.drawString(t, ui::W / 2, kHeaderH + 19);
+}
+
+void DashScreen::drawReadout(LGFX_Sprite& c, int x, int y, int w, int h, const Aux& a) {
+    c.fillRoundRect(x, y, w, h, 8, a.level == Level::Crit ? 0x4000 : ui::PANEL);
+    c.setTextSize(1);  // the big numbers drawn before leave a scale behind
+    const bool tall = h >= 44;
+    gUi.drawFitted(c, tall ? a.label : a.shortLabel, x + 8, tall ? y + 13 : y + h / 2, tall ? w - 12 : w / 2 - 4,
+                   gUi.thai20(), ui::DIM);
+    const uint16_t col = levelColor(a.level, _now);
+    const bool degrees = a.unit[0] == 'C';  // the GFX fonts have no degree sign: a small ring before "C"
+    c.setFont(&fonts::Font2);
+    const int unitW = a.level == Level::None ? 0 : c.textWidth(a.unit) + (degrees ? 6 : 2);
+    const int right = x + w - 8;
+    const int base = tall ? y + h - 6 : y + h / 2 + 9;
+    if (unitW) {
+        c.setTextColor(col);
+        c.setTextDatum(textdatum_t::bottom_right);
+        c.drawString(a.unit, right, base - 2);
+        if (degrees) c.drawCircle(right - c.textWidth(a.unit) - 4, base - 15, 2, col);
+    }
+    c.setFont(&fonts::FreeSansBold12pt7b);
+    c.setTextColor(col);
+    c.setTextDatum(textdatum_t::bottom_right);
+    c.drawString(a.value, right - unitW, base);
+}
+
+void DashScreen::draw(LGFX_Sprite& c) {
+    const DashView& v = _model.view();
+    const bool moto = _model.config().kind == Kind::Motorcycle;
+    switch (_style) {
+        case DashStyle::Digital: drawDigital(c, v, moto); break;
+        case DashStyle::Classic: drawClassic(c, v, moto); break;
+        default: drawRace(c, v, moto); break;
+    }
+    drawHeader(c, v);
+    if (!v.live) drawWaiting(c, _style == DashStyle::Race ? kMainTop + 44 : 128);
+    drawToast(c);
+}
+
+// ============================================================ race: bar across the top, big digits
+
+void DashScreen::drawRace(LGFX_Sprite& c, const DashView& v, bool moto) {
+    const DashConfig& cfg = _model.config();
+    c.fillScreen(ui::BG);
+
+    // ---- rpm bar, rising toward the redline ----
+    const float pitch = (ui::W - 12) / (float)kSegments;
+    const float lit = v.rpmValid ? v.rpm / cfg.rpmMax * kSegments : 0;
+    for (int i = 0; i < kSegments; i++) {
+        const int x = 6 + (int)(i * pitch);
+        const int w = (int)((i + 1) * pitch) - (int)(i * pitch) - 2;
+        const int h = 14 + (kBarBottom - kBarTop - 14) * i / (kSegments - 1);
+        const float segRpm = (i + 0.5f) * cfg.rpmMax / kSegments;
+        uint16_t col = rpmZoneColor(segRpm, cfg);
+        if (v.shift) col = v.shiftOn ? kShiftWhite : kRed;  // shift light: the whole bar flashes
+        if (i + 0.5f > lit && !(v.shift && v.shiftOn)) col = segRpm >= cfg.shiftRpm ? 0x4800 : kOff;
+        c.fillRect(x, kBarBottom - h, w, h, col);
+    }
+    c.setFont(&fonts::Font0);
+    c.setTextSize(1);
+    c.setTextColor(ui::DIM);
+    c.setTextDatum(textdatum_t::top_center);
+    for (int k = 0; k * 1000 <= cfg.rpmMax; k += rpmLabelStep(cfg.rpmMax) / 1000) {
+        const int x = 6 + (int)((ui::W - 12) * (k * 1000.0f / cfg.rpmMax));
+        char t[12];
+        snprintf(t, sizeof(t), "%d", k);
+        c.drawString(t, x < 8 ? 8 : (x > ui::W - 8 ? ui::W - 8 : x), kBarBottom + 3);
+    }
+    c.setTextDatum(textdatum_t::top_right);
+    c.drawString("x1000 rpm", ui::W - 6, kBarBottom + 3 + 9);
 
     // ---- rpm (left), speed (middle), gear (right) ----
     char buf[16];
@@ -242,39 +341,218 @@ void DashScreen::draw(LGFX_Sprite& c) {
         c.setTextDatum(textdatum_t::middle_center);
         c.drawString(buf, gx + gw / 2, gy + gh / 2 + 2);
         c.setTextSize(1);
-        c.setTextDatum(textdatum_t::middle_center);
         c.setFont(gUi.thai20());
         c.setTextColor(ui::DIM);
         c.drawString("เกียร์", gx + gw / 2, gy + gh + 10);
     }
 
-    // ---- not receiving: say why over the main area ----
-    if (!v.live) {
-        const char* why = _source == (uint8_t)SourceId::Off ? "ยังไม่ได้เลือกแหล่งข้อมูล — แตะ ตั้งค่า"
-                          : _needsRestart                   ? "รีสตาร์ทบอร์ด 1 ครั้งเพื่อเปิด Bluetooth"
-                                                            : "กำลังรอข้อมูลจากรถ...";
-        c.fillRoundRect(20, kMainTop + 22, ui::W - 40, 44, 8, ui::PANEL);
-        c.setTextDatum(textdatum_t::middle_center);
-        c.setTextSize(1);
-        c.setFont(gUi.thai20());
-        c.setTextColor(ui::WARN);
-        c.drawString(why, ui::W / 2, kMainTop + 44);
+    Aux aux[3];
+    auxValues(v, moto, aux);
+    for (int i = 0; i < 3; i++) drawReadout(c, 6 + i * (kTileW + kTileGap), kTileY, kTileW, kTileH, aux[i]);
+}
+
+// ============================================================ digital: LED ring + digital speed (sport)
+
+void DashScreen::drawDigital(LGFX_Sprite& c, const DashView& v, bool moto) {
+    const DashConfig& cfg = _model.config();
+    c.fillScreen(ui::BG);
+
+    // ---- rpm ring ----
+    const float segSweep = kArcSweep / kRingSegs;
+    const float lit = v.rpmValid ? v.rpm / cfg.rpmMax * kRingSegs : 0;
+    for (int i = 0; i < kRingSegs; i++) {
+        const float a0 = kArcStart + i * segSweep + 0.8f, a1 = kArcStart + (i + 1) * segSweep - 0.8f;
+        const float segRpm = (i + 0.5f) * cfg.rpmMax / kRingSegs;
+        uint16_t col = rpmZoneColor(segRpm, cfg);
+        if (v.shift) col = v.shiftOn ? kShiftWhite : kRed;
+        if (i + 0.5f > lit && !(v.shift && v.shiftOn)) col = segRpm >= cfg.shiftRpm ? 0x4800 : kOff;
+        // the lit segments reach further out: a glowing ring over a dim track
+        c.fillArc(kRingX, kRingY, kRingInner, i + 0.5f <= lit ? kRingOuter : kRingOuter - 6, a0, a1, col);
+    }
+    c.setFont(&fonts::Font2);
+    c.setTextSize(1);
+    c.setTextColor(ui::DIM);
+    c.setTextDatum(textdatum_t::middle_center);
+    const int step = rpmLabelStep(cfg.rpmMax);
+    for (int r = 0; r <= cfg.rpmMax; r += step) {
+        int x, y;
+        polar(kRingX, kRingY, kRingInner - 12, kArcStart + kArcSweep * r / cfg.rpmMax, x, y);
+        char t[12];
+        snprintf(t, sizeof(t), "%d", r / 1000);
+        c.drawString(t, x, y);
     }
 
-    // ---- tiles ----
-    char val[16];
-    if (v.coolantLevel != Level::None) snprintf(val, sizeof(val), "%.0f", v.coolant);
-    else snprintf(val, sizeof(val), "--");
-    drawTile(c, 6, moto ? "อุณหภูมิเครื่อง" : "เครื่องยนต์", val, "C", v.coolantLevel);
-    if (v.batteryLevel != Level::None) snprintf(val, sizeof(val), "%.1f", v.battery);
-    else snprintf(val, sizeof(val), "--");
-    drawTile(c, 6 + kTileW + kTileGap, "แบตเตอรี่", val, "V", v.batteryLevel);
-    if (v.intakeLevel != Level::None) {
-        snprintf(val, sizeof(val), "%.0f", v.intake);
-        drawTile(c, 6 + 2 * (kTileW + kTileGap), "อากาศเข้า", val, "C", v.intakeLevel);
-    } else {
-        if (v.throttleLevel != Level::None) snprintf(val, sizeof(val), "%.0f", v.throttle);
-        else snprintf(val, sizeof(val), "--");
-        drawTile(c, 6 + 2 * (kTileW + kTileGap), "คันเร่ง", val, "%", v.throttleLevel);
+    // ---- rpm, speed, gear inside the ring ----
+    char buf[16];
+    if (v.rpmValid) withCommas(buf, sizeof(buf), lroundf(v.rpm / 10.0f) * 10);
+    else snprintf(buf, sizeof(buf), "--");
+    c.setFont(&fonts::FreeSansBold12pt7b);
+    c.setTextColor(v.shift ? kRed : (v.rpmValid ? kRpmText : ui::LINE));
+    c.drawString(buf, kRingX, kRingY - 44);
+    c.setFont(&fonts::Font0);
+    c.setTextColor(ui::DIM);
+    c.drawString("RPM", kRingX, kRingY - 28);
+
+    if (v.speedValid) snprintf(buf, sizeof(buf), "%ld", lroundf(v.speed));
+    else snprintf(buf, sizeof(buf), "--");
+    c.setFont(&fonts::FreeSansBold24pt7b);
+    c.setTextSize(fitSize(c, &fonts::FreeSansBold24pt7b, "188", 104, 1.5f));
+    c.setTextColor(v.speedValid ? ui::TEXT : ui::LINE);
+    c.setTextDatum(textdatum_t::middle_center);
+    c.drawString(buf, kRingX, kRingY + 8);
+    c.setFont(&fonts::Font2);
+    c.setTextSize(1);
+    c.setTextColor(ui::DIM);
+    c.drawString("km/h", kRingX, kRingY + 42);
+
+    if (v.gear >= 0 || !moto) {  // in the open bottom of the ring
+        if (v.gear > 0) snprintf(buf, sizeof(buf), "%d", v.gear);
+        else snprintf(buf, sizeof(buf), v.gear == 0 ? "N" : "-");
+        c.fillCircle(kRingX, kRingY + 80, 20, ui::PANEL);
+        c.drawCircle(kRingX, kRingY + 80, 20, v.shift ? kRed : ui::LINE);
+        c.setFont(&fonts::FreeSansBold18pt7b);
+        c.setTextColor(v.gear == 0 ? kGreen : ui::TEXT);
+        c.drawString(buf, kRingX, kRingY + 81);
     }
+
+    // ---- readouts on the right ----
+    Aux aux[3];
+    auxValues(v, moto, aux);
+    for (int i = 0; i < 3; i++) drawReadout(c, 228, 32 + i * 69, ui::W - 228 - 4, 64, aux[i]);
+}
+
+// ============================================================ classic: two dials with needles
+
+void DashScreen::buildClassicFace(LGFX_Sprite& f, bool moto) {
+    const DashConfig& cfg = _model.config();
+    f.fillScreen(ui::BG);
+    auto dial = [&](int cx) {
+        f.fillCircle(cx, kDialY, kDialR, kDialRim);           // bezel
+        f.fillCircle(cx, kDialY, kDialR - 3, 0x2104);
+        f.fillCircle(cx, kDialY, kDialR - 5, kDialFace);
+    };
+    auto tick = [&](int cx, float frac, int len, float width, uint16_t col) {
+        const float a = kArcStart + kArcSweep * frac;
+        int x0, y0, x1, y1;
+        polar(cx, kDialY, kDialR - 8, a, x0, y0);
+        polar(cx, kDialY, kDialR - 8 - len, a, x1, y1);
+        f.drawWideLine(x0, y0, x1, y1, width, col);
+    };
+    f.setFont(&fonts::Font2);
+    f.setTextSize(1);
+    f.setTextDatum(textdatum_t::middle_center);
+
+    // tachometer: red zone from the shift point, a mark every 500 rpm, numbers in thousands
+    dial(kTachX);
+    const float redFrom = clamp01((float)cfg.shiftRpm / cfg.rpmMax);
+    f.fillArc(kTachX, kDialY, kDialR - 14, kDialR - 8, kArcStart + kArcSweep * redFrom, kArcStart + kArcSweep, kRedZone);
+    for (int r = 0; r <= cfg.rpmMax; r += 500) {
+        const bool major = r % 1000 == 0;
+        tick(kTachX, (float)r / cfg.rpmMax, major ? 9 : 5, major ? 1.3f : 0.7f, r >= cfg.shiftRpm ? kRed : ui::TEXT);
+    }
+    const int step = rpmLabelStep(cfg.rpmMax);
+    for (int r = 0; r <= cfg.rpmMax; r += step) {
+        int x, y;
+        polar(kTachX, kDialY, kDialR - 27, kArcStart + kArcSweep * r / cfg.rpmMax, x, y);
+        char t[12];
+        snprintf(t, sizeof(t), "%d", r / 1000);
+        f.setTextColor(r >= cfg.shiftRpm ? kRed : ui::TEXT);
+        f.drawString(t, x, y);
+    }
+    f.setFont(&fonts::Font0);
+    f.setTextColor(ui::DIM);
+    f.drawString("x1000 r/min", kTachX, kDialY + 22);
+
+    // speedometer: a mark every 10 km/h, numbers every 20
+    dial(kSpeedX);
+    const int vmax = speedMax(moto);
+    for (int s = 0; s <= vmax; s += 10) {
+        const bool major = s % 20 == 0;
+        tick(kSpeedX, (float)s / vmax, major ? 9 : 5, major ? 1.3f : 0.7f, ui::TEXT);
+    }
+    f.setFont(&fonts::Font2);
+    f.setTextColor(ui::TEXT);
+    for (int s = 0; s <= vmax; s += vmax > 160 ? 40 : 20) {  // 0-200: every 40, else the top numbers crowd
+        int x, y;
+        polar(kSpeedX, kDialY, kDialR - 28, kArcStart + kArcSweep * s / vmax, x, y);
+        char t[12];
+        snprintf(t, sizeof(t), "%d", s);
+        f.drawString(t, x, y);
+    }
+    f.setFont(&fonts::Font0);
+    f.setTextColor(ui::DIM);
+    f.drawString("km/h", kSpeedX, kDialY + 22);
+}
+
+void DashScreen::drawClassic(LGFX_Sprite& c, const DashView& v, bool moto) {
+    const DashConfig& cfg = _model.config();
+    // the faces change only with the settings: drawn once into a sprite, copied every frame
+    const uint32_t key = 0x80000000u | (moto ? 0x40000000u : 0) | (uint32_t)cfg.rpmMax << 15 | (uint32_t)cfg.shiftRpm;
+    if (!_face) {
+        _face = new LGFX_Sprite(&c);
+        _face->setColorDepth(16);
+        _face->setPsram(true);
+        if (!_face->createSprite(ui::W, ui::H)) {
+            delete _face;
+            _face = nullptr;
+        }
+        _faceKey = 0;
+    }
+    if (_face && _faceKey != key) {
+        buildClassicFace(*_face, moto);
+        _faceKey = key;
+    }
+    if (_face) _face->pushSprite(&c, 0, 0);
+    else buildClassicFace(c, moto);  // no memory for the cache: draw it every frame
+
+    char buf[16];
+    // ---- windows inside the dials: gear (tachometer), digital speed (speedometer) ----
+    const int wy = kDialY + 34;
+    if (v.gear >= 0 || !moto) {
+        if (v.gear > 0) snprintf(buf, sizeof(buf), "%d", v.gear);
+        else snprintf(buf, sizeof(buf), v.gear == 0 ? "N" : "-");
+        c.fillRoundRect(kTachX - 16, wy, 32, 28, 4, ui::BG);
+        c.drawRoundRect(kTachX - 16, wy, 32, 28, 4, ui::LINE);
+        c.setFont(&fonts::FreeSansBold12pt7b);
+        c.setTextSize(1);
+        c.setTextColor(v.gear == 0 ? kGreen : kYellow);
+        c.setTextDatum(textdatum_t::middle_center);
+        c.drawString(buf, kTachX, wy + 15);
+    }
+    if (v.speedValid) snprintf(buf, sizeof(buf), "%ld", lroundf(v.speed));
+    else snprintf(buf, sizeof(buf), "--");
+    c.fillRoundRect(kSpeedX - 28, wy, 56, 28, 4, ui::BG);
+    c.drawRoundRect(kSpeedX - 28, wy, 56, 28, 4, ui::LINE);
+    c.setFont(&fonts::FreeSansBold12pt7b);
+    c.setTextSize(1);
+    c.setTextColor(v.speedValid ? kYellow : ui::LINE);
+    c.setTextDatum(textdatum_t::middle_center);
+    c.drawString(buf, kSpeedX, wy + 15);
+
+    // ---- needles: tapered, with a short tail and a cap ----
+    auto needle = [&](int cx, float frac) {
+        const float a = kArcStart + kArcSweep * clamp01(frac);
+        int tx, ty, bx, by;
+        polar(cx, kDialY, kDialR - 12, a, tx, ty);
+        polar(cx, kDialY, 14, a + 180.0f, bx, by);
+        c.drawWedgeLine(bx, by, tx, ty, 3.2f, 1.0f, kNeedle);
+        c.drawWideLine(cx, kDialY, cx, kDialY, 7.0f, 0x6B6D);
+        c.drawWideLine(cx, kDialY, cx, kDialY, 3.0f, 0x2104);
+    };
+    needle(kTachX, v.rpmValid ? v.rpm / cfg.rpmMax : 0);
+    needle(kSpeedX, _speedNeedle / speedMax(moto));
+
+    // ---- shift lamp between the dials ----
+    const uint16_t lamp = v.shift ? (v.shiftOn ? kRed : 0x7800) : 0x2000;
+    if (v.shift && v.shiftOn) c.drawWideLine(ui::W / 2, 46, ui::W / 2, 46, 12.0f, 0x5000);  // glow
+    c.drawWideLine(ui::W / 2, 46, ui::W / 2, 46, 8.0f, lamp);
+    c.setFont(&fonts::Font0);
+    c.setTextColor(v.shift ? kRed : ui::LINE);
+    c.setTextDatum(textdatum_t::top_center);
+    c.drawString("SHIFT", ui::W / 2, 58);
+
+    // ---- readouts along the bottom ----
+    Aux aux[3];
+    auxValues(v, moto, aux);
+    for (int i = 0; i < 3; i++) drawReadout(c, 6 + i * (kTileW + kTileGap), kStripY, kTileW, kStripH, aux[i]);
 }

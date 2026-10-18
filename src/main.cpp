@@ -529,7 +529,7 @@ static void handleConsoleLine(String line) {
         Serial.println("ota (status: OTA <json>) | ota check | ota install | ota rollback | ota fetch <https-url> | ota selftest");
         Serial.println("radio list: radiolist | radioadd name|url|genre | radioedit <n> name|url|genre | radiodel <n> | radiomove <from> <to> | radioreset | radio <n>");
         Serial.println("vehicle dash: dash (DASH <json>) | dash open|close | dash source <off|sim|touch|kline|obd_ble|obd_uart|serial>");
-        Serial.println("     dash kind <car|moto> | dash shift <rpm> | dash max <rpm> | dash kdump | dash ble forget | dash baud <elm|text> <n>");
+        Serial.println("     dash style <race|digital|classic> | dash kind <car|moto> | dash shift <rpm> | dash max <rpm> | dash kdump | dash ble forget | dash baud <elm|text> <n>");
     } else if (cmd == "config") {
         printConfig();
     } else if (cmd == "options") {
@@ -612,6 +612,10 @@ static void handleConsoleLine(String line) {
             vehicle::SourceId id;
             if (!vehicle::parseSource(arg.c_str(), id)) d["error"] = "unknown source";
             else if (const char* why = gVehicle.setSource(id)) d["error"] = why;
+        } else if (sub == "style") {  // race | digital | classic
+            vehicle::DashStyle st;
+            if (vehicle::parseStyle(arg.c_str(), st)) gVehicle.setStyle(st);
+            else d["error"] = "style: race | digital | classic";
         } else if (sub == "kind") {
             gVehicle.setKind(arg.startsWith("m") ? vehicle::Kind::Motorcycle : vehicle::Kind::Car);
         } else if (sub == "shift") {
@@ -626,7 +630,7 @@ static void handleConsoleLine(String line) {
             const int sp3 = arg.indexOf(' ');
             gVehicle.setBaud(arg.startsWith("elm"), (uint32_t)(sp3 > 0 ? arg.substring(sp3 + 1).toInt() : 0));
         } else if (sub.length()) {
-            d["error"] = "dash open|close|source|kind|shift|max|kdump|ble forget|baud";
+            d["error"] = "dash open|close|source|style|kind|shift|max|kdump|ble forget|baud";
         }
         if (!d.is<JsonObject>()) d.to<JsonObject>();  // keeps an "error" set above
         gVehicle.describe(d.as<JsonObject>());

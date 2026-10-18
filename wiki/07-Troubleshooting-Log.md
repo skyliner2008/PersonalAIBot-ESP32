@@ -16,6 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T077 | [[#T077 หน้าปัดรถ 3 รูปแบบ — วงกลมดิจิทัล สปอร์ต, เข็มวงกลม คลาสสิก, รถแข่ง]] | Vehicle/UI | ✅ host tests + build + ภาพ preview ทุกแบบ — รอดูบนบอร์ด |
 | T076 | [[#T076 หน้าปัดรถ — ฟีเจอร์ใหม่ เขียนเองทั้งหมด (MIT) จากแนวคิดของ redline-gauge]] | Vehicle/UI/BLE | 🔄 host tests + build + ภาพ preview ผ่าน — **รอทดสอบบนบอร์ด/กับรถจริง** |
 | T075 | [[#T075 สร้างกุญแจเซ็นอัปเดตจาก ESP32-AI Studio ด้วยปุ่มเดียว]] | Studio/OTA | ✅ Done — ทดสอบทุกปุ่มบน Xvfb (Linux); รอลองบน Windows |
 | T074 | [[#T074 ปิดงานค้างจากรีวิว — ลายเซ็น OTA (ECDSA P-256), ย้าย I2S ไป i2s_std, redirect แบบ relative ของวิทยุ]] | OTA/Audio/Radio | 🔄 build + host tests ผ่าน — **รอทดสอบบนบอร์ด** (เสียง/ไมค์/AEC หลังย้าย I2S) |
@@ -126,6 +127,17 @@ This page documents common issues encountered during development and their solut
 **ยืนยัน 2026-10-15:** ผู้ใช้เทียบบอร์ดกับ PC app — ตอน `invert = 0` บอร์ดเป็น **พื้นขาว + ตาน้ำเงิน** ส่วนภาพ framebuffer ใน app เป็น
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
+
+## T077: หน้าปัดรถ 3 รูปแบบ — วงกลมดิจิทัล สปอร์ต, เข็มวงกลม คลาสสิก, รถแข่ง
+
+**วันที่:** 2026-10-18 · **ผู้ใช้:** "ยังมีพื้นที่เหลือ พอจะเพิ่ม theme มัน อยากได้หน้าตาหลายๆแบบ วงกลมแบบดิจิตอล สปอร์ต, วงกลมแบบเข็ม คลาสสิก, สไตล์รถแข่ง"
+- `vehicle::DashStyle` (Race / Digital / Classic, NVS `veh/style`, `parseStyle` รับ race/digital/classic + sport/ring/needle/analog) · `Vehicle::setStyle`
+- `DashScreen` แยกเป็น `drawRace` / `drawDigital` / `drawClassic` + ส่วนร่วม `drawHeader` / `drawWaiting` / `drawReadout` / `auxValues` / ป้ายชื่อแบบ
+  · แตะข้อความสถานะบนแถบหัว = แบบถัดไป · เมนู "รูปแบบหน้าปัด" · console `dash style`
+- คลาสสิก: หน้าปัด (ขอบ, ขีดทุก 500 rpm / 10 km/h, ตัวเลข, โซนแดง) วาดครั้งเดียวลง sprite PSRAM 320×240 — วาดใหม่เมื่อรอบสูงสุด/รอบ shift/ชนิดรถเปลี่ยน
+  · เข็ม `drawWedgeLine` (เรียว ลบรอยหยัก) · เข็มความเร็วเลื่อนนุ่ม 0.15 วิ (ความเร็วจาก OBD/K-Line มาไม่กี่ครั้งต่อวิ)
+- ตรวจด้วย preview: เลข 0–200 บนหน้าปัดความเร็วแน่นเกิน → รถยนต์เว้นทุก 40 · ฉาก shift ใน preview ต้องรอให้รอบถึง shift จริง (ตัวจำลองรถเก๋งสูงสุด ~6,070)
+**ทดสอบ:** host tests 53 ชุด / 2,224 checks ✓ · `pio run` ผ่าน (RAM 32.7%, Flash 70.7% — +6 KB) · ภาพ 3 แบบ × 5 ฉาก
 
 ## T076: หน้าปัดรถ — ฟีเจอร์ใหม่ เขียนเองทั้งหมด (MIT) จากแนวคิดของ redline-gauge
 

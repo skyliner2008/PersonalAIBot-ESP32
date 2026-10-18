@@ -77,6 +77,38 @@ struct Snapshot {
     void clear() { *this = Snapshot(); }
 };
 
+/** How the dash looks (order = NVS value: append only). Same readings, same warnings in every style. */
+enum class DashStyle : uint8_t {
+    Race,     // rpm bar across the top + big digits (racing dash)
+    Digital,  // one round LED ring for the rpm, digital speed inside (sport)
+    Classic,  // two round dials with needles: tachometer + speedometer
+    Count
+};
+
+inline const char* styleKey(DashStyle s) {
+    static const char* const kKeys[] = {"race", "digital", "classic"};
+    return (uint8_t)s < (uint8_t)DashStyle::Count ? kKeys[(uint8_t)s] : "race";
+}
+
+inline const char* styleNameTh(DashStyle s) {
+    static const char* const kNames[] = {"รถแข่ง", "วงกลมดิจิทัล สปอร์ต", "เข็มวงกลม คลาสสิก"};
+    return (uint8_t)s < (uint8_t)DashStyle::Count ? kNames[(uint8_t)s] : kNames[0];
+}
+
+inline bool parseStyle(const char* text, DashStyle& out) {
+    if (!text) return false;
+    for (uint8_t i = 0; i < (uint8_t)DashStyle::Count; i++) {
+        if (ieq(text, styleKey((DashStyle)i))) {
+            out = (DashStyle)i;
+            return true;
+        }
+    }
+    if (ieq(text, "sport") || ieq(text, "ring")) return (out = DashStyle::Digital), true;
+    if (ieq(text, "needle") || ieq(text, "analog")) return (out = DashStyle::Classic), true;
+    if (ieq(text, "racing") || ieq(text, "bar")) return (out = DashStyle::Race), true;
+    return false;
+}
+
 /** Car or motorcycle: scales (rpm range), gear estimate and labels follow it. */
 enum class Kind : uint8_t { Car, Motorcycle };
 

@@ -39,6 +39,7 @@ public:
         uint8_t bleType = 0;
         uint32_t elmBaud = 38400;   // wired ELM327 / STN (ObdUart)
         uint32_t textBaud = 115200; // SerialText
+        vehicle::DashStyle style = vehicle::DashStyle::Race;
     };
 
     /** Load the settings (+ agent/vehicle.json) and start the saved source. Call once at boot. */
@@ -53,6 +54,7 @@ public:
     void setRpmMax(int rpm);
     /** Forget the saved BLE adapter: the next connect scans again. */
     void forgetBleAdapter();
+    void setStyle(vehicle::DashStyle s);
     /** UART speed of the wired ELM327 (elm = true) or of the text source. */
     void setBaud(bool elm, uint32_t baud);
 

@@ -50,6 +50,17 @@ TEST(vehicle_readings_and_text_lines) {
         CHECK(parseSource(sourceKey((SourceId)i), id) && id == (SourceId)i);  // every key reads back
     }
     CHECK(usesUart(SourceId::HondaK) && usesUart(SourceId::ObdUart) && !usesUart(SourceId::ObdBle));
+
+    DashStyle st;
+    for (uint8_t i = 0; i < (uint8_t)DashStyle::Count; i++) {
+        CHECK(parseStyle(styleKey((DashStyle)i), st) && st == (DashStyle)i);
+        CHECK(strlen(styleNameTh((DashStyle)i)) > 0);
+    }
+    CHECK(parseStyle("Classic", st) && st == DashStyle::Classic);
+    CHECK(parseStyle("needle", st) && st == DashStyle::Classic);
+    CHECK(parseStyle("sport", st) && st == DashStyle::Digital);
+    CHECK(!parseStyle("retro", st));
+    CHECK(!strcmp(styleKey((DashStyle)9), "race"));  // an NVS value from a newer firmware reads as the default
 }
 
 TEST(vehicle_dash_model) {

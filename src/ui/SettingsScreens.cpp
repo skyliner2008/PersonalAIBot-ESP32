@@ -218,6 +218,24 @@ void openVehicleSources() {
     gUi.push(&gPicker);
 }
 
+void openDashStyles() {
+    gPicker.setup("รูปแบบหน้าปัด", [](ListScreen& l) {
+        const vehicle::DashStyle cur = gVehicle.settings().style;
+        static const char* const kHint[] = {"บาร์รอบด้านบน + ตัวเลขใหญ่", "วงแหวนไฟรอบเครื่อง + ความเร็วดิจิทัล",
+                                            "เข็มวัดรอบ + เข็มความเร็ว"};
+        for (uint8_t i = 0; i < (uint8_t)vehicle::DashStyle::Count; i++) {
+            const vehicle::DashStyle st = (vehicle::DashStyle)i;
+            ListScreen::Item& it = l.add(vehicle::styleNameTh(st), kHint[i], [st]() {
+                gVehicle.setStyle(st);
+                gUi.pop();
+                gVehicleMenu.rebuild();
+            });
+            it.checked = st == cur;
+        }
+    });
+    gUi.push(&gPicker);
+}
+
 void buildVehicleMenu(ListScreen& l) {
     const Vehicle::Settings vs = gVehicle.settings();
     const vehicle::DashConfig cfg = gVehicle.dashConfig();
@@ -226,6 +244,7 @@ void buildVehicleMenu(ListScreen& l) {
         gVehicle.requestOpen();
     });
     l.addSubmenu("แหล่งข้อมูล", vehicle::sourceNameTh(vs.source), openVehicleSources);
+    l.addSubmenu("รูปแบบหน้าปัด", vehicle::styleNameTh(vs.style), openDashStyles);
     l.add("สถานะ", gVehicle.status(), nullptr).valueColor = gVehicle.snapshot().anyFresh(millis()) ? ui::OK : ui::DIM;
     l.add("ประเภทรถ (แตะ)", vs.kind == vehicle::Kind::Car ? "รถยนต์" : "มอเตอร์ไซค์", []() {
         const Vehicle::Settings now = gVehicle.settings();
