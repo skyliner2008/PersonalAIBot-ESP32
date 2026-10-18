@@ -69,6 +69,13 @@ v4.0.0 ใช้ `partitions_sr.csv` (app 5 MB × 2 + `model` 3.25 MB สำห�
 **ทดสอบ 2026-10-17:** บอร์ดตาราง `partitions_sr.csv` (build 3.5.1) → `ota check` เจอ v4.0.0 → `ota install`: ดาวน์โหลด 3,441,120 ไบต์ 118 วิ, sha256 ตรง
 → รีสตาร์ทเข้า `app1` → คำปลุกพร้อม → ยืนยันตัวเองหลัง 60 วิ · ค่าที่ตั้งไว้ครบ (Wi-Fi, key, ชื่อ, คำปลุก 2 คำ) · ไฟล์ factory ตรวจทีละส่วนแล้ว (partitions/app/model ตรงตำแหน่ง)
 
+**ทดสอบ v4.1.0 (2026-10-18):** บอร์ด build 4.0.0 (app0) → `ota check` = "Update available: v4.1.0 (3380 KB)" → `ota install`: 3,461,680 ไบต์ใน 109 วิ,
+sha256 `a5f3c3d7…1529` ตรงกับ `-app.bin.sha256` ใน release → `rst:0xc (RTC_SW_CPU_RST)` → `Firmware 4.1.0 in app1 (pending verification)` →
+Live พร้อมใน 6 วิ → 60 วิหลังบูต "อัปเดตเป็น v4.1.0 เรียบร้อย" · `ota` = `current 4.1.0, pending_verify false, app1` · ค่าตั้งค่าครบ (Wi-Fi, ชื่อ, โมเดล, ความลับบน SD) ·
+RAM ภายในต่ำสุด 36 KB
+- เฝ้า serial ข้ามการรีบูต: เปิด COM4 ด้วย DTR/RTS = low แล้ว**ไม่ปิด/เปิดพอร์ตใหม่** — USB ของ S3 อยู่รอดการรีเซ็ตแบบ software (`esp_restart`) log ต่อเนื่อง
+  · ถ้าพอร์ตหลุด อย่าเปิดใหม่ก่อน ~75 วิ: การเปิดพอร์ตอาจรีเซ็ตบอร์ด และรีเซ็ตก่อนยืนยัน 60 วิ = bootloader rollback
+
 ## ข้อจำกัด / ต่อยอด
 - ความน่าเชื่อถือของไฟล์ = บัญชี GitHub + TLS + sha256 ใน release เดียวกัน (ยังไม่มีลายเซ็นแยก) → ต่อยอด: เซ็น Ed25519 แล้วฝัง public key ในเฟิร์มแวร์
 - `pio run -t upload` เขียน `boot_app0.bin` = กลับไปบูต app0 เสมอ (ช่อง app1 อาจยังมีเวอร์ชัน OTA เก่า — `ota rollback` จะบูตตัวนั้น)
