@@ -1958,6 +1958,16 @@ class Studio:
         ).pack(side="left", padx=6)
         self.ota_status = ttk.Label(ota, text="", style="Dim.TLabel")
         self.ota_status.pack(side="left", padx=10)
+        # release signing key (tools/ota_keygen.py): boards built with its public key install only signed updates
+        keys = ttk.Frame(tab)
+        keys.pack(fill="x", pady=(0, 6))
+        ttk.Label(keys, text="กุญแจเซ็นอัปเดต (OTA):").pack(side="left")
+        ttk.Button(keys, text="🔑 สร้างกุญแจ", command=self.key_create).pack(side="left", padx=6)
+        ttk.Button(keys, text="💾 สำรองกุญแจ...", command=self.key_backup).pack(side="left")
+        ttk.Button(keys, text="📂 นำกุญแจสำรองกลับมา...", command=self.key_restore).pack(side="left", padx=6)
+        self.key_status = ttk.Label(keys, text="", style="Dim.TLabel")
+        self.key_status.pack(side="left", padx=10)
+        self.key_refresh()
         frame, self.fw_out = with_scroll(tab, styled_text, height=24, wrap="char")
         frame.pack(fill="both", expand=True)
         self.fw_out.tag_configure("err", foreground=ERR)
@@ -1971,6 +1981,126 @@ class Studio:
                                           "ค่าที่ตั้งไว้และความจำอยู่ครบ • ใช้เวลา 1-3 นาที ห้ามถอดสาย\n"
                                           "(กด 'ตรวจเวอร์ชันใหม่' ก่อน)"):
             self.send("ota install")
+
+    # ---- release signing key: the same code as tools/ota_keygen.py (the private key stays on this PC) ----
+    @staticmethod
+    def _keygen():
+        tools = str(PROJECT_DIR / "tools")
+        if tools not in sys.path:
+            sys.path.insert(0, tools)
+        import ota_keygen
+        return ota_keygen
+
+    def key_refresh(self):
+        try:
+            st = self._keygen().status()
+        except Exception as e:  # header missing / unreadable: say so instead of breaking the tab
+            self.key_status.configure(text=f"อ่านสถานะไม่ได้: {e}", foreground=ERR)
+            return None
+        if st["header_key"] and st["exists"] and st["match"] is not False:
+            text, color = f"พร้อม: release ถูกเซ็นด้วย {st['key']}", OK
+        elif st["header_key"] and st["exists"]:
+            text, color = "กุญแจในเครื่องนี้ไม่ตรงกับ OtaPublicKey.h — release ที่เซ็นจะถูกบอร์ดปฏิเสธ", ERR
+        elif st["header_key"]:
+            text, color = "เฟิร์มแวร์มีกุญแจแล้วแต่ไม่พบกุญแจส่วนตัวในเครื่องนี้ — นำกุญแจสำรองกลับมา", WARN
+        elif st["exists"]:
+            text, color = "มีกุญแจส่วนตัวแล้ว แต่ OtaPublicKey.h ยังว่าง — กด 'สร้างกุญแจ' เพื่อเขียน header", WARN
+        else:
+            text, color = "ยังไม่มีกุญแจ: อัปเดตตรวจแค่ sha256", DIM
+        self.key_status.configure(text=text, foreground=color)
+        return st
+
+    def _key_need_crypto(self) -> bool:
+        kg = self._keygen()
+        if kg.have_crypto():
+            return False
+        if self.fw_busy:
+            return True
+        if messagebox.askyesno(APP_TITLE, "ต้องใช้แพ็กเกจ Python 'cryptography' สำหรับสร้าง/ตรวจกุญแจ\n\n"
+                                          "ติดตั้งตอนนี้? (pip install cryptography)"):
+            self._run_process([sys.executable, "-m", "pip", "install", "cryptography"], "ติดตั้ง cryptography", None)
+        return True
+
+    def key_create(self):
+        kg = self._keygen()
+        st = self.key_refresh()
+        if not st or self._key_need_crypto():
+            return
+        try:
+            if st["header_key"] and st["exists"]:
+                messagebox.showinfo(APP_TITLE, f"มีกุญแจแล้ว ({'ตรงกัน' if st['match'] else 'ไม่ตรงกัน!'}):\n{st['key']}\n\n"
+                                               "ไม่สร้างใหม่: บอร์ดที่มีกุญแจเดิมจะอัปเดตไม่ได้อีก")
+                return
+            if st["header_key"]:
+                messagebox.showwarning(APP_TITLE, "OtaPublicKey.h มีกุญแจสาธารณะแล้ว แต่เครื่องนี้ไม่มีกุญแจส่วนตัวของมัน\n\n"
+                                                  "ใช้ 'นำกุญแจสำรองกลับมา...' — สร้างใหม่จะทำให้บอร์ดที่มีกุญแจเดิมอัปเดตผ่าน Wi-Fi ไม่ได้")
+                return
+            if st["exists"]:
+                if messagebox.askyesno(APP_TITLE, f"มีกุญแจส่วนตัวอยู่แล้ว:\n{st['key']}\n\nเขียนกุญแจสาธารณะของมันลง "
+                                                  "src/app/OtaPublicKey.h ?"):
+                    kg.write_header_from_key()
+                    self.key_refresh()
+                    messagebox.showinfo(APP_TITLE, "เขียน OtaPublicKey.h แล้ว — commit + push ก่อนออก release")
+                return
+            if not messagebox.askyesno(APP_TITLE, "สร้างกุญแจเซ็นอัปเดต (ECDSA P-256)?\n\n"
+                                                  f"• กุญแจส่วนตัว → {kg.key_path()}\n"
+                                                  "  (อยู่ในเครื่องนี้เท่านั้น ห้าม commit / ห้ามส่งให้ใคร)\n"
+                                                  "• กุญแจสาธารณะ → src/app/OtaPublicKey.h (commit ไฟล์นี้)\n\n"
+                                                  "เฟิร์มแวร์ที่ build หลังจากนี้จะติดตั้งเฉพาะอัปเดตที่เซ็นด้วยกุญแจนี้\n"
+                                                  "ถ้ากุญแจหาย บอร์ดจะอัปเดตผ่าน Wi-Fi ไม่ได้ (ต้องแฟลช USB) — ต้องสำรองไว้"):
+                return
+            path = kg.create_key()
+        except kg.KeygenError as e:
+            self.key_refresh()
+            messagebox.showerror(APP_TITLE, str(e))
+            return
+        self.key_refresh()
+        self.log_local(f"[Studio] สร้างกุญแจเซ็นอัปเดตแล้ว: {path} + src/app/OtaPublicKey.h")
+        if messagebox.askyesno(APP_TITLE, f"สร้างกุญแจแล้ว\n{path}\n\n"
+                                          "ขั้นต่อไป: commit + push src/app/OtaPublicKey.h แล้วออก release ตามปกติ\n\n"
+                                          "สำรองกุญแจส่วนตัวไว้ที่อื่นตอนนี้เลย? (USB / password manager)"):
+            self.key_backup()
+
+    def key_backup(self):
+        kg = self._keygen()
+        src = kg.key_path()
+        if not src.exists():
+            messagebox.showwarning(APP_TITLE, f"ยังไม่มีกุญแจส่วนตัว ({src})")
+            return
+        dst = filedialog.asksaveasfilename(title="สำรองกุญแจเซ็นอัปเดต (เก็บนอกโฟลเดอร์โปรเจกต์)",
+                                           initialfile="ota_signing_key.pem", defaultextension=".pem",
+                                           filetypes=[("PEM", "*.pem")])
+        if not dst:
+            return
+        dst = Path(dst).resolve()
+        if PROJECT_DIR in dst.parents:  # would sit next to the code: one `git add -A` away from GitHub
+            messagebox.showerror(APP_TITLE, "อย่าเก็บไว้ในโฟลเดอร์โปรเจกต์ — เลือกที่อื่น (เช่น USB)")
+            return
+        try:
+            shutil.copyfile(src, dst)
+        except OSError as e:
+            messagebox.showerror(APP_TITLE, f"สำรองไม่สำเร็จ: {e}")
+            return
+        self.log_local(f"[Studio] สำรองกุญแจไว้ที่ {dst}")
+        messagebox.showinfo(APP_TITLE, f"สำรองแล้ว: {dst}\nเก็บไว้ในที่ปลอดภัย ไม่ส่งให้ใคร")
+
+    def key_restore(self):
+        kg = self._keygen()
+        if self._key_need_crypto():
+            return
+        src = filedialog.askopenfilename(title="เลือกไฟล์กุญแจที่สำรองไว้", filetypes=[("PEM", "*.pem"), ("ทุกไฟล์", "*.*")])
+        if not src:
+            return
+        try:
+            path = kg.restore_key(Path(src))
+            if not kg.header_pem():  # a clone with an empty header: put the matching public key back too
+                kg.write_header_from_key()
+        except kg.KeygenError as e:
+            self.key_refresh()
+            messagebox.showerror(APP_TITLE, str(e))
+            return
+        self.key_refresh()
+        messagebox.showinfo(APP_TITLE, f"นำกุญแจกลับมาแล้ว: {path}")
 
     def show_ota(self, d: dict):
         state = d.get("state", "")
@@ -2038,6 +2168,11 @@ class Studio:
     def _fw_done(self, kind, rc, reopen_port):
         self.fw_busy = False
         self.fw_status.configure(text=f"{kind}: {'สำเร็จ ✔' if rc == 0 else f'ล้มเหลว (exit {rc})'}")
+        if kind == "ติดตั้ง cryptography" and rc == 0:
+            import importlib
+            importlib.invalidate_caches()  # the package installed a moment ago is importable in this process
+            self.key_refresh()
+            messagebox.showinfo(APP_TITLE, "ติดตั้ง cryptography แล้ว — กดปุ่มกุญแจอีกครั้ง")
         if reopen_port:
             self._reconnect_port = reopen_port
             self.root.after(2500, self._try_reconnect)

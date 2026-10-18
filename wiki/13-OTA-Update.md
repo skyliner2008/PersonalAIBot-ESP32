@@ -55,10 +55,12 @@ sha256 มาจาก release เดียวกับไฟล์ จึงจ
 ลายเซ็นปิดช่องนี้: มีแต่เจ้าของกุญแจส่วนตัว (อยู่ใน PC ไม่ใช่ใน GitHub) ที่ทำได้
 - **อัลกอริทึม:** ECDSA P-256 + SHA-256 (DER, base64 หนึ่งบรรทัด) — mbedtls ของ IDF 5.5 ไม่มี Ed25519 แต่ ECDSA เปิดอยู่แล้วสำหรับ TLS
   · ตรวจด้วย `ota::verifySignature` (`util/OtaVerify.h`, `mbedtls_pk_verify`) **ก่อน** `esp_ota_end` / สลับช่องบูต
-- **ตั้งครั้งเดียว** (บน PC ที่ออก release): `pip install cryptography` → `python tools/ota_keygen.py`
+- **ตั้งครั้งเดียว** (บน PC ที่ออก release): **ESP32-AI Studio แท็บ 🔧 เฟิร์มแวร์ → 🔑 สร้างกุญแจ** (T075 — ติดตั้ง `cryptography` ให้ถ้ายังไม่มี, ถามสำรองกุญแจต่อทันที)
+  หรือ command line: `pip install cryptography` → `python tools/ota_keygen.py`
   → กุญแจส่วนตัว `~/.pab-esp32/ota_signing_key.pem` (สิทธิ์ 600; เปลี่ยนที่ด้วย `PAB_OTA_SIGNING_KEY`) + กุญแจสาธารณะลง `src/app/OtaPublicKey.h` → **commit header นั้น**
   · **สำรองกุญแจส่วนตัวไว้** (password manager / USB) — หายแล้วบอร์ดที่มีกุญแจสาธารณะนั้นอัปเดตผ่าน Wi-Fi ไม่ได้อีก (ต้องแฟลช USB)
-  · clone ใหม่ / header ถูกล้าง: `python tools/ota_keygen.py --header` เขียน header จากกุญแจเดิม · สคริปต์ไม่ยอมสร้างกุญแจทับของเดิม
+  · clone ใหม่ / header ถูกล้าง: `python tools/ota_keygen.py --header` (หรือปุ่ม 🔑 อีกครั้ง) เขียน header จากกุญแจเดิม · ไม่ยอมสร้างกุญแจทับของเดิม
+  · PC ใหม่: Studio **📂 นำกุญแจสำรองกลับมา...** (ต้องตรงกับ header) · **💾 สำรองกุญแจ...** ไม่ยอมบันทึกไว้ในโฟลเดอร์โปรเจกต์
 - `tools/make_release.py` เซ็น `-app.bin` → `dist/...-app.bin.sig` (ตรวจซ้ำด้วย public key ก่อนเขียน) · header มีกุญแจแต่หากุญแจส่วนตัวไม่เจอ/ไม่ตรง = หยุด
   · header ว่าง = เตือน "NOT signed" แล้วทำต่อแบบเดิม · `publish_release.py` แนบ `.sig` · GitHub Actions: ใส่ PEM ใน secret `OTA_SIGNING_KEY`
 - **บนบอร์ด:** เฟิร์มแวร์ที่ build พร้อมกุญแจ → release ที่ไม่มี `.sig` = "ไม่มีลายเซ็น (.sig) - ไม่ติดตั้ง" · ลายเซ็นไม่ผ่าน =

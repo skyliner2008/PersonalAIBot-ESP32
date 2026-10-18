@@ -126,7 +126,11 @@ def main() -> None:
     sig = ROOT / "dist" / f"PersonalAIBot-ESP32-{tag}-app.bin.sig"  # boards with the release key require it
     sys.path.insert(0, str(ROOT / "tools"))
     import ota_keygen
-    if ota_keygen.header_pem():
+    try:
+        signed = bool(ota_keygen.header_pem())
+    except ota_keygen.KeygenError as e:
+        sys.exit(str(e))
+    if signed:
         files.append(sig)
     else:
         print("WARNING: no release key (tools/ota_keygen.py): this release is not signed")
