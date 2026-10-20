@@ -22,6 +22,7 @@
 9. [โครงสร้างโปรเจกต์](#9-โครงสร้างโปรเจกต์)
 10. [Build, Test และสถานะ](#10-build-test-และสถานะ)
 11. [PC Studio app และ serial protocol](#11-pc-studio-app-และ-serial-protocol)
+12. [แอปมือถือ (Android): แฟลช + คอนโซล](#12-แอปมือถือ-android-แฟลช--คอนโซล)
 
 ---
 
@@ -240,10 +241,13 @@ ESP32-AI/
 │   ├── memory/             MemoryStore, EpisodicLog, TextFeatures, AppendSink, AsyncFileSink
 │   ├── system/             I2cBus, Storage
 │   ├── util/               Utf8, Base64, TextWrap, TimeFmt, JsonFrame, PsramAlloc, JsonAlloc
+│   ├── phone/              แอปมือถือ (T083): PhoneProtocol (ข้อความ, TurnAnnouncer), PhoneLink (USB / Wi-Fi, จับคู่, handshake HMAC)
 │   └── vehicle/            หน้าปัดรถ (T076): VehicleData, DashModel, SimEngine, Elm327, HondaKline, Vehicle (task), VehicleLink (UART; BLE เฉพาะ -DVEHICLE_BLE=1, T078)
 ├── host_tests/     test_main.cpp, run_tests.bat
 ├── tools/          gen_thai_font.py, gen_root_ca.py
-│   └── pc_app/     esp32_ai_studio.py (ESP32-AI Studio), run_studio.bat, requirements.txt
+│   ├── pc_app/     esp32_ai_studio.py (ESP32-AI Studio), run_studio.bat, requirements.txt
+│   ├── android_flasher/  แอป Android "ESP32-AI Flasher": แฟลชผ่าน USB OTG (T080) + สถานะ/log/ตั้งค่า/แชท (T081) — UsbCdcPort, EspLoader, FlashPlan, BoardLink, Console
+│   └── build_flasher_apk.py  → dist/ESP32-AI-Flasher.apk (publish_release.py แนบให้ release)
 ├── _backup/        โค้ดและเอกสารก่อนอัปเกรด v2 / v3
 └── wiki/           Obsidian vault 00–10 + สำเนาเอกสารนี้
 ```
@@ -290,3 +294,24 @@ host_tests\run_tests.bat                  # unit tests บน PC (MSVC)
 - ความลับ: เฟิร์มแวร์ไม่พิมพ์ key/รหัส Wi-Fi (มีแค่ `keyLen`, `keyHint`) · แอปซ่อน `key=` ใน log และไม่เขียนความลับลงไฟล์ที่ส่งออก
 
 รายละเอียด: `wiki/10-PC-Studio-App.md`
+
+---
+
+## 12. แอปมือถือ (Android): แฟลช + คอนโซล
+
+`tools/android_flasher/` (Kotlin, Android 8+, ไม่มีไลบรารีภายนอก) แฟลชบอร์ดผ่านสาย USB-C จากมือถือ (USB OTG) — ไม่มี server
+- USB: พอร์ตของ S3 (USB-Serial-JTAG 303A:1001) เป็น CDC-ACM → Android USB host API ตรงๆ (bulk + `SET_CONTROL_LINE_STATE`)
+- ROM bootloader ของ ESP32-S3: รีเซ็ตด้วย DTR/RTS แบบ esptool → `SYNC` → `GET_SECURITY_INFO` (chip 9) → `SPI_ATTACH` / `SPI_SET_PARAMS` 16 MB →
+  `FLASH_DEFL_*` บล็อก 1 KB (zlib) → `SPI_FLASH_MD5` → hard reset
+- อัปเดต = `-app.bin` ที่ 0x10000 + otadata `boot_app0` (NVS / LittleFS ไม่ถูกแตะ) · ติดตั้งใหม่ = `-factory.bin` ที่ 0x0 (ล้าง NVS)
+- ไฟล์จาก GitHub Releases ล่าสุด: sha256 ต้องตรง, `-app.bin.sig` ต้องผ่านเมื่อ build แอปพร้อมกุญแจใน `src/app/OtaPublicKey.h`
+- คอนโซลบอร์ด (T081) — protocol เดียวกับ PC Studio (หัวข้อ 11): แท็บ บอร์ด (`diag` ทุก 3 วิ, mute/sleep/wake/retry/new/reboot, `ask`),
+  Log (สี/กรอง/แชร์/คำสั่ง), ตั้งค่า (`config`/`options`/`wifiscan`/`apitest` → `set` เฉพาะค่าที่เปลี่ยน) · เปิดพอร์ตโดยไม่แตะ DTR/RTS (ไม่รีเซ็ต)
+  · พอร์ตเดียว: console ปิดตัวก่อนแฟลช แล้วต่อใหม่เมื่อบอร์ดรีสตาร์ต
+
+- **นำทาง (T083):** แอปส่ง GPS 1 Hz + จุดเลี้ยวจากการแจ้งเตือนของ Google Maps ให้บอร์ด (`phone {...}`) ทาง USB หรือ Wi-Fi
+  (บอร์ดต่อ TCP 47800 ไปที่ gateway = hotspot มือถือ / IP ที่แอปประกาศทาง UDP 47801; ทั้งสองฝั่งพิสูจน์ token ที่จับคู่ทาง USB ด้วย HMAC-SHA256 + nonce)
+  · บอร์ด: แหล่งหน้าปัด "GPS มือถือ", `NavScreen` + แถบบนหน้าปัด, tool `navigate` (go/stop/status/where → `PHONE {...}` → แอปเปิด/ปิด Google Maps),
+  AI พูดเตือนก่อนเลี้ยว (`TurnAnnouncer`: ~20 วิล่วงหน้า, ครั้งเดียวต่อจุด) · แผนและข้อจำกัด: `wiki/18-Phone-Link-Navigation-Plan.md`
+
+รายละเอียด: `wiki/17-Mobile-Flasher.md`

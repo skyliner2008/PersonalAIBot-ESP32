@@ -8,6 +8,8 @@
 - Build เฟิร์มแวร์: `pio run` · แฟลช: `pio run -t upload` · serial: `pio device monitor`
 - Host unit tests (ต้อง `pio run` ก่อน 1 ครั้ง): `host_tests\run_tests.bat` (MSVC) หรือ `bash host_tests/run_tests.sh` (g++/clang++)
 - PC Studio: `python tools/pc_app/esp32_ai_studio.py`
+- แอปมือถือแฟลชบอร์ด (Android, wiki 17): `python tools/build_flasher_apk.py` (`--debug` / `--create-keystore` ครั้งเดียว — keystore อยู่นอก repo
+  ห้ามสร้างแทนผู้ใช้) → `dist/ESP32-AI-Flasher.apk` (publish_release แนบให้) · tests: `cd tools/android_flasher && ./gradlew testDebugUnitTest`
 - ออก Release (GitHub Actions ใช้ไม่ได้ — บัญชีติด billing): แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → push →
   `python tools/publish_release.py` (build + host tests + draft → upload → publish; release เป็น immutable ต้องขึ้นเลขใหม่ทุกครั้ง)
   · ลายเซ็น OTA: ครั้งเดียว `python tools/ota_keygen.py` หรือปุ่ม 🔑 ในแท็บเฟิร์มแวร์ของ Studio (กุญแจส่วนตัวอยู่นอก repo — ห้าม commit / ห้ามสร้างแทนผู้ใช้) แล้ว make_release เซ็น `-app.bin` ให้
@@ -16,8 +18,9 @@
 - `src/agent/` — `AgentController.cpp` (setup/loop) + `AgentSession.cpp` / `AgentMic.cpp` / `AgentRoutines.cpp` / `AgentDevice.cpp`,
   `AgentTools.*` (function declarations), `WebTools*.*` (tools ข้อมูล, HTTPS เท่านั้น)
 - `src/ai/` Gemini Live client · `src/audio/` I2S/ES8311/วิทยุ · `src/ui/` ดวงตา/การ์ด/เมนู/หน้าปัด · `src/memory/` ความจำ · `src/app/` Settings + SecretBox
+- `src/phone/` เชื่อมแอปมือถือ: GPS + นำทาง Google Maps + AI พูดเตือนก่อนเลี้ยว (USB / Wi-Fi, จับคู่ด้วย USB, handshake HMAC — wiki 18)
 - `src/vehicle/` หน้าปัดรถ (ตัวจำลอง, ELM327 UART (BLE เฉพาะ -DVEHICLE_BLE=1: กิน IRAM 22 KB, T078), Honda K-Line — wiki 16; เขียนเองทั้งหมด ห้ามคัดลอกโค้ด redline-gauge: license PolyForm NC)
-- `tools/pc_app/` ESP32-AI Studio · `host_tests/` unit tests · `wiki/` Obsidian vault
+- `tools/pc_app/` ESP32-AI Studio · `tools/android_flasher/` แอป Android ผ่าน USB OTG (แฟลช + สถานะ/log/ตั้งค่า/แชท ใช้ protocol เดียวกับ Studio) · `host_tests/` unit tests · `wiki/` Obsidian vault
 
 ## กติกาการทำงาน
 - ตอบผู้ใช้เป็นภาษาไทย

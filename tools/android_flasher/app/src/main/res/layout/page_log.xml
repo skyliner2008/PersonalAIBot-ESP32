@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pageLog"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <EditText
+        android:id="@+id/logFilter"
+        android:importantForAutofill="no"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp"
+        android:hint="@string/log_filter"
+        android:inputType="text"
+        android:textSize="14sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingHorizontal="8dp">
+
+        <CheckBox
+            android:id="@+id/logHideNoise"
+            style="@style/LogCheck"
+            android:checked="true"
+            android:text="@string/log_hide_noise" />
+
+        <CheckBox
+            android:id="@+id/logShowReplies"
+            style="@style/LogCheck"
+            android:text="@string/log_show_replies" />
+
+        <CheckBox
+            android:id="@+id/logFollow"
+            style="@style/LogCheck"
+            android:checked="true"
+            android:text="@string/log_follow" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingHorizontal="8dp">
+
+        <Button
+            android:id="@+id/logClear"
+            style="@style/Quick"
+            android:text="@string/log_clear" />
+
+        <Button
+            android:id="@+id/logShare"
+            style="@style/Quick"
+            android:text="@string/log_share" />
+
+        <Button
+            android:id="@+id/logHelp"
+            style="@style/Quick"
+            android:text="@string/log_help" />
+    </LinearLayout>
+
+    <ListView
+        android:id="@+id/logList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@color/log_bg"
+        android:divider="@null"
+        android:fastScrollEnabled="true" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingHorizontal="8dp">
+
+        <Button
+            android:id="@+id/cmdHistory"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/log_history_short"
+            android:textAllCaps="false" />
+
+        <EditText
+            android:id="@+id/cmdInput"
+            android:importantForAutofill="no"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:hint="@string/cmd_hint"
+            android:imeOptions="actionSend"
+            android:inputType="text|textNoSuggestions"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/cmdSend"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/chat_send"
+            android:textAllCaps="false" />
+    </LinearLayout>
+</LinearLayout>

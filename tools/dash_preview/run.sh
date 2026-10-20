@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Render the vehicle dash (src/ui/DashScreen.cpp, unchanged) for a few scenes into PNG files - layout check without
+# Render the vehicle dash (src/ui/DashScreen.cpp, unchanged) and the navigation screen (NavScreen.cpp) into PNG files - layout check without
 # a board. Linux / macOS; needs g++, SDL2 headers (LovyanGFX's desktop platform: apt install libsdl2-dev) and zlib.
 # LovyanGFX + ArduinoJson come from .pio/libdeps (run "pio run" once first).
 #   bash tools/dash_preview/run.sh [out-dir]      (default: tools/dash_preview/out)
@@ -20,7 +20,7 @@ for f in $(find "$LGFX/lgfx" -name "*.c"); do
     o="$BUILD/$(basename "$f").o"; [ -f "$o" ] || gcc $FLAGS -c "$f" -o "$o"
 done
 g++ -std=c++17 $FLAGS -I "$HERE/stub" -I "$ROOT/src" -I "$AJSON" "$HERE/dash_preview.cpp" \
-    "$ROOT/src/ui/DashScreen.cpp" "$ROOT/src/ui/UiManager.cpp" "$ROOT/src/vehicle/DashModel.cpp" \
+    "$ROOT/src/ui/DashScreen.cpp" "$ROOT/src/ui/NavScreen.cpp" "$ROOT/src/ui/UiManager.cpp" "$ROOT/src/vehicle/DashModel.cpp" \
     "$ROOT/src/vehicle/SimEngine.cpp" "$ROOT/src/vehicle/HondaKline.cpp" \
     "$ROOT/src/display/fonts/ThaiFont20.cpp" "$ROOT/src/display/fonts/ThaiFont26.cpp" \
     "$BUILD"/*.o $(sdl2-config --libs) -lz -lpthread -o "$BUILD/dash_preview"

@@ -377,6 +377,7 @@ void AgentController::fillDiagnostics(JsonObject out) {
         m["cooldown_s"] = _liveSel.cooldownLeft(k, sec);
     }
     out["text_model"] = textModelId(_textSel.active(sec));
+    if (gPhone.paired()) gPhone.describe(out["phone"].to<JsonObject>());  // the phone app (wiki 18)
     out["tokens_per_min"] = tokensPerMinute();
     const uint32_t epoch = nowEpoch();
     out["consolidations_today"] = epoch ? _consolidateLimit.usedToday(epoch) : 0;
@@ -523,6 +524,55 @@ void AgentController::handleVehicle(uint32_t now) {
     m += " — บอกผู้ใช้สั้นๆ";
     _announcements.push_back(m);
     _face->setSystemText(msg.c_str(), 15000);
+    noteActivity();
+    if (_sleeping) wake(false);
+}
+
+// ---- the phone app: GPS + Google Maps (wiki 18) ----
+bool AgentController::phonePaired() { return gPhone.paired(); }
+
+const char* AgentController::navigateAction(const char* action, const char* to, JsonObject r) {
+    if (!strcmp(action, "go") || !strcmp(action, "stop")) {
+        if (!gPhone.connected()) {
+            return "the phone is not connected: open ESP32-AI Flasher on the phone (นำทาง tab), on the same Wi-Fi / hotspot";
+        }
+        if (!gPhone.request(!strcmp(action, "go") ? "navigate" : "stop", to)) return "could not reach the phone";
+        r["status"] = !strcmp(action, "go")
+                          ? "sent to the phone: Google Maps starts navigating; you will announce each turn"
+                          : "sent to the phone: navigation stops";
+        if (*to) r["to"] = to;
+    }
+    gPhone.describe(r);
+    return nullptr;
+}
+
+// the next turn from Google Maps (and a failure from the phone): said by the assistant, the turn first
+void AgentController::handleNavigation(uint32_t now) {
+    static uint32_t next = 0;
+    static int declared = -1;  // the `navigate` tool is declared only once a phone is paired
+    if ((int32_t)(now - next) < 0) return;
+    next = now + 500;
+    const int on = gPhone.paired() ? 1 : 0;
+    if (declared >= 0 && on != declared && _gemini.started()) {
+        _restartPending = true;  // the tool list changed: fresh session after the current reply
+        _restartAt = millis() + 1500;
+        _resumeHandle = "";
+    }
+    declared = on;
+    String msg;
+    bool turn = false;
+    if (!gPhone.takeSay(msg, turn, now)) return;
+    Serial.printf("[Phone] Say: %s\n", msg.c_str());
+    PsString m = turn ? "[นำทางจากระบบ] " : "[แจ้งจากมือถือ] ";
+    m += msg.c_str();
+    m += turn ? " — พูดบอกผู้ใช้สั้นๆ ประโยคเดียว ไม่ต้องถามต่อ" : " — บอกผู้ใช้สั้นๆ";
+    if (turn) {
+        _navSay = m;  // replaces a turn not said yet: only the latest one matters
+        _navSayAt = now;
+    } else {
+        _announcements.push_back(m);
+    }
+    _face->setSystemText(msg.c_str(), 10000);
     noteActivity();
     if (_sleeping) wake(false);
 }

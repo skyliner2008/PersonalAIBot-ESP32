@@ -7,6 +7,7 @@
 
 #include <Preferences.h>
 
+#include "../phone/PhoneLink.h"
 #include "../system/Peripherals.h"
 #include "../system/PsramTask.h"
 #include "../util/JsonAlloc.h"
@@ -352,6 +353,9 @@ void Vehicle::loop() {
                 break;
             }
 #endif
+            case SourceId::PhoneGps:
+                runPhone();
+                break;
             case SourceId::SerialText: {
                 UartLink link(s.textBaud);
                 runText(link);
@@ -481,5 +485,17 @@ void Vehicle::runText(VehicleLink& link) {
         }
         publish(snap, lastLine && millis() - lastLine < kStaleMs ? "LIVE" : "WAIT DATA");
         vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+// the phone's GPS (wiki 18): speed only - the dash shows "--" for what a GPS cannot know
+void Vehicle::runPhone() {
+    Snapshot snap;
+    while (!_restart) {
+        const uint32_t now = millis();
+        const phone::Gps g = gPhone.gps();
+        if (g.fresh(now)) snap.set(kSpeed, g.speedKmh, g.at);
+        publish(snap, g.fresh(now) ? "GPS" : gPhone.connected() ? "NO FIX" : "NO PHONE");
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
 }

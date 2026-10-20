@@ -81,6 +81,13 @@ public:
         (void)action, (void)name, (void)value, (void)result;
         return "no devices are configured";
     }
+    // ---- the phone app: GPS + Google Maps (wiki 18) ----
+    virtual bool phonePaired() { return false; }  // false = the `navigate` tool is not declared at all
+    /** action "go" (to = destination) / "stop" / "status" / "where". nullptr = ok, else why not. */
+    virtual const char* navigateAction(const char* action, const char* to, JsonObject result) {
+        (void)action, (void)to, (void)result;
+        return "no phone is paired";
+    }
     // ---- vehicle dash (wiki 16) ----
     virtual bool vehicleEnabled() { return false; }  // the firmware has the dash (true on the board) -> `vehicle` declared
     /** action "status" / "open" / "close" / "set_source". nullptr = ok, else why not. */
@@ -166,5 +173,6 @@ private:
     bool stopRadio(JsonObjectConst a, JsonObject r, const char*& e);
     bool device(JsonObjectConst a, JsonObject r, const char*& e);
     bool vehicle(JsonObjectConst a, JsonObject r, const char*& e);
+    bool navigate(JsonObjectConst a, JsonObject r, const char*& e);
     bool playRadio(JsonObjectConst a, JsonObject r, const char*& e);
 };

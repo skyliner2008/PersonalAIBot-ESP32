@@ -7,7 +7,9 @@
 
 #include <math.h>
 
+#include "../phone/PhoneLink.h"
 #include "../vehicle/Vehicle.h"
+#include "NavScreen.h"
 #include "SettingsScreens.h"
 
 DashScreen gDashUi;
@@ -134,7 +136,10 @@ void DashScreen::onTouch(const TouchEvent& e) {
             switch (hitTest(e.x, e.y)) {
                 case kBack: gUi.pop(); break;
                 case kSetup: settingsui::openPage("vehicle"); break;
-                case kStyle: cycleStyle(); break;
+                case kStyle:  // navigating: the strip opens the turn-by-turn screen
+                    if (_nav.fresh(_now)) gUi.push(&gNavUi);
+                    else cycleStyle();
+                    break;
                 default: break;
             }
             break;
@@ -158,6 +163,7 @@ void DashScreen::tick(uint32_t now, float dt) {
         _needsRestart = gVehicle.needsRestart();
     }
     _status = gVehicle.status();
+    _nav = gPhone.nav();
     const Snapshot s = gVehicle.snapshot();
     const DashView& v = _model.update(s, now);
     // the speedometer needle glides between readings (OBD / K-Line speed comes a few times a second)
@@ -194,6 +200,16 @@ void DashScreen::drawHeader(LGFX_Sprite& c, const DashView& v) {
     for (int t = 0; t < 3; t++) {  // "<" like the title bars
         c.drawLine(20 + t, 5, 12 + t, 13, chevron);
         c.drawLine(12 + t, 13, 20 + t, 21, chevron);
+    }
+    if (_nav.fresh(_now)) {  // navigating: the next turn takes the status line (the dash stays the dash)
+        NavScreen::drawIcon(c, _nav.icon, 46, kHeaderH / 2, 22, ui::ACCENT, ui::BG);
+        char dist[24], line[240];
+        phone::formatDistance(_nav.distM, dist, sizeof(dist), true);
+        snprintf(line, sizeof(line), "%s  %s", dist, _nav.text[0] ? _nav.text : phone::TurnAnnouncer::iconTh(_nav.icon));
+        gUi.drawFitted(c, line, 62, kHeaderH / 2, kSetupX - 66, gUi.thai20(),
+                       _nav.distM >= 0 && _nav.distM < 200 ? ui::WARN : ui::TEXT);
+        gUi.drawButton(c, kSetupX, 2, ui::W - kSetupX - 4, kHeaderH - 4, "ตั้งค่า", _pressed == kSetup ? ui::PANEL_HI : ui::PANEL);
+        return;
     }
     const bool sim = _source == (uint8_t)SourceId::SimAuto || _source == (uint8_t)SourceId::SimTouch;
     const uint16_t dot = v.live ? (sim ? ui::ACCENT : ui::OK) : (((_now / 400) & 1) ? ui::WARN : ui::PANEL);

@@ -16,6 +16,10 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T083 | [[#T083 เชื่อมมือถือ ↔ บอร์ด — GPS + นำทาง Google Maps + AI พูดเตือนก่อนเลี้ยว]] | Phone/Nav/Vehicle | 🔄 host tests + unit tests + ข้อความข้ามสองฝั่ง + build ผ่าน; ยังไม่ได้ลองกับบอร์ด/มือถือ/รถจริง |
+| T082 | [[#T082 แอปมือถือล้นจอบน Android 15 — แถบแท็บอยู่ใต้ปุ่มนำทาง กดไม่ได้]] | Android/UI | ✅ ผู้ใช้ยืนยันบนมือถือจริง: แถบแท็บกดได้, log สดใช้งานได้ |
+| T081 | [[#T081 แอปมือถือ — สถานะ, log, ตั้งค่า, แชท แบบ ESP32-AI Studio]] | Android/Console | ✅ ผู้ใช้ทดสอบกับบอร์ดจริง: เชื่อมต่อได้ พิมพ์คุยได้ (2026-10-20) |
+| T080 | [[#T080 แอปมือถือ Android แฟลชเฟิร์มแวร์ผ่านสาย USB (OTG)]] | Tools/Flash/Android | ✅ แฟลช "อัปเดต" สำเร็จบนบอร์ดจริงจากมือถือ Android (MD5 ตรง); โหมด factory ยังไม่ได้ลอง |
 | T079 | [[#T079 เปิดหน้าปัดรถไม่เป็น — ไม่มีปุ่ม และสั่ง AI แล้วตอบว่า "ไม่รู้จัก"]] | Vehicle/UI/Tools | ✅ Fixed — ปุ่มลัด + tool ทุก session, ผู้ใช้ลองแตะ/พูดแล้ว |
 | T078 | [[#T078 หน้าปัดรถทำให้ Gemini ต่อไม่ได้ — "esp-aes: Failed to allocate memory" เพราะโค้ด BLE กิน IRAM 22 KB]] | Vehicle/Memory/TLS | ✅ Fixed — BLE เป็น build flag, ทดสอบบนบอร์ด |
 | T077 | [[#T077 หน้าปัดรถ 3 รูปแบบ — วงกลมดิจิทัล สปอร์ต, เข็มวงกลม คลาสสิก, รถแข่ง]] | Vehicle/UI | ✅ host tests + build + ภาพ preview ทุกแบบ — รอดูบนบอร์ด |
@@ -129,6 +133,88 @@ This page documents common issues encountered during development and their solut
 **ยืนยัน 2026-10-15:** ผู้ใช้เทียบบอร์ดกับ PC app — ตอน `invert = 0` บอร์ดเป็น **พื้นขาว + ตาน้ำเงิน** ส่วนภาพ framebuffer ใน app เป็น
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
+
+## T083: เชื่อมมือถือ ↔ บอร์ด — GPS + นำทาง Google Maps + AI พูดเตือนก่อนเลี้ยว
+
+**วันที่:** 2026-10-20 · **ผู้ใช้:** "เพิ่มระบบ gps นำทาง ใช้ gps มือถือ ส่งข้อมูลหลายช่องทาง usb, บลูทูธ, wifi สั่งงานด้วยเสียงผ่านบอร์ดควบคุมมือถือ"
+→ ประเมินในแผน (wiki 18) แล้วผู้ใช้เลือก: Wi-Fi + USB, Google Maps บนมือถือ, AI พูดเตือนก่อนเลี้ยว, สั่งได้แค่ Google Maps, ทดสอบ HONOR X9d + Samsung S22U
+- **ทำไมไม่ทำ BLE:** RAM ภายในตอนคุย AI ว่างแค่ 39 KB (ภาพสถานะจากผู้ใช้) แต่ NimBLE ต้อง ≥ 40 KB + ชนกับ OBD BLE + แชร์วิทยุกับ Wi-Fi (เสียงกระตุก)
+- **ทำไมเส้นทางจาก Google Maps:** ฟรี ไม่ต้องมี key; แอปอ่าน "การแจ้งเตือนนำทาง" ของ Maps (NotificationListenerService) — รูปแบบไม่มีเอกสาร จึงจำแนกแต่ละช่อง
+  ตามหน้าตา (ระยะ / คำสั่ง / ETA) ไม่ใช่ตามตำแหน่ง และเก็บข้อความดิบให้ผู้ใช้ส่งมาเมื่อผิด
+- **ความปลอดภัย Wi-Fi:** ถ้าบอร์ดส่ง token ตรงๆ ใครใน Wi-Fi เดียวกันปลอมเป็นมือถือก็ได้ token ไป → challenge-response HMAC-SHA256 ทั้งสองทิศ (nonce + บทบาท
+  "phone|"/"board|" กันสะท้อนกลับ), จับคู่ได้ทางสาย USB เท่านั้น, ทาง Wi-Fi รับแต่ข้อความ `phone` (ไม่ใช่คำสั่ง console)
+- **เจอระหว่างทำ:** (1) ArduinoJson 7.4 เก็บทศนิยมสั้นเป็น float (คลาด ~10 ซม. — พอสำหรับรถ, ปรับ test) (2) ข้อความไทยยาวโดนตัดที่ 128 ไบต์ (ไทย 3 ไบต์/ตัว) — เห็นในภาพ preview
+  วงเวียน → 192 ไบต์ (3) tool `navigate` แรกยาว 560 ไบต์เกินเกณฑ์ test 450 → ย่อเหลือ 364 (4) แอป: GPS มาบน UI thread แล้วเขียน socket ตรงนั้น =
+  `NetworkOnMainThreadException` → เขียนใน thread ของ server (5) test JVM: org.json บน PC ไม่รักษาลำดับ key (Android รักษา) → test ไม่ผูกลำดับ
+  (6) "±" ไม่มีในฟอนต์ไทยของบอร์ด → "GPS แม่นยำ (4 ม.)"
+- **คำพูดเลี้ยว:** ประกาศปกติรอจน AI เงียบ/ไม่มีคนพูด → คำเลี้ยวลัดคิวก่อนประกาศอื่น, ใหม่แทนเก่าที่ยังไม่ได้พูด, ทิ้งเมื่อช้าเกิน 15 วิ (Maps บนมือถือก็พูดอยู่)
+**ทดสอบ:** host tests 2,344 checks ✓ · แอป 56 tests ✓ (handshake Wi-Fi จริงกับบอร์ดจำลอง) · บรรทัดจริงจาก Kotlin 8 แบบ → parser C++ ✓ (รวม proof HMAC) ·
+`pio run` ✓ (Flash 71.2 %) · ภาพจอจาก `dash_preview` · **ยังไม่ได้ลองกับบอร์ด/มือถือ/รถจริง**
+**รวมกับ main v4.2.0 (ก่อนออก v4.3.0):** main แก้หน้าปัดเป็น T078/T079 (BLE เป็น build flag, ปุ่มลัด) ในช่วงเดียวกัน → เลขงานของ branch นี้เลื่อนเป็น
+T080 (แฟลชมือถือ) · T081 (Studio บนมือถือ) · T082 (ล้นจอ) · T083 (นำทาง) · conflict: enum `source` ของ tool `vehicle` = ของ main (`obd_ble` เฉพาะ `VEHICLE_BLE`) + `phone`,
+`Vehicle::run` ใส่ `PhoneGps` นอก `#if VEHICLE_BLE` · ตรวจบทเรียน T078 ซ้ำ: `.iram0.text` 99.5 KB เท่ากับ main (PhoneLink ไม่ลิงก์ไลบรารีใหม่เข้า IRAM),
+RAM 32.7 %, Flash 66.5 % · host tests 2,350 checks ✓ (รวมเพดาน declaration 15,400 bytes ของ main)
+
+## T082: แอปมือถือล้นจอบน Android 15 — แถบแท็บอยู่ใต้ปุ่มนำทาง กดไม่ได้
+
+**วันที่:** 2026-10-20 · **ผู้ใช้ (หลังลอง T081 กับบอร์ดจริง):** "เชื่อมต่อได้ พิมพ์คุยได้ แต่ app ล้นจอ ปุ่มด้านล่างไปซ้อนอยู่ใต้ปุ่มนำทางของมือถือ กดไม่ได้"
+- **สาเหตุ:** แอป `targetSdk 35` → Android 15 **บังคับ edge-to-edge**: หน้าต่างวาดใต้แถบสถานะและแถบนำทาง แอปต้องเว้นที่เอง (insets) แต่ไม่ได้ทำ
+  → แถบแท็บอยู่ใต้ปุ่ม ◁ ○ □ และ title bar ของระบบทับด้านบนของหน้า (แถบสถานะการเชื่อมต่อหายไปครึ่งหนึ่งในภาพของผู้ใช้)
+- **แก้:** `MainActivity.fitSystemBars()` (Android 11+ ทำแบบเดียวกันทุกเครื่อง: `setDecorFitsSystemWindows(false)` + `OnApplyWindowInsetsListener`)
+  — padding ซ้าย/ขวา/ล่างตาม system bars + display cutout + **คีย์บอร์ด** · เลิกใช้ title bar ของระบบ (theme `NoActionBar`) แล้วใช้ title ของเราเอง
+  ที่เว้นด้านบนเท่าแถบสถานะ (ลองครั้งแรกเว้นแค่ล่าง → title bar ของระบบยังทับหัวหน้าอยู่ใน emulator) · `adjustResize` สำหรับ Android 8–10
+- **ตอนพิมพ์:** ลองแล้วช่องแชทหลุดจอ (การ์ดสถานะ + ปุ่ม + แถบแท็บกินที่หมด) → ตอนคีย์บอร์ดขึ้น ซ่อนแถบแท็บ และแท็บบอร์ดย่อเหลือแชท + ช่องพิมพ์
+  (`BoardPage.compact`) — คีย์บอร์ดลงแล้วกลับมาครบ
+**ทดสอบ:** emulator Android 11 ที่ตั้งโหมด edge-to-edge แบบเดียวกับ Android 15 (โค้ดเส้นทางเดียวกัน): ก่อนแก้ ล่างทับ/บนทับ, หลังแก้ ครบทั้งตอนปกติและตอนพิมพ์
+· unit tests 41 ข้อ ✓ · lint 0 errors
+· **มือถือจริง (ผู้ใช้):** "ทดสอบการทำงาน ใช้งานได้" — แถบแท็บอยู่เหนือปุ่มนำทาง, log สดขึ้นครบ (ปลุก → ต่อ Gemini → AI ตอบ)
+  · ในภาพเห็นแถบบนยังเป็น "กำลังเชื่อมต่อ" ทั้งที่ session ready แล้ว: ขอ `diag` เฉพาะแท็บบอร์ด → แท็บอื่น (ยกเว้นแฟลช) ขอทุก 10 วิ
+
+## T081: แอปมือถือ — สถานะ, log, ตั้งค่า, แชท แบบ ESP32-AI Studio
+
+**วันที่:** 2026-10-20 · **ผู้ใช้:** "ต้องการเพิ่มฟีเจอร์ให้ app มือถือ คล้ายกับ esp32 ai studio ที่สามารถตั้งค่าต่างๆ แสดง log การทำงานของบอร์ดได้"
+- **ไม่แก้เฟิร์มแวร์:** ใช้ serial console ชุดเดียวกับ Studio (`config` / `options` / `diag` / `wifiscan` / `apitest` / `set` / `ask` / `mute` ...) — บอร์ดที่เป็น
+  v4.2.0 ใช้ได้เลย
+- **ส่วนที่ทำ:** `Console.kt` (`Console` แยก TAG/สี/แชท/ซ่อนความลับ, `LineStream` แยกบรรทัด + ข้ามไบนารี `SCREENSHOT`/`RECORD`/`RECPAIRS` + resync ที่ `\nEND\n`,
+  `BoardLink` thread อ่าน + เขียนทีละบรรทัด), `BoardSettings.kt` (`BoardOptions`, `SettingsForm.commands` = กติกา "บันทึกทั้งหมด" ของ Studio),
+  `BoardPage` / `LogPage` / `SettingsPage`, ย้ายตัวแฟลชไป `FlashPage` · `MainActivity` เป็นเจ้าของพอร์ต: แท็บ, สิทธิ์ USB, ต่ออัตโนมัติ, ปิด console ก่อนแฟลช
+- **ข้อควรระวังที่ออกแบบไว้:** เปิด console ห้ามส่ง `SET_CONTROL_LINE_STATE` (ลำดับ DTR/RTS ของ USB-Serial-JTAG รีเซ็ตชิปได้ — Studio ก็ตั้ง DTR/RTS = off)
+  · คำสั่งต้องเป็นบรรทัดเดียว (ชื่อผู้ช่วยที่มีขึ้นบรรทัดใหม่จะกลายเป็น 2 คำสั่ง) · log บน UI รวมการวาดใหม่ทุก 80 ms (log ไหลเร็วตอนบูต)
+- **ยังไม่มีบนมือถือ:** จอเสมือน, รัน tool, อัดเสียงไมค์, จัดการวิทยุ, OTA, ส่งออก/นำเข้าไฟล์ตั้งค่า
+- **ลองบน emulator กับบอร์ดจำลอง** (build ชั่วคราว ไม่ commit — `SerialPort` ปลอมที่ตอบ config/options/diag/wifiscan/ask/set): ทุกแท็บแสดงข้อมูลถูก,
+  แถบเลื่อนส่ง `set volume` ทันที, "บันทึกทั้งหมด" ส่งเฉพาะ `set search 0` ที่เปลี่ยน · ปรับ: "RAM ว่าง KB 82" → "RAM ว่าง 82 KB", ปุ่ม "บทสนทนาใหม่" ตัดบรรทัด → "แชทใหม่"
+· รีวิวตัวเอง: connect ที่ค้างอยู่อาจแย่งพอร์ตตอนเริ่มแฟลช → `suspendLink()` รอ connect ที่ค้างให้จบ และ connect ตรวจซ้ำก่อนเก็บพอร์ต
+**ทดสอบ:** unit tests 41 ข้อ ✓ (เพิ่ม 17: console 4, LineStream 5, ตั้งค่า/การ์ดสถานะ/ผล apitest 7, BoardLink 1) · lint 0 errors · emulator + บอร์ดจำลอง ✓
+· **บอร์ดจริง (ผู้ใช้):** เชื่อมต่อได้, การ์ดสถานะขึ้นครบ (fw 4.2.0, Wi-Fi, โมเดล, RAM, แบต), พิมพ์คุยแล้ว AI ตอบ — เจอปัญหาล้นจอ → T082
+· **ยังไม่ได้ลองกับบอร์ดจริง**
+
+## T080: แอปมือถือ Android แฟลชเฟิร์มแวร์ผ่านสาย USB (OTG)
+
+**วันที่:** 2026-10-20 · **ผู้ใช้:** "ต้องการเพิ่ม app มือถือที่ไว้ Flash code ใส่บอร์ด โดยการเสียบสาย usb เชื่อมบอร์ดเข้ากับมือถือ"
+- **เลือกแอป native Android ไม่ใช่เว็บ:** ทดสอบแล้ว `release-assets.githubusercontent.com` (ปลายทาง redirect ของไฟล์ release) ไม่ส่ง
+  `Access-Control-Allow-Origin` → หน้าเว็บ (esptool-js / Web Serial) ดาวน์โหลด .bin จาก GitHub เองไม่ได้ ต้องฝากไฟล์ที่ hosting อื่นทุก release
+  · iOS ทำไม่ได้ทั้งเว็บและแอป (ไม่มี USB serial ให้แอป) → Android เท่านั้น
+- **ส่วนที่ทำ:** `tools/android_flasher/` (Kotlin, framework ล้วน ไม่มี AndroidX/ไลบรารี USB) — `UsbCdcPort` (CDC-ACM ผ่าน USB host API),
+  `Slip`/`Esp` (เฟรม + คำสั่ง ROM), `EspLoader` (รีเซ็ตเข้าโหมดแฟลช, sync, บีบอัด zlib, เขียนบล็อก 1 KB, ตรวจ MD5, hard reset),
+  `FlashPlan` (ตำแหน่งตาม `partitions_sr.csv`, ตรวจไฟล์ก่อนแตะบอร์ด), `FlashJob`, `Releases` (GitHub API, sha256, ลายเซ็น OTA), `MainActivity` (ภาษาไทย)
+  · `tools/build_flasher_apk.py` (+ `--create-keystore`, `--debug`) · `publish_release.py` แนบ `ESP32-AI-Flasher.apk` เมื่อมี
+- **ค่าที่ตรวจกับ esptool 5.6 (ซอร์สใน cache ของ PlatformIO):** ลำดับ DTR/RTS ของ `usb_jtag_bootloader_reset`, `FLASH_DEFL_BEGIN` ของ ROM S3 มี word ที่ 5
+  (encrypted) และ erase ต้องปัดขึ้นทีละ 1 KB, `SPI_ATTACH` ของ ROM ยาว 8 ไบต์, MD5 ของ ROM ตอบเป็นข้อความ hex 32 ตัว, ROM ไม่ต้องส่ง `FLASH_DEFL_END`,
+  status อยู่หลังข้อมูลตอบ (ROM เติมอีก 2 ไบต์), chip id จาก `GET_SECURITY_INFO` ที่ offset 12
+- **ตรวจกับไฟล์ release v4.2.0 จริง:** header ของ app/bootloader มี chip id 9, factory มี `AA 50` ที่ 0x8000, app ใน factory ตรงกับ -app.bin ทุกไบต์,
+  NVS (0x9000–0xE000) ในไฟล์ factory เป็น 0xFF ทั้งหมด (= แฟลช factory ล้างการตั้งค่า), otadata ที่แอปเขียนตอน "อัปเดต" = boot_app0 ในไฟล์ factory ทุกไบต์
+- **ปัญหาระหว่างทำ:** lint `UnspecifiedRegisterReceiverFlag` เตือนสาขา API < 33 ที่ไม่มี flag ให้ใช้ (suppress เฉพาะจุด) · mipmap ย้ายจาก `-v26` แล้ว build
+  แบบ incremental หา `ic_launcher` ไม่เจอ (ต้อง clean) · ในเครื่อง build ของ Claude, Maven Central ตอบ 429 → ใช้ mirror ของ Google ผ่าน init script
+  นอก repo (ไม่กระทบเครื่องผู้ใช้)
+- **รีวิวตัวเองก่อน commit:** timeout ของบล็อกเดิมใช้อัตราบีบอัดเฉลี่ยทั้งไฟล์ แต่บล็อก 0xFF ของไฟล์ factory แตกได้ ~1 MB → แก้ให้คิดจากขนาดหลังแตก
+  ของบล็อกนั้น (แบบ esptool) + test `blocksOfErasedPaddingGetTimeToWrite` (ROM จำลองใช้เวลาเขียนตามจริง) — ยืนยันว่า test นี้ fail กับโค้ดเดิม
+  · อ่านไฟล์ที่ผู้ใช้เลือก (อาจอยู่บน cloud) ย้ายออกจาก UI thread
+- **ลองบน Android emulator (API 30, ไม่มี KVM):** หน้าจอภาษาไทย, สถานะ "ยังไม่พบบอร์ด", กล่องยืนยัน factory ทำงาน · พบข้อความ error ภาษา Java ดิบ
+  (`CertPathValidatorException ...`) → `Net.friendly()` แปลงเป็นภาษาคน (ไม่มีเน็ต / เน็ตช้า / Wi-Fi ดักการเชื่อมต่อ)
+**ทดสอบ:** unit tests 24 ข้อ (JVM) ✓ รวม `FakeRom` จำลอง ROM ทั้งตัว + ไฟล์ release จริง · `lintDebug` 0 errors · APK release เซ็น v2 ตรวจด้วย apksigner ✓
+
+**ทดสอบบนบอร์ดจริง 2026-10-20 (มือถือ Android จริง, debug APK):** โหมด "อัปเดต" → พบบอร์ด 303A:1001, ดึง v4.2.0 จาก GitHub, sha256 ✓, รีเซ็ตเข้าโหมดแฟลชเองได้ (ไม่ต้องกด BOOT), เขียน otadata + app 3,525,840 ไบต์, MD5 ตรง, รีสตาร์ต — ทั้งหมดไม่ถึง 4 นาทีรวมดาวน์โหลด
+· ยังไม่ได้ลอง: โหมด "ติดตั้งใหม่ทั้งหมด" (factory 11 MB) และไฟล์ .bin ในเครื่อง
 
 ## T079: เปิดหน้าปัดรถไม่เป็น — ไม่มีปุ่ม และสั่ง AI แล้วตอบว่า "ไม่รู้จัก"
 

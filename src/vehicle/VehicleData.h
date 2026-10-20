@@ -130,18 +130,19 @@ enum class SourceId : uint8_t {
     ObdBle,      // OBD-II through an ELM327 Bluetooth LE adapter
     ObdUart,     // OBD-II through a wired ELM327 / STN on the UART pins
     SerialText,  // "rpm=3200 spd=86 ..." lines from another board on the UART pins
+    PhoneGps,    // speed from the phone's GPS (the phone app over USB / Wi-Fi, wiki 18): any vehicle, no adapter
     Count
 };
 
 inline const char* sourceKey(SourceId s) {
-    static const char* const kKeys[] = {"off", "sim", "touch", "kline", "obd_ble", "obd_uart", "serial"};
+    static const char* const kKeys[] = {"off", "sim", "touch", "kline", "obd_ble", "obd_uart", "serial", "phone"};
     return (uint8_t)s < (uint8_t)SourceId::Count ? kKeys[(uint8_t)s] : "off";
 }
 
 inline const char* sourceNameTh(SourceId s) {
     static const char* const kNames[] = {"ปิด",          "จำลอง (ขับเอง)", "จำลอง (แตะเป็นคันเร่ง)",
                                          "Honda K-Line", "OBD-II Bluetooth", "OBD-II สาย UART",
-                                         "ข้อความผ่าน UART"};
+                                         "ข้อความผ่าน UART", "GPS มือถือ"};
     return (uint8_t)s < (uint8_t)SourceId::Count ? kNames[(uint8_t)s] : "ปิด";
 }
 
@@ -165,7 +166,8 @@ inline bool parseSource(const char* text, SourceId& out) {
     static const Alias kAliases[] = {{"none", SourceId::Off},     {"simulator", SourceId::SimAuto},
                                      {"honda", SourceId::HondaK}, {"k-line", SourceId::HondaK},
                                      {"ble", SourceId::ObdBle},   {"obd", SourceId::ObdBle},
-                                     {"elm", SourceId::ObdUart},  {"uart", SourceId::SerialText}};
+                                     {"elm", SourceId::ObdUart},  {"uart", SourceId::SerialText},
+                                     {"gps", SourceId::PhoneGps}};
     for (const Alias& a : kAliases) {
         if (ieq(text, a.name)) {
             out = a.id;

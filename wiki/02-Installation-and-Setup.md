@@ -6,7 +6,7 @@ status: reference
 
 # 🛠️ Installation & Setup Guide
 
-> **Related:** [[00-Home-Dashboard]] | [[03-Libraries-and-Dependencies]] | [[07-Troubleshooting-Log]]
+> **Related:** [[00-Home-Dashboard]] | [[03-Libraries-and-Dependencies]] | [[07-Troubleshooting-Log]] | [[17-Mobile-Flasher]]
 
 ---
 
@@ -20,6 +20,9 @@ status: reference
 4. บูตครั้งแรก: แตะ 3 จุดปรับทัช → ⚙ → ใส่ Wi-Fi 2.4 GHz และ Gemini API key **ของตัวเอง** — หรือวาง `ai-setup.txt` (ตัวอย่างใน `tools/sd_card/`) ที่รากการ์ด SD ก่อนเปิดเครื่อง (เก็บเข้ารหัสในการ์ด)
 
 ไฟล์ factory เขียนตั้งแต่ `0x0` จึงล้างค่าตั้งค่าเดิมในบอร์ดด้วย — ถ้าจะอัปเดตโดยเก็บค่าเดิม ให้ build จากซอร์ส (`pio run -t upload`)
+
+**📱 จากมือถือ Android (T080):** ติดตั้ง `ESP32-AI-Flasher.apk` → เสียบสาย USB-C จากมือถือเข้าบอร์ด (OTG) → **แฟลชลงบอร์ด** — แอปโหลด release ล่าสุดเอง
+และมีโหมด **อัปเดต** (`-app.bin`, เก็บการตั้งค่า/ความจำ) ด้วย — ดู [[17-Mobile-Flasher]]
 
 **ผู้ดูแลโปรเจกต์ — ออก release (แบบแมนนวล):** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py`
 (build → Release แบบร่าง → แนบ `.bin` + `.sha256` → เผยแพร่ → ดาวน์โหลดกลับมาเทียบ sha256) — ใช้ token ที่ Git Credential Manager เก็บไว้ ไม่แสดงออกมา

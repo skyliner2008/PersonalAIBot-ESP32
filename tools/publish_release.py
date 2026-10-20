@@ -9,6 +9,7 @@ Publish the factory firmware as a GitHub Release - manual path (GitHub Actions c
 The repository uses IMMUTABLE releases, so the order matters and is fixed here:
     1. create the release as a DRAFT        (assets can only be attached to drafts)
     2. upload the .bin, .sha256 and the -app.bin.sig (tools/ota_keygen.py)
+       + dist/ESP32-AI-Flasher.apk when it was built (tools/build_flasher_apk.py - the Android phone flasher)
     3. publish (and mark it latest)
     4. download it again and compare the sha256
 A tag that ever belonged to a published release can never be reused (v3.2.0 is burned that way):
@@ -78,6 +79,10 @@ def notes(ver: str) -> str:
 4. Enter your own Wi-Fi + Gemini API key on the device — or put `ai-setup.txt` on the SD card ([template](https://github.com/{REPO}/blob/main/tools/sd_card/ai-setup.txt)).
    ใส่ Wi-Fi + Gemini API key ของคุณบนบอร์ด หรือวาง `ai-setup.txt` ไว้ในการ์ด SD
 
+**📱 From an Android phone / แฟลชจากมือถือ Android:** install **ESP32-AI-Flasher.apk** below (when attached), plug the
+board into the phone with a USB-C cable (OTG) → **แฟลชลงบอร์ด**. "อัปเดต" keeps settings, "ติดตั้งใหม่ทั้งหมด" = this factory image.
+ติดตั้งแอป ESP32-AI-Flasher.apk เสียบสาย USB-C จากมือถือเข้าบอร์ด แล้วกด "แฟลชลงบอร์ด" (iPhone ใช้ไม่ได้)
+
 > The factory image starts at 0x0 and resets saved settings. A board on v3.5.0 or later updates itself and keeps its
 > settings and memory: Settings → อัปเดตเฟิร์มแวร์ (it downloads the `-app.bin` below).
 > ไฟล์ factory ล้างค่าตั้งค่าเดิม — บอร์ดที่เป็น v3.5.0 ขึ้นไปอัปเดตเองผ่านเมนู "อัปเดตเฟิร์มแวร์" ได้ ค่าตั้งค่าและความจำอยู่ครบ
@@ -137,6 +142,11 @@ def main() -> None:
     for f in files:
         if not f.exists():
             sys.exit(f"missing {f}")
+    apk = ROOT / "dist" / "ESP32-AI-Flasher.apk"  # same name every release: .../releases/latest/download/<it>
+    if apk.exists() and (ROOT / "dist" / (apk.name + ".sha256")).exists():
+        files += [apk, ROOT / "dist" / (apk.name + ".sha256")]
+    else:
+        print("note: no dist/ESP32-AI-Flasher.apk (python tools/build_flasher_apk.py) - the release has no phone app")
 
     st, rel = gh.call("POST", f"{API}/releases", {"tag_name": tag, "target_commitish": head,
                                                   "name": f"PersonalAIBot-ESP32 {tag}", "body": notes(ver),
@@ -146,8 +156,9 @@ def main() -> None:
     print("1/3 draft created")
     upload = rel["upload_url"].split("{")[0]
     for f in files:
+        ctype = {".bin": "application/octet-stream", ".apk": "application/vnd.android.package-archive"}
         st, a = gh.call("POST", f"{upload}?name={f.name}", raw=f.read_bytes(),
-                        ctype="application/octet-stream" if f.suffix == ".bin" else "text/plain")  # .sha256 / .sig
+                        ctype=ctype.get(f.suffix, "text/plain"))  # .sha256 / .sig
         if st != 201:
             sys.exit(f"upload {f.name} failed: {st} {a} (draft {rel['id']} left for inspection)")
     print("2/3 files uploaded")

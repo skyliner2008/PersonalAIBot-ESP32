@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <zlib.h>
 #include <vector>
+#include "phone/PhoneLink.h"
 #include "ui/DashScreen.h"
+#include "ui/NavScreen.h"
 #include "vehicle/Vehicle.h"
 #include "vehicle/SimEngine.h"
 
@@ -27,6 +29,29 @@ void Vehicle::setStyle(vehicle::DashStyle s) { gStyle = s; }
 vehicle::Snapshot Vehicle::snapshot() { return gSnap; }
 String Vehicle::status() { return String(gStatus); }
 bool Vehicle::needsRestart() { return gRestart; }
+
+// ---- the PhoneLink API the screens use (wiki 18) ----
+PhoneLink gPhone;
+static phone::Nav gNav;
+static phone::Gps gGps;
+static std::string gPlace;
+phone::Nav PhoneLink::nav() { return gNav; }
+phone::Gps PhoneLink::gps() { return gGps; }
+String PhoneLink::place() { return String(gPlace); }
+bool PhoneLink::connected() { return true; }
+PhoneLink::Via PhoneLink::via() { return Via::Wifi; }
+
+static void setNav(const char* icon, const char* text, int dist) {
+    gNav = phone::Nav();
+    gNav.active = true;
+    gNav.icon = phone::parseIcon(icon);
+    phone::copyText(gNav.text, sizeof(gNav.text), text);
+    gNav.distM = dist;
+    snprintf(gNav.eta, sizeof(gNav.eta), "16:40");
+    gNav.leftKm = 5.4f;
+    gNav.leftMin = 12;
+    gNav.at = gNow;
+}
 
 static void savePng(LGFX_Sprite& c, const char* path) {
     const int w = c.width(), h = c.height();
@@ -115,5 +140,49 @@ int main(int argc, char** argv) {
     gSnap.clear();
     gNow += 5000;
     scene("obd_wait");
+
+    // ---- navigation from the phone (wiki 18): the strip on the dash, the turn-by-turn screen, every arrow ----
+    gRestart = false;
+    gSrc = vehicle::SourceId::PhoneGps;
+    gStatus = "GPS";
+    gSnap.clear();
+    gNow += 1000;
+    gSnap.set(vehicle::kSpeed, 47, gNow);
+    gGps.valid = true;
+    gGps.speedKmh = 47;
+    gGps.accuracy = 4;
+    gGps.at = gNow;
+    setNav("right", "เลี้ยวขวาเข้า ถ.พระราม 4", 350);
+    scene("phone_nav");
+    gUi.push(&gNavUi);
+    auto nav = [&](const char* name) {
+        gNavUi.onEnter();
+        gNavUi.tick(gNow, 0.03f);
+        gNavUi.draw(c);
+        snprintf(path, sizeof(path), "%s/nav_%s.png", out, name);
+        savePng(c, path);
+    };
+    nav("right");
+    setNav("roundabout", "ที่วงเวียน ใช้ทางออกที่ 2 ไปทาง ถ.ราชดำริ มุ่งหน้า สยาม", 120);
+    nav("roundabout");
+    setNav("uturn", "กลับรถ", 600);
+    nav("uturn");
+    setNav("arrive", "ถึงที่หมาย เซ็นทรัลเวิลด์ อยู่ทางซ้าย", 40);
+    nav("arrive");
+    gNav = phone::Nav();
+    gPlace = "ถ.พระราม 4 แขวงลุมพินี เขตปทุมวัน กรุงเทพฯ";
+    nav("idle");
+    // every arrow on one sheet: the shapes at a glance
+    c.fillScreen(ui::BG);
+    for (uint8_t i = 1; i < (uint8_t)phone::Icon::Count; i++) {
+        const int col = (i - 1) % 5, row = (i - 1) / 5;
+        NavScreen::drawIcon(c, (phone::Icon)i, 32 + col * 64, 40 + row * 80, 50, ui::TEXT, ui::BG);
+        c.setFont(&fonts::Font0);
+        c.setTextColor(ui::DIM);
+        c.setTextDatum(textdatum_t::middle_center);
+        c.drawString(phone::iconKey((phone::Icon)i), 32 + col * 64, 78 + row * 80);
+    }
+    snprintf(path, sizeof(path), "%s/nav_icons.png", out);
+    savePng(c, path);
     return 0;
 }

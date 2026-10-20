@@ -151,10 +151,20 @@ void AgentController::handleScheduler(uint32_t now) {
 }
 
 void AgentController::deliverAnnouncements() {
-    if (_announcements.empty() || !_gemini.isReady() || _audio->isPlaying() || _vadOpen || _awaitingReply) return;
-    if (_gemini.sendClientText(_announcements.front().c_str(), true)) {
-        Serial.printf("[Chat] sent text turn (%u bytes)\n", (unsigned)_announcements.front().size());
-        _announcements.erase(_announcements.begin());
+    if (!_navSay.empty() && (uint32_t)(millis() - _navSayAt) > 15000) {
+        Serial.println("[Phone] turn not said in time - dropped (the phone's Maps says it too)");
+        _navSay.clear();
+    }
+    if ((_announcements.empty() && _navSay.empty()) || !_gemini.isReady() || _audio->isPlaying() || _vadOpen ||
+        _awaitingReply) {
+        return;
+    }
+    const bool turn = !_navSay.empty();  // a turn cannot wait behind a reminder
+    const PsString& next = turn ? _navSay : _announcements.front();
+    if (_gemini.sendClientText(next.c_str(), true)) {
+        Serial.printf("[Chat] sent text turn (%u bytes)\n", (unsigned)next.size());
+        if (turn) _navSay.clear();
+        else _announcements.erase(_announcements.begin());
         _awaitingReply = true;
         _lastUserSpeech = millis();
     }

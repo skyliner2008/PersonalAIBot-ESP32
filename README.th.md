@@ -9,8 +9,8 @@
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%203.3.12%20%28IDF%205.5%29-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
-[![Firmware](https://img.shields.io/badge/firmware-v4.2.0-3ddc84)](src/app/AppConfig.h)
-[![Tests](https://img.shields.io/badge/host%20tests-2%2C230%20checks%20passing-3ddc84)](host_tests/)
+[![Firmware](https://img.shields.io/badge/firmware-v4.3.0-3ddc84)](src/app/AppConfig.h)
+[![Tests](https://img.shields.io/badge/host%20tests-2%2C350%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -37,6 +37,7 @@
 | 📊 **การ์ดข้อมูลสด** | อากาศ + PM2.5, ราคาน้ำมันไทย, หุ้น/ทอง/คริปโต/ค่าเงิน, วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, ข่าว, Wikipedia — วาดเป็นกราฟิกขณะ AI พูด |
 | 📻 **วิทยุออนไลน์** | หน้าจอแบบแอปวิทยุ พร้อม 16 สถานีไทยที่ทดสอบแล้ว (เพิ่มได้ถึง 40 — `python tools/radio_check.py` ตรวจรายชื่อสถานีแบบเดียวกับที่บอร์ดเล่น; ถอดรหัส AAC ที่เฟรมเสียไม่ค้างจนรีบูตแล้ว): เลื่อนแล้วแตะเลือกสถานี ปุ่มเพิ่ม/ลดเสียง ปุ่ม ⏸ หยุดชั่วคราว ปุ่ม ⏻ ปิดวิทยุ (สีแดง) และแตะกลางจอเพื่อสั่งงาน AI ได้เหมือนเดิม พูด "เปิดวิทยุลูกทุ่ง" หรือ "สถานีที่ 4" แล้ว AI จะเลือกจากรายการให้ แก้รายการ (เพิ่ม แก้ ลบ เรียงลำดับ ทดสอบ URL) ได้ใน ESP32-AI Studio ถอดรหัส MP3/AAC ด้วย Helix และวิทยุจะเบาลงเหลือ 12% ระหว่างคุย ปุ่มปรับเสียงและคำสั่ง "เบาเสียงหน่อย" ปรับเฉพาะวิทยุ — เสียง AI ล็อกไว้ที่ระดับของตัวเอง (ค่าเริ่มต้น 80, `set aivolume`) สั่งเปิดวิทยุแล้ว AI บอกชื่อสถานีแล้วพักทันที (ไม่ฟังหรือตอบเสียงดีเจ) และสั่ง "เปิดวิทยุ" เฉยๆ จะเล่นสถานีล่าสุด [wiki/12](wiki/12-Internet-Radio.md) |
 | 🏁 **หน้าปัดรถ** (ใหม่) | หน้าปัดรถยนต์และมอเตอร์ไซค์ 3 รูปแบบ — **รถแข่ง** (บาร์รอบ), **วงกลมดิจิทัล สปอร์ต** (วงแหวนไฟ) และ **เข็มวงกลม คลาสสิก** (วัดรอบ + ความเร็ว) — มี shift light, ความเร็ว, เกียร์, ช่องอุณหภูมิเครื่อง / แบต / อากาศเข้า เปลี่ยนเป็นเหลือง/แดงเมื่อเกินเกณฑ์ เปิดด้วยปุ่มรูปหน้าปัดมุมขวาล่างของหน้าหลัก หรือพูด "เปิดหน้าปัด" (ยังไม่ได้เลือกแหล่งข้อมูล = เปิดตัวจำลองให้) แตะแถบหัวเพื่อสลับแบบ ข้อมูลจาก **Honda K-Line** (Wave 110i / 125i, Click, PCX ... ผ่านบอร์ดแปลงแบบ L9637D), OBD-II ผ่าน ELM327 ต่อสาย, ข้อความจากบอร์ดอื่น หรือตัวจำลองในตัว (นิ้วเป็นคันเร่ง) — ELM327 แบบ Bluetooth LE ต้อง build เอง (`-DVEHICLE_BLE=1`) เพราะ BLE กิน RAM ภายในที่ผู้ช่วยเสียงต้องใช้ AI อ่านค่าสดได้ ("เครื่องร้อนไหม") และพูดเตือนเองเมื่อเครื่องร้อนจัดหรือไดชาร์จไม่ชาร์จ — ยังไม่ได้ทดสอบกับรถจริง [wiki/16](wiki/16-Vehicle-Dash.md) |
+| 🧭 **นำทางร่วมกับมือถือ** (ใหม่ ยังไม่ได้ลองในรถ) | Google Maps บนมือถือ Android คำนวณเส้นทาง บอร์ดแสดงจุดเลี้ยวถัดไป (ลูกศร ระยะ ชื่อถนน เวลาถึง) เป็นจอนำทางหรือแถบบนหน้าปัด และ AI **พูดเตือนก่อนเลี้ยว ~20 วินาที** ("อีก 300 เมตร เลี้ยวขวาเข้า ถ.พระราม 4") พูด "นำทางไปเซ็นทรัลเวิลด์" มือถือจะเปิด Google Maps ให้ ถาม "อีกไกลไหม" "ถึงกี่โมง" "ตอนนี้อยู่ไหน" ได้ GPS มือถือใช้เป็นความเร็วของหน้าปัดได้ด้วย (รถทุกคัน) เชื่อมผ่าน Hotspot มือถือ (Wi-Fi) หรือ USB จับคู่ด้วย USB ครั้งเดียว และทั้งสองฝั่งพิสูจน์การจับคู่ (HMAC) ก่อนรับข้อมูล [wiki/18](wiki/18-Phone-Link-Navigation-Plan.md) |
 | ⏰ **ผู้ช่วยส่วนตัว** | ตั้งเวลา, แจ้งเตือน (ทุกวัน/วันทำงาน/ทุกสัปดาห์), รายการงาน, สมุดโน้ต, แจ้งเตือนราคาด้วยเสียง, เครื่องคิดเลข, แปลงหน่วย, เวลาต่างประเทศ |
 | 🔁 **ซ่อมตัวเองได้** | สลับโมเดลอัตโนมัติ, หยุดพักเมื่อติดโควตา, ปิด Google Search อัตโนมัติเมื่อโควตาหมด, resume เซสชัน, ต่อ Wi-Fi ใหม่ |
 | 🖥️ **ESP32-AI Studio** | แอป PC โหมดมืด: ตั้งค่าทุกอย่าง, debug log สด, แชท, จอเสมือนแตะได้, อัดเสียงไมค์, รัน tool, build & flash |
@@ -78,7 +79,14 @@
    (ถ้าหาบอร์ดไม่เจอ: กด **BOOT** ค้าง → แตะ **RESET** → ปล่อย BOOT แล้วกด Connect ใหม่)
 3. ช่อง Flash Address ใส่ **`0x0`** → เลือกไฟล์ `.bin` → **Program** เสร็จแล้วกด **RESET** ที่บอร์ด
 
-ใช้ command line ก็ได้: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v4.2.0-factory.bin`
+ใช้ command line ก็ได้: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v4.3.0-factory.bin`
+
+**📱 แฟลชจากมือถือ Android (ไม่ต้องมีคอม):** ติดตั้งแอป **ESP32-AI Flasher** (`ESP32-AI-Flasher.apk` จากหน้า release หรือ build เอง:
+`python tools/build_flasher_apk.py`) เสียบสาย USB-C จากมือถือเข้าบอร์ด (มือถือต้องรองรับ USB OTG) แล้วกด **แฟลชลงบอร์ด**
+แอปดาวน์โหลด release ล่าสุดเองและตรวจ sha256 (และลายเซ็นของ release) · **อัปเดต** เขียนไฟล์ `-app.bin` โดยค่าที่ตั้งไว้และความจำอยู่ครบ ·
+**ติดตั้งใหม่ทั้งหมด** เขียนไฟล์ factory · เลือกไฟล์ `.bin` ในเครื่องก็ได้ · ใช้ได้เฉพาะ Android 8 ขึ้นไป (iOS ไม่ให้แอปใช้ USB serial)
+แอปเดียวกันนี้ใช้เป็น **ESP32-AI Studio ฉบับพกพา** ผ่านสายเส้นเดิมได้ด้วย: ดูสถานะ + ปุ่มด่วน (ไมค์ / พัก / ปลุก / ต่อ AI ใหม่ / บทสนทนาใหม่ / รีบูต),
+พิมพ์แชทกับผู้ช่วย, log สด (กรอง, แชร์, พิมพ์คำสั่ง console) และตั้งค่า (สแกน Wi-Fi, API key + ทดสอบ, โปรไฟล์, เสียง, โมเดล, ความดัง, ความสว่าง ...) — ดู [wiki 17](wiki/17-Mobile-Flasher.md)
 
 > ไฟล์ factory เริ่มที่ `0x0` จึง**ล้างค่าตั้งค่าเดิมในบอร์ด**ไปด้วย (ติดตั้งใหม่สะอาด)
 >
@@ -234,8 +242,11 @@ flowchart LR
 host_tests\run_tests.bat
 ```
 
-53 ชุดทดสอบ · 2,224 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
+63 ชุดทดสอบ · 2,350 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ หรือ clang++)
+
+แอปมือถือมี unit tests ของตัวเอง 56 ข้อ (console/การตั้งค่า, เชื่อมบอร์ดรวม handshake Wi-Fi จริง, อ่าน Google Maps + ตัวแฟลชที่ทดสอบกับ ROM bootloader ของ ESP32-S3 จำลอง + flash เสมือน 16 MB):
+`cd tools/android_flasher && ./gradlew testDebugUnitTest`
 
 ## 📁 โครงสร้างโปรเจกต์
 
@@ -249,8 +260,10 @@ src/audio      AudioManager (I2S), ไดรเวอร์ ES8311, resampler
 src/memory     MemoryStore (BM25 + กราฟ), EpisodicLog
 src/display    ตั้งค่า LovyanGFX, ไดรเวอร์ทัช, ฟอนต์ไทย 26/20 px
 src/system     บัส I2C, ที่เก็บข้อมูล (SD / LittleFS) · src/util  UTF-8, เครื่องคิดเลข, หน่วย, เวลา, JSON
+src/phone      เชื่อมแอปมือถือ: GPS, นำทาง Google Maps, AI พูดเตือนก่อนเลี้ยว (USB / Wi-Fi, จับคู่ทาง USB) + src/ui/NavScreen
 src/vehicle    หน้าปัดรถ: ค่าจากรถ, โมเดลหน้าปัด, ตัวจำลอง, ELM327, Honda K-Line, UART / BLE (+ src/ui/DashScreen)
 tools/pc_app   ESP32-AI Studio (Python + Tkinter + pyserial)
+tools/android_flasher  ESP32-AI Flasher: แอป Android ผ่าน USB OTG — แฟลช (โปรโตคอล ROM) + สถานะ / log / ตั้งค่า / แชท แบบ Studio (Kotlin, ไม่ใช้ไลบรารี)
 tools/         gen_thai_font.py, gen_root_ca.py
 host_tests/    unit tests บน PC
 wiki/          คลังความรู้ Obsidian: ฮาร์ดแวร์, ติดตั้ง, protocol, UI, ความจำ, บันทึกการแก้ปัญหา
@@ -269,6 +282,8 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 | [12 วิทยุออนไลน์](wiki/12-Internet-Radio.md) | สตรีม, ผสม/ลดเสียง, ปลุกด้วยเสียงขณะเปิดเพลง |
 | [13 อัปเดตเฟิร์มแวร์ (OTA)](wiki/13-OTA-Update.md) | ผ่าน Wi-Fi จาก GitHub Releases, ตรวจไฟล์, กลับเวอร์ชันเดิมอัตโนมัติ |
 | [16 หน้าปัดรถ](wiki/16-Vehicle-Dash.md) | OBD-II (ELM327 สาย; BLE เฉพาะ build เอง), Honda K-Line, ตัวจำลอง; การต่อสาย, layout, tool `vehicle` |
+| [18 เชื่อมมือถือ + นำทาง](wiki/18-Phone-Link-Navigation-Plan.md) | GPS มือถือบนหน้าปัด, นำทาง Google Maps บนจอบอร์ด, AI พูดเตือนก่อนเลี้ยว, สั่ง "นำทางไป…" ด้วยเสียง (Wi-Fi / USB) |
+| [17 แอปมือถือ](wiki/17-Mobile-Flasher.md) | แอป Android ผ่านสาย USB-C: แฟลช (อัปเดตโดยเก็บการตั้งค่า, ตรวจไฟล์), สถานะ, log, ตั้งค่า, แชท |
 
 ## 🔒 ความปลอดภัย & ความเป็นส่วนตัว
 
