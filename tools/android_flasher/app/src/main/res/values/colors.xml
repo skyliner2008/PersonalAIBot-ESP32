@@ -7,4 +7,18 @@
     <color name="card">#F1F5F9</color>
     <color name="card_ok">#DCFCE7</color>
     <color name="muted">#475569</color>
+    <color name="tab_selected">#0E7490</color>
+    <color name="bubble_user">#DBEAFE</color>
+    <color name="bubble_ai">#DCFCE7</color>
+    <color name="log_bg">#FBFCFD</color>
+    <color name="log_err">#C62828</color>
+    <color name="log_warn">#E65100</color>
+    <color name="log_user">#1565C0</color>
+    <color name="log_ok">#2E7D32</color>
+    <color name="log_gemini">#00838F</color>
+    <color name="log_wifi">#6A1B9A</color>
+    <color name="log_dim">#90A4AE</color>
+    <color name="log_mic">#00897B</color>
+    <color name="log_cmd">#8D6E00</color>
+    <color name="log_info">#263238</color>
 </resources>

@@ -83,7 +83,9 @@
 **📱 แฟลชจากมือถือ Android (ไม่ต้องมีคอม):** ติดตั้งแอป **ESP32-AI Flasher** (`ESP32-AI-Flasher.apk` จากหน้า release หรือ build เอง:
 `python tools/build_flasher_apk.py`) เสียบสาย USB-C จากมือถือเข้าบอร์ด (มือถือต้องรองรับ USB OTG) แล้วกด **แฟลชลงบอร์ด**
 แอปดาวน์โหลด release ล่าสุดเองและตรวจ sha256 (และลายเซ็นของ release) · **อัปเดต** เขียนไฟล์ `-app.bin` โดยค่าที่ตั้งไว้และความจำอยู่ครบ ·
-**ติดตั้งใหม่ทั้งหมด** เขียนไฟล์ factory · เลือกไฟล์ `.bin` ในเครื่องก็ได้ · ใช้ได้เฉพาะ Android 8 ขึ้นไป (iOS ไม่ให้แอปใช้ USB serial) — ดู [wiki 17](wiki/17-Mobile-Flasher.md)
+**ติดตั้งใหม่ทั้งหมด** เขียนไฟล์ factory · เลือกไฟล์ `.bin` ในเครื่องก็ได้ · ใช้ได้เฉพาะ Android 8 ขึ้นไป (iOS ไม่ให้แอปใช้ USB serial)
+แอปเดียวกันนี้ใช้เป็น **ESP32-AI Studio ฉบับพกพา** ผ่านสายเส้นเดิมได้ด้วย: ดูสถานะ + ปุ่มด่วน (ไมค์ / พัก / ปลุก / ต่อ AI ใหม่ / บทสนทนาใหม่ / รีบูต),
+พิมพ์แชทกับผู้ช่วย, log สด (กรอง, แชร์, พิมพ์คำสั่ง console) และตั้งค่า (สแกน Wi-Fi, API key + ทดสอบ, โปรไฟล์, เสียง, โมเดล, ความดัง, ความสว่าง ...) — ดู [wiki 17](wiki/17-Mobile-Flasher.md)
 
 > ไฟล์ factory เริ่มที่ `0x0` จึง**ล้างค่าตั้งค่าเดิมในบอร์ด**ไปด้วย (ติดตั้งใหม่สะอาด)
 >
@@ -242,7 +244,7 @@ host_tests\run_tests.bat
 53 ชุดทดสอบ · 2,224 checks · ต้องมี Visual Studio Build Tools (`cl.exe`) และรัน `pio run` ก่อน 1 ครั้ง (เพื่อดึง ArduinoJson)
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ หรือ clang++)
 
-แอปแฟลชบนมือถือมี unit tests ของตัวเอง 24 ข้อ (ทดสอบกับ ROM bootloader ของ ESP32-S3 จำลอง + flash เสมือน 16 MB):
+แอปมือถือมี unit tests ของตัวเอง 41 ข้อ (console/การตั้งค่า + ตัวแฟลชที่ทดสอบกับ ROM bootloader ของ ESP32-S3 จำลอง + flash เสมือน 16 MB):
 `cd tools/android_flasher && ./gradlew testDebugUnitTest`
 
 ## 📁 โครงสร้างโปรเจกต์
@@ -259,7 +261,7 @@ src/display    ตั้งค่า LovyanGFX, ไดรเวอร์ทั�
 src/system     บัส I2C, ที่เก็บข้อมูล (SD / LittleFS) · src/util  UTF-8, เครื่องคิดเลข, หน่วย, เวลา, JSON
 src/vehicle    หน้าปัดรถ: ค่าจากรถ, โมเดลหน้าปัด, ตัวจำลอง, ELM327, Honda K-Line, UART / BLE (+ src/ui/DashScreen)
 tools/pc_app   ESP32-AI Studio (Python + Tkinter + pyserial)
-tools/android_flasher  ESP32-AI Flasher: แอป Android แฟลชบอร์ดผ่าน USB OTG (Kotlin, โปรโตคอล ROM + USB CDC เขียนเอง ไม่ใช้ไลบรารี)
+tools/android_flasher  ESP32-AI Flasher: แอป Android ผ่าน USB OTG — แฟลช (โปรโตคอล ROM) + สถานะ / log / ตั้งค่า / แชท แบบ Studio (Kotlin, ไม่ใช้ไลบรารี)
 tools/         gen_thai_font.py, gen_root_ca.py
 host_tests/    unit tests บน PC
 wiki/          คลังความรู้ Obsidian: ฮาร์ดแวร์, ติดตั้ง, protocol, UI, ความจำ, บันทึกการแก้ปัญหา
@@ -278,7 +280,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 | [12 วิทยุออนไลน์](wiki/12-Internet-Radio.md) | สตรีม, ผสม/ลดเสียง, ปลุกด้วยเสียงขณะเปิดเพลง |
 | [13 อัปเดตเฟิร์มแวร์ (OTA)](wiki/13-OTA-Update.md) | ผ่าน Wi-Fi จาก GitHub Releases, ตรวจไฟล์, กลับเวอร์ชันเดิมอัตโนมัติ |
 | [16 หน้าปัดรถ](wiki/16-Vehicle-Dash.md) | OBD-II (ELM327 BLE / สาย), Honda K-Line, ตัวจำลอง; การต่อสาย, layout, tool `vehicle` |
-| [17 แอปแฟลชบนมือถือ](wiki/17-Mobile-Flasher.md) | แอป Android: แฟลชผ่านสาย USB-C จากมือถือ, อัปเดตโดยเก็บการตั้งค่า, ตรวจไฟล์ที่ดาวน์โหลด |
+| [17 แอปมือถือ](wiki/17-Mobile-Flasher.md) | แอป Android ผ่านสาย USB-C: แฟลช (อัปเดตโดยเก็บการตั้งค่า, ตรวจไฟล์), สถานะ, log, ตั้งค่า, แชท |
 
 ## 🔒 ความปลอดภัย & ความเป็นส่วนตัว
 

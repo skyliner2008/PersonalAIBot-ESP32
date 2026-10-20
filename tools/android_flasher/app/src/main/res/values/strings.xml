@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ESP32-AI Flasher</string>
-    <string name="subtitle">แฟลชเฟิร์มแวร์ PersonalAIBot-ESP32 ลงบอร์ด ES3C28P (ESP32-S3) ผ่านสาย USB-C ที่เสียบกับมือถือ</string>
 
     <string name="section_board">1. บอร์ด</string>
     <string name="board_none">✖ ยังไม่พบบอร์ด — เสียบสาย USB-C จากมือถือเข้าพอร์ต USB ของบอร์ด (มือถือต้องรองรับ OTG และสายต้องส่งข้อมูลได้)</string>
@@ -33,4 +32,111 @@
 
     <string name="section_help">ถ้าเชื่อมต่อไม่ได้</string>
     <string name="help">• ใช้สาย USB-C ↔ USB-C (หรือหัวแปลง OTG) ที่ส่งข้อมูลได้ ไม่ใช่สายชาร์จอย่างเดียว\n• เมื่อมีหน้าต่าง \"อนุญาตให้ ESP32-AI Flasher เข้าถึง\" ให้กดอนุญาต (ติ๊ก \"ใช้เป็นค่าเริ่มต้น\" จะไม่ถามอีก)\n• บอร์ดไม่เข้าโหมดแฟลช: กดปุ่ม BOOT ค้าง แตะ RESET แล้วปล่อย BOOT จากนั้นกดแฟลชอีกครั้ง\n• iPhone / iPad ใช้ไม่ได้ (iOS ไม่เปิดให้แอปคุยกับพอร์ต USB serial) — ใช้ Android หรือคอมพิวเตอร์\n• ระหว่างแฟลชอย่าถอดสาย ถ้าหลุดกลางทาง แค่เสียบใหม่แล้วแฟลชซ้ำได้เสมอ (ROM ของชิปไม่เสีย)</string>
+
+    <string name="flash_subtitle">แฟลชเฟิร์มแวร์ PersonalAIBot-ESP32 ลงบอร์ด ES3C28P (ESP32-S3) ผ่านสาย USB-C ที่เสียบกับมือถือ (ระหว่างแฟลช แท็บอื่นจะหยุดเชื่อมต่อชั่วคราว)</string>
+
+    <string name="tab_board">🤖 บอร์ด</string>
+    <string name="tab_log">📜 Log</string>
+    <string name="tab_settings">⚙️ ตั้งค่า</string>
+    <string name="tab_flash">⬇️ แฟลช</string>
+
+    <string name="link_connect">เชื่อมต่อ</string>
+    <string name="link_disconnect">ตัดการเชื่อมต่อ</string>
+    <string name="link_connecting">กำลังเชื่อมต่อบอร์ด…</string>
+    <string name="link_off">ยังไม่ได้เชื่อมต่อ — กด "เชื่อมต่อ"</string>
+    <string name="link_on">🔌 เชื่อมต่อแล้ว</string>
+    <string name="link_flashing">กำลังแฟลช — หยุดเชื่อมต่อ console ชั่วคราว</string>
+    <string name="board_none_short">ยังไม่พบบอร์ด — เสียบสาย USB-C (OTG)</string>
+    <string name="link_connected_log">เชื่อมต่อบอร์ดแล้ว (ไม่รีเซ็ตบอร์ด)</string>
+    <string name="link_closed_log">ตัดการเชื่อมต่อแล้ว</string>
+    <string name="link_lost_log">การเชื่อมต่อหลุด (%1$s) — จะลองต่อใหม่เอง</string>
+    <string name="link_flash_log">หยุดเชื่อมต่อเพื่อแฟลช — จะต่อใหม่เมื่อบอร์ดรีสตาร์ต</string>
+    <string name="not_connected">ยังไม่ได้เชื่อมต่อบอร์ด</string>
+    <string name="blob_ok">ข้อมูลไบนารีผ่านไป: %1$s</string>
+    <string name="blob_bad">ข้อมูลไบนารีเสีย (มีข้อความแทรก): %1$s</string>
+
+    <string name="board_info_none">ยังไม่มีสถานะ — เชื่อมต่อบอร์ดก่อน (แตะการ์ดนี้เพื่ออัปเดต)</string>
+    <string name="q_mute">🎤 ไมค์</string>
+    <string name="q_sleep">💤 พัก</string>
+    <string name="q_wake">☀ ปลุก</string>
+    <string name="q_retry">↻ ต่อ AI ใหม่</string>
+    <string name="q_new">🆕 บทสนทนาใหม่</string>
+    <string name="q_reboot">⟲ รีบูต</string>
+    <string name="reboot">รีบูต</string>
+    <string name="reboot_confirm">รีบูตบอร์ดตอนนี้?</string>
+    <string name="chat_title">แชทกับผู้ช่วย (ตอบเป็นเสียงที่บอร์ดด้วย)</string>
+    <string name="chat_hint">พิมพ์ถึงผู้ช่วย…</string>
+    <string name="chat_send">ส่ง</string>
+    <string name="chat_you">คุณ: %1$s</string>
+    <string name="chat_ai">AI: %1$s</string>
+
+    <string name="log_filter">กรอง log (คำที่ต้องมี)</string>
+    <string name="log_hide_noise">ซ่อน Touch/Health</string>
+    <string name="log_show_replies">แสดง JSON</string>
+    <string name="log_follow">เลื่อนตาม</string>
+    <string name="log_clear">ล้าง</string>
+    <string name="log_share">แชร์ log</string>
+    <string name="log_help">help</string>
+    <string name="log_history">คำสั่งที่เคยส่ง</string>
+    <string name="log_history_short">↑</string>
+    <string name="cmd_hint">คำสั่ง console เช่น status, diag</string>
+
+    <string name="set_not_read">ยังไม่ได้อ่านค่าจากบอร์ด — เชื่อมต่อแล้วกด "อ่านค่าจากบอร์ด"</string>
+    <string name="set_read_at">อ่านค่าล่าสุด %1$s • เฟิร์มแวร์ %2$s</string>
+    <string name="set_reload">อ่านค่าจากบอร์ด</string>
+    <string name="set_save_all">💾 บันทึกทั้งหมดลงบอร์ด</string>
+    <string name="set_nothing_changed">ไม่มีค่าที่เปลี่ยน</string>
+    <string name="set_sent">ส่ง %1$d ค่าแล้ว (บอร์ดบันทึกทันที)</string>
+    <string name="set_wifi">Wi-Fi (2.4 GHz)</string>
+    <string name="set_ssid">ชื่อเครือข่าย (SSID)</string>
+    <string name="set_ssid_empty">ใส่ชื่อ Wi-Fi ก่อน</string>
+    <string name="set_scan">📶 สแกนจากบอร์ด</string>
+    <string name="set_scanning">บอร์ดกำลังสแกน Wi-Fi…</string>
+    <string name="set_scan_found">พบ %1$d เครือข่าย</string>
+    <string name="set_scan_pick">เลือก Wi-Fi</string>
+    <string name="set_pass">รหัสผ่าน</string>
+    <string name="set_pass_kept">มีรหัสผ่านอยู่แล้ว (เว้นว่าง = ไม่เปลี่ยน)</string>
+    <string name="set_pass_none">ยังไม่มีรหัสผ่าน</string>
+    <string name="set_save_wifi">บันทึก Wi-Fi ลงบอร์ด</string>
+    <string name="set_key">Gemini API key</string>
+    <string name="set_key_new">API key ใหม่</string>
+    <string name="set_key_none">ยังไม่ได้ใส่ API key</string>
+    <string name="set_key_on_board">บนบอร์ด: %1$s (%2$d ตัวอักษร) • 🔒 เข้ารหัสใน%3$s • เว้นว่าง = ไม่เปลี่ยน</string>
+    <string name="set_store_sd">การ์ด SD</string>
+    <string name="set_store_flash">แฟลชบอร์ด</string>
+    <string name="set_key_test">🔍 ทดสอบ key บนบอร์ด</string>
+    <string name="set_key_testing">กำลังทดสอบ key (หลายวินาที)…</string>
+    <string name="set_save_key">บันทึก key ลงบอร์ด</string>
+    <string name="set_key_short">API key สั้นเกินไป</string>
+    <string name="set_key_space">API key มีช่องว่าง — ตรวจการคัดลอกอีกครั้ง</string>
+    <string name="set_key_help">สร้าง key ที่ aistudio.google.com/api-keys • แอปไม่เก็บ key ไว้ในมือถือ และบอร์ดไม่เคยส่ง key กลับมา</string>
+    <string name="set_assistant">ผู้ช่วย</string>
+    <string name="set_agent">ชื่อผู้ช่วย</string>
+    <string name="set_user">ชื่อผู้ใช้ (เรียกคุณว่า)</string>
+    <string name="set_profile">โปรไฟล์สำเร็จรูป</string>
+    <string name="set_custom">(กำหนดเอง)</string>
+    <string name="set_voice">เสียง</string>
+    <string name="set_personality">นิสัย</string>
+    <string name="set_gender">เพศ (ค่ะ/ครับ)</string>
+    <string name="set_eye">สีดวงตา</string>
+    <string name="set_models">โมเดล AI</string>
+    <string name="set_model">Live model หลัก</string>
+    <string name="set_thinking">ระดับการคิด</string>
+    <string name="set_textmodel">Text model (ความจำ)</string>
+    <string name="set_search">ค้นหาเว็บ (Google Search — มีโควตาแยก)</string>
+    <string name="set_search_retry">ลองเปิด Search ใหม่</string>
+    <string name="set_consolidate">จัดระเบียบความจำอัตโนมัติ</string>
+    <string name="set_device">เครื่อง (แถบเลื่อน = ส่งทันทีเมื่อปล่อยนิ้ว)</string>
+    <string name="set_volume">ความดังวิทยุ</string>
+    <string name="set_aivolume">ความดังเสียง AI</string>
+    <string name="set_brightness">ความสว่างจอ</string>
+    <string name="set_micgain">ความไวไมค์ (0-7)</string>
+    <string name="set_micgain_help">ต้องพูดใกล้บอร์ด = เพิ่มค่า • เสียงแตก/รับเสียงรอบข้างมากไป = ลดค่า</string>
+    <string name="set_wake">ปลุกด้วยเสียง</string>
+    <string name="set_sleep">พักเมื่อเงียบ (นาที, 0 = ไม่พัก)</string>
+    <string name="set_clock">นาฬิกาหลังพัก (นาที, 0 = ไม่ใช้)</string>
+    <string name="set_dimlevel">แสงจอตอนเป็นนาฬิกา</string>
+    <string name="set_rotation">หมุนจอ 180°</string>
+    <string name="set_finance">การเงิน (ข้อมูลจาก TradingView)</string>
+    <string name="set_finance_on">เปิด tool การเงิน (วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, แจ้งเตือนราคา)</string>
 </resources>

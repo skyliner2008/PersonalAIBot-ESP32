@@ -1,114 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:orientation="vertical">
 
+    <!-- the console link: status + connect -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="6dp">
 
         <TextView
-            android:layout_width="match_parent"
+            android:id="@+id/linkStatus"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="@string/subtitle"
-            android:textColor="@color/muted"
-            android:textSize="14sp" />
-
-        <TextView
-            style="@style/Section"
-            android:text="@string/section_board" />
-
-        <TextView
-            android:id="@+id/boardStatus"
-            style="@style/Card"
-            android:text="@string/board_none" />
-
-        <TextView
-            style="@style/Section"
-            android:text="@string/section_firmware" />
-
-        <TextView
-            android:id="@+id/releaseInfo"
-            style="@style/Card"
-            android:text="@string/release_checking" />
-
-        <RadioGroup
-            android:id="@+id/mode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:checkedButton="@+id/modeUpdate">
-
-            <RadioButton
-                android:id="@+id/modeUpdate"
-                style="@style/Choice"
-                android:text="@string/mode_update" />
-
-            <RadioButton
-                android:id="@+id/modeFactory"
-                style="@style/Choice"
-                android:text="@string/mode_factory" />
-
-            <RadioButton
-                android:id="@+id/modeFile"
-                style="@style/Choice"
-                android:text="@string/mode_file" />
-        </RadioGroup>
-
-        <TextView
-            android:id="@+id/fileInfo"
-            style="@style/Card"
-            android:visibility="gone" />
+            android:layout_weight="1"
+            android:background="@drawable/card"
+            android:padding="8dp"
+            android:textSize="13sp" />
 
         <Button
-            android:id="@+id/flashButton"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:layout_marginTop="20dp"
-            android:backgroundTint="@color/accent"
-            android:text="@string/flash"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp" />
-
-        <ProgressBar
-            android:id="@+id/progress"
-            style="@android:style/Widget.Material.ProgressBar.Horizontal"
-            android:layout_width="match_parent"
+            android:id="@+id/linkButton"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:max="1000"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/log"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:fontFamily="monospace"
-            android:textColor="@color/muted"
-            android:textIsSelectable="true"
-            android:textSize="12sp" />
-
-        <TextView
-            style="@style/Section"
-            android:text="@string/section_help" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:lineSpacingExtra="4dp"
-            android:text="@string/help"
-            android:textSize="13sp" />
+            android:layout_marginStart="8dp"
+            android:text="@string/link_connect"
+            android:textAllCaps="false" />
     </LinearLayout>
-</ScrollView>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <include layout="@layout/page_board" />
+
+        <include layout="@layout/page_log" />
+
+        <ScrollView
+            android:id="@+id/pageSettings"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:id="@+id/settingsBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingBottom="24dp" />
+        </ScrollView>
+
+        <include layout="@layout/page_flash" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@color/primary_dark"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tabBoard"
+            style="@style/Tab"
+            android:text="@string/tab_board" />
+
+        <TextView
+            android:id="@+id/tabLog"
+            style="@style/Tab"
+            android:text="@string/tab_log" />
+
+        <TextView
+            android:id="@+id/tabSettings"
+            style="@style/Tab"
+            android:text="@string/tab_settings" />
+
+        <TextView
+            android:id="@+id/tabFlash"
+            style="@style/Tab"
+            android:text="@string/tab_flash" />
+    </LinearLayout>
+</LinearLayout>

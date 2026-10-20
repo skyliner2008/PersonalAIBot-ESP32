@@ -22,7 +22,7 @@
 9. [โครงสร้างโปรเจกต์](#9-โครงสร้างโปรเจกต์)
 10. [Build, Test และสถานะ](#10-build-test-และสถานะ)
 11. [PC Studio app และ serial protocol](#11-pc-studio-app-และ-serial-protocol)
-12. [แอปแฟลชบนมือถือ (Android)](#12-แอปแฟลชบนมือถือ-android)
+12. [แอปมือถือ (Android): แฟลช + คอนโซล](#12-แอปมือถือ-android-แฟลช--คอนโซล)
 
 ---
 
@@ -245,7 +245,7 @@ ESP32-AI/
 ├── host_tests/     test_main.cpp, run_tests.bat
 ├── tools/          gen_thai_font.py, gen_root_ca.py
 │   ├── pc_app/     esp32_ai_studio.py (ESP32-AI Studio), run_studio.bat, requirements.txt
-│   ├── android_flasher/  แอป Android "ESP32-AI Flasher" (T078): แฟลชผ่าน USB OTG — UsbCdcPort, EspLoader (ROM protocol), FlashPlan, Releases
+│   ├── android_flasher/  แอป Android "ESP32-AI Flasher": แฟลชผ่าน USB OTG (T078) + สถานะ/log/ตั้งค่า/แชท (T079) — UsbCdcPort, EspLoader, FlashPlan, BoardLink, Console
 │   └── build_flasher_apk.py  → dist/ESP32-AI-Flasher.apk (publish_release.py แนบให้ release)
 ├── _backup/        โค้ดและเอกสารก่อนอัปเกรด v2 / v3
 └── wiki/           Obsidian vault 00–10 + สำเนาเอกสารนี้
@@ -296,7 +296,7 @@ host_tests\run_tests.bat                  # unit tests บน PC (MSVC)
 
 ---
 
-## 12. แอปแฟลชบนมือถือ (Android)
+## 12. แอปมือถือ (Android): แฟลช + คอนโซล
 
 `tools/android_flasher/` (Kotlin, Android 8+, ไม่มีไลบรารีภายนอก) แฟลชบอร์ดผ่านสาย USB-C จากมือถือ (USB OTG) — ไม่มี server
 - USB: พอร์ตของ S3 (USB-Serial-JTAG 303A:1001) เป็น CDC-ACM → Android USB host API ตรงๆ (bulk + `SET_CONTROL_LINE_STATE`)
@@ -304,5 +304,8 @@ host_tests\run_tests.bat                  # unit tests บน PC (MSVC)
   `FLASH_DEFL_*` บล็อก 1 KB (zlib) → `SPI_FLASH_MD5` → hard reset
 - อัปเดต = `-app.bin` ที่ 0x10000 + otadata `boot_app0` (NVS / LittleFS ไม่ถูกแตะ) · ติดตั้งใหม่ = `-factory.bin` ที่ 0x0 (ล้าง NVS)
 - ไฟล์จาก GitHub Releases ล่าสุด: sha256 ต้องตรง, `-app.bin.sig` ต้องผ่านเมื่อ build แอปพร้อมกุญแจใน `src/app/OtaPublicKey.h`
+- คอนโซลบอร์ด (T079) — protocol เดียวกับ PC Studio (หัวข้อ 11): แท็บ บอร์ด (`diag` ทุก 3 วิ, mute/sleep/wake/retry/new/reboot, `ask`),
+  Log (สี/กรอง/แชร์/คำสั่ง), ตั้งค่า (`config`/`options`/`wifiscan`/`apitest` → `set` เฉพาะค่าที่เปลี่ยน) · เปิดพอร์ตโดยไม่แตะ DTR/RTS (ไม่รีเซ็ต)
+  · พอร์ตเดียว: console ปิดตัวก่อนแฟลช แล้วต่อใหม่เมื่อบอร์ดรีสตาร์ต
 
 รายละเอียด: `wiki/17-Mobile-Flasher.md`

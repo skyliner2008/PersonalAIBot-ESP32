@@ -85,7 +85,10 @@ Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIB
 `python tools/build_flasher_apk.py`), plug the board into the phone with a USB-C cable (USB OTG) and tap **แฟลชลงบอร์ด**.
 It downloads the latest release itself and checks its sha256 (and the release signature). **อัปเดต** writes the `-app.bin` and keeps
 settings and memory; **ติดตั้งใหม่ทั้งหมด** writes the factory image; a `.bin` on the phone works too. Android 8+ only — iOS does not let apps
-use USB serial. See [wiki 17](wiki/17-Mobile-Flasher.md).
+use USB serial. The same app is also a pocket **ESP32-AI Studio** over that cable: live status with quick buttons
+(mic / sleep / wake / reconnect / new conversation / reboot), text chat with the assistant, the live log (filter, share,
+console commands) and the settings (Wi-Fi scan, API key + test, profile, voice, models, volume, brightness …).
+See [wiki 17](wiki/17-Mobile-Flasher.md).
 
 > The factory image starts at `0x0`, so it also **clears saved settings** on that board (a clean install).
 >
@@ -242,7 +245,7 @@ host_tests\run_tests.bat
 53 suites · 2,224 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
 
-The phone flasher has its own JVM tests (24, against a simulated ESP32-S3 ROM bootloader with a virtual 16 MB flash):
+The phone app has its own JVM tests (41: the console parser and settings, and the flasher against a simulated ESP32-S3 ROM bootloader with a virtual 16 MB flash):
 `cd tools/android_flasher && ./gradlew testDebugUnitTest`.
 
 ## 📁 Project layout
@@ -259,7 +262,7 @@ src/display    LovyanGFX config, touch driver, Thai fonts 26/20 px
 src/system     I2C bus, storage (SD / LittleFS) · src/util  UTF-8, calculator, units, time, JSON helpers
 src/vehicle    vehicle dash: readings, dash model, simulator, ELM327, Honda K-Line, UART / BLE links (+ src/ui/DashScreen)
 tools/pc_app   ESP32-AI Studio (Python + Tkinter + pyserial)
-tools/android_flasher  ESP32-AI Flasher: Android app that flashes the board over USB OTG (Kotlin, ROM protocol + USB CDC, no libraries)
+tools/android_flasher  ESP32-AI Flasher: Android app over USB OTG — flasher (ROM protocol) + Studio-like status, log, settings, chat (Kotlin, no libraries)
 tools/         gen_thai_font.py, gen_root_ca.py
 host_tests/    PC unit tests
 wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, memory, troubleshooting log
@@ -278,7 +281,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 | [12 Internet radio](wiki/12-Internet-Radio.md) | Streaming, mixing/ducking, voice wake over music |
 | [13 Firmware update (OTA)](wiki/13-OTA-Update.md) | Over Wi-Fi from GitHub Releases, verified, automatic rollback |
 | [16 Vehicle dash](wiki/16-Vehicle-Dash.md) | OBD-II (ELM327 BLE / wired), Honda K-Line, simulator; wiring, layouts, the `vehicle` tool |
-| [17 Phone flasher](wiki/17-Mobile-Flasher.md) | Android app: flash over a USB-C cable from the phone, update keeping settings, verified downloads |
+| [17 Phone app](wiki/17-Mobile-Flasher.md) | Android app over a USB-C cable: flash (update keeping settings, verified downloads), status, log, settings, chat |
 
 ## 🔒 Security & privacy
 

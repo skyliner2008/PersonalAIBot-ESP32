@@ -32,6 +32,8 @@ python tools\pc_app\esp32_ai_studio.py
 |---|---|---|
 | ![[images/pc-studio-settings.png]] | ![[images/pc-studio-screen.png]] | ![[images/pc-studio-status.png]] |
 
+> **บนมือถือ:** แอป Android "ESP32-AI Flasher" (T079) มีแท็บ บอร์ด / Log / ตั้งค่า / แฟลช ที่ใช้ protocol ด้านล่างชุดเดียวกัน — [[17-Mobile-Flasher]]
+
 ## แท็บต่างๆ
 
 | แท็บ | ทำอะไรได้ |

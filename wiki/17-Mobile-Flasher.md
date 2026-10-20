@@ -4,12 +4,26 @@ created: 2026-10-20
 status: active
 ---
 
-# 📱 แอปมือถือแฟลชเฟิร์มแวร์ — ESP32-AI Flasher (Android)
+# 📱 แอปมือถือ — ESP32-AI Flasher (Android): แฟลช + คอนโซลบอร์ดแบบ Studio
 
-> **Related:** [[00-Home-Dashboard]] | [[02-Installation-and-Setup]] | [[13-OTA-Update]] | [[10-PC-Studio-App]] | [[07-Troubleshooting-Log#T078 แอปมือถือ Android แฟลชเฟิร์มแวร์ผ่านสาย USB (OTG)]]
+> **Related:** [[00-Home-Dashboard]] | [[02-Installation-and-Setup]] | [[13-OTA-Update]] | [[10-PC-Studio-App]] | [[07-Troubleshooting-Log#T078 แอปมือถือ Android แฟลชเฟิร์มแวร์ผ่านสาย USB (OTG)]] | [[07-Troubleshooting-Log#T079 แอปมือถือ — สถานะ, log, ตั้งค่า, แชท แบบ ESP32-AI Studio]]
 
 แฟลช PersonalAIBot-ESP32 ลงบอร์ด ES3C28P จากมือถือ Android โดยเสียบสาย USB-C จากมือถือเข้าพอร์ต Type-C ของบอร์ด —
-ไม่ต้องมีคอมพิวเตอร์ ไม่ต้องลงไดรเวอร์ ไม่ต้อง root
+ไม่ต้องมีคอมพิวเตอร์ ไม่ต้องลงไดรเวอร์ ไม่ต้อง root — และ (T079) ใช้เป็น **ESP32-AI Studio ฉบับพกพา**: ดูสถานะ, log สด, ตั้งค่า, แชท
+ผ่านสายเส้นเดียวกัน
+
+| แท็บ | ทำอะไรได้ (คำสั่ง console เดียวกับ Studio — [[10-PC-Studio-App#Protocol (serial console)]]) |
+|---|---|
+| 🤖 **บอร์ด** | การ์ดสถานะจาก `diag` ทุก 3 วิ (สถานะ, เซสชัน AI, Wi-Fi/IP, โมเดล, Search, ไมค์/พัก, วิทยุ, โทเคน/นาที, RAM, เวลาเปิด) — แตะการ์ด = อัปเดตทันที • ปุ่มด่วน 🎤 ไมค์ (`mute`) / 💤 พัก / ☀ ปลุก / ↻ ต่อ AI ใหม่ (`retry`) / 🆕 บทสนทนาใหม่ (`new`) / ⟲ รีบูต (ถามก่อน) • **แชท**: พิมพ์ถึงผู้ช่วย (`ask`) — คำตอบมาจาก log `[Chat] ai:` และพูดออกลำโพงบอร์ด |
+| 📜 **Log** | log สดสีตามชนิด (กติกาเดียวกับ Studio: error แดง, fallback ส้ม, Gemini ฟ้าเขียว, แชท, Wi-Fi ม่วง ...) • กรองด้วยคำ • ซ่อน Touch/Health • แสดง/ซ่อนคำตอบ JSON • เลื่อนตาม • ล้าง • **แชร์ log** (ส่งเข้า LINE/อีเมล) — กดค้างบรรทัด = แชร์บรรทัดเดียว • ช่องพิมพ์คำสั่ง console + ↑ ประวัติคำสั่ง + help • เก็บล่าสุด 3,000 บรรทัด |
+| ⚙️ **ตั้งค่า** | Wi-Fi (📶 สแกนจากบอร์ด → เลือก + รหัสผ่าน) • Gemini API key (บันทึก / 🔍 ทดสอบบนบอร์ด → ผลเป็นภาษาไทย) • ผู้ช่วย: ชื่อ, ชื่อผู้ใช้, โปรไฟล์สำเร็จรูป, เสียง, นิสัย, เพศ, สีดวงตา • โมเดล Live / ระดับการคิด / Text model, Google Search (+ ลองเปิดใหม่), จัดความจำ • ความดังวิทยุ / เสียง AI / ความสว่าง / ความไวไมค์ (ส่งทันทีเมื่อปล่อยนิ้ว), ปลุกด้วยเสียง, พักเมื่อเงียบ, นาฬิกาหลังพัก, แสงจอตอนนาฬิกา, หมุนจอ • การเงิน (TradingView) • **บันทึกทั้งหมด** = ส่งเฉพาะค่าที่เปลี่ยน (โปรไฟล์ก่อน แบบ Studio) แล้วอ่านค่ากลับ |
+| ⬇️ **แฟลช** | ของเดิม (T078) — ระหว่างแฟลชแท็บอื่นหยุดเชื่อมต่อชั่วคราว แล้วต่อใหม่เองเมื่อบอร์ดรีสตาร์ต |
+
+- **เชื่อมต่ออัตโนมัติ** เมื่อเสียบบอร์ดและเคยอนุญาต USB แล้ว (แถบบนสุด: สถานะ • fw • สถานะผู้ช่วย • Wi-Fi) · ปุ่ม "เชื่อมต่อ" ขอสิทธิ์ครั้งแรก
+- **ไม่รีเซ็ตบอร์ด** ตอนเชื่อมต่อ: console ไม่แตะ DTR/RTS เลย (แบบเดียวกับ Studio ที่ตั้ง DTR/RTS = off) — มี test ยืนยัน
+- **ความลับ:** รหัส Wi-Fi / API key เขียนอย่างเดียว — บอร์ดไม่เคยส่งกลับ (มีแค่ `keyHint`, `passSet`), log ในแอปแสดงคำสั่งเป็น `set key ***` / `set pass ***`,
+  `key=` ใน URL ถูกซ่อน, แอปไม่บันทึกค่าเหล่านี้ลงมือถือ
+- ยังไม่มี (มีใน Studio): จอเสมือน, รัน tool, อัดเสียงไมค์, จัดการวิทยุ, อัปเดต OTA ผ่าน Wi-Fi, ส่งออก/นำเข้าไฟล์ตั้งค่า
 
 | | |
 |---|---|
@@ -45,9 +59,14 @@ status: active
 
 ## ทำงานอย่างไร (สำหรับแก้โค้ด)
 ```
-MainActivity ── ดาวน์โหลด + ตรวจ (Net, Releases) ── FlashJob ── EspLoader ── SerialPort ── UsbCdcPort (Android USB host)
-                                                  └ FlashPlan (ตำแหน่ง/ตรวจไฟล์)        └ Slip/Esp (โปรโตคอล)
+MainActivity (แท็บ + สิทธิ์ USB + เจ้าของพอร์ต)
+ ├ FlashPage ── ดาวน์โหลด + ตรวจ (Net, Releases) ── FlashJob ── EspLoader ── SerialPort ── UsbCdcPort (Android USB host)
+ │                                              └ FlashPlan (ตำแหน่ง/ตรวจไฟล์)       └ Slip/Esp (โปรโตคอล ROM)
+ └ BoardLink (thread อ่าน) ── LineStream (แยกบรรทัด, ข้ามไบนารี SCREENSHOT/RECORD) ── Console (TAG, สี, ซ่อนความลับ)
+      ├ BoardPage (diag + ปุ่มด่วน + แชท)   ├ LogPage   └ SettingsPage ── BoardOptions / SettingsForm (ค่าที่ต้อง `set`)
 ```
+- พอร์ต USB มีเจ้าของได้ทีละคน: ก่อนแฟลช `suspendLink()` ปิด console (รอ thread อ่านจบ) แล้วค่อยเปิดพอร์ตให้ FlashJob ·
+  แฟลชเสร็จ `resumeLink()` ลองต่อใหม่ทุกวินาที 2–10 วิ (บอร์ดรีสตาร์ตแล้ว enumerate ใหม่) · สายหลุด = ลองต่อใหม่ 8 ครั้ง ทุก 1.5 วิ
 - **ไม่ใช้ไดรเวอร์/ไลบรารีภายนอก:** พอร์ต USB ของ S3 (USB-Serial-JTAG) เป็น CDC-ACM → claim interface comm + data แล้วใช้ bulk endpoint ตรงๆ
   · DTR/RTS = `SET_CONTROL_LINE_STATE` (0x22)
 - **โปรโตคอล ROM ของ ESP32-S3** (เขียนจากเอกสาร serial protocol ของ Espressif, เทียบค่ากับ esptool 5.6): SLIP, `SYNC` → `GET_SECURITY_INFO` →
@@ -71,7 +90,9 @@ cd tools/android_flasher && ./gradlew testDebugUnitTest lintDebug
 ```
 - ต้องมี JDK 17+ และ Android SDK (ลง Android Studio ได้ครบ) — หา SDK จาก `ANDROID_HOME` / `local.properties` / `%LOCALAPPDATA%\Android\Sdk`
 - keystore อยู่**นอก repo** เหมือนกุญแจ OTA (สร้างเมื่อผู้ใช้สั่งเท่านั้น) · APK รุ่นใหม่ลงทับได้เฉพาะเมื่อเซ็นด้วยกุญแจเดิม — หายแล้วต้องถอนแอปก่อนลงใหม่
-- **unit tests 24 ข้อ (JVM):** `FakeRom` จำลองบอร์ดทั้งตัว — แอปเดิมที่ไม่สนใจโปรโตคอลจนกว่าจะได้ลำดับ DTR/RTS, ROM loader ที่ตรวจ checksum/ลำดับบล็อก/ขนาด
+- **unit tests 41 ข้อ (JVM)** — console (T079): แยก TAG/สี/แชท, ซ่อน `set key`/`set pass`/`key=`, บรรทัดถูกตัดกลางตัวอักษรไทย, ข้ามภาพ/เสียงไบนารี
+  และ resync เมื่อมีข้อความแทรก, ค่าตั้งที่ต้องส่ง (เปลี่ยนเฉพาะที่แก้, โปรไฟล์ก่อน, ค่าเป็นบรรทัดเดียว), การ์ดสถานะ/ผลทดสอบ key ภาษาไทย,
+  `BoardLink` อ่าน/เขียนจริงผ่าน thread และ**ไม่แตะ DTR/RTS** · แฟลช (T078): `FakeRom` จำลองบอร์ดทั้งตัว — แอปเดิมที่ไม่สนใจโปรโตคอลจนกว่าจะได้ลำดับ DTR/RTS, ROM loader ที่ตรวจ checksum/ลำดับบล็อก/ขนาด
   พารามิเตอร์, แตก zlib ลง flash เสมือน 16 MB, ตอบ MD5 จากเนื้อจริง → ทดสอบว่าไฟล์ลงครบทุกไบต์, อัปเดตไม่แตะ NVS/LittleFS, บล็อกถูกปฏิเสธแล้วส่งซ้ำ,
   บอร์ดหลุดจาก USB ตอนรีเซ็ต, เข้าโหมดแฟลชด้วยมือ, บอร์ดไม่ยอมเข้าโหมด (ไม่แกล้งบอกว่าสำเร็จ), ชิปอื่นถูกปฏิเสธก่อนลบ, ลายเซ็น OTA
   · `REAL_RELEASE_DIR=<โฟลเดอร์ที่มี app.bin + factory.bin>` ตรวจกับไฟล์ release จริงด้วย (v4.2.0 ผ่าน: otadata ของแอปตรงกับ boot_app0 ในไฟล์ factory ทุกไบต์)

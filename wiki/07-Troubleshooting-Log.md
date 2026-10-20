@@ -16,6 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T079 | [[#T079 แอปมือถือ — สถานะ, log, ตั้งค่า, แชท แบบ ESP32-AI Studio]] | Android/Console | 🔄 unit tests 41 ข้อ + lint + build ผ่าน; ยังไม่ได้ลองกับบอร์ดจริง |
 | T078 | [[#T078 แอปมือถือ Android แฟลชเฟิร์มแวร์ผ่านสาย USB (OTG)]] | Tools/Flash/Android | ✅ แฟลช "อัปเดต" สำเร็จบนบอร์ดจริงจากมือถือ Android (MD5 ตรง); โหมด factory ยังไม่ได้ลอง |
 | T077 | [[#T077 หน้าปัดรถ 3 รูปแบบ — วงกลมดิจิทัล สปอร์ต, เข็มวงกลม คลาสสิก, รถแข่ง]] | Vehicle/UI | ✅ host tests + build + ภาพ preview ทุกแบบ — รอดูบนบอร์ด |
 | T076 | [[#T076 หน้าปัดรถ — ฟีเจอร์ใหม่ เขียนเองทั้งหมด (MIT) จากแนวคิดของ redline-gauge]] | Vehicle/UI/BLE | 🔄 host tests + build + ภาพ preview ผ่าน — **รอทดสอบบนบอร์ด/กับรถจริง** |
@@ -128,6 +129,20 @@ This page documents common issues encountered during development and their solut
 **ยืนยัน 2026-10-15:** ผู้ใช้เทียบบอร์ดกับ PC app — ตอน `invert = 0` บอร์ดเป็น **พื้นขาว + ตาน้ำเงิน** ส่วนภาพ framebuffer ใน app เป็น
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
+
+## T079: แอปมือถือ — สถานะ, log, ตั้งค่า, แชท แบบ ESP32-AI Studio
+
+**วันที่:** 2026-10-20 · **ผู้ใช้:** "ต้องการเพิ่มฟีเจอร์ให้ app มือถือ คล้ายกับ esp32 ai studio ที่สามารถตั้งค่าต่างๆ แสดง log การทำงานของบอร์ดได้"
+- **ไม่แก้เฟิร์มแวร์:** ใช้ serial console ชุดเดียวกับ Studio (`config` / `options` / `diag` / `wifiscan` / `apitest` / `set` / `ask` / `mute` ...) — บอร์ดที่เป็น
+  v4.2.0 ใช้ได้เลย
+- **ส่วนที่ทำ:** `Console.kt` (`Console` แยก TAG/สี/แชท/ซ่อนความลับ, `LineStream` แยกบรรทัด + ข้ามไบนารี `SCREENSHOT`/`RECORD`/`RECPAIRS` + resync ที่ `\nEND\n`,
+  `BoardLink` thread อ่าน + เขียนทีละบรรทัด), `BoardSettings.kt` (`BoardOptions`, `SettingsForm.commands` = กติกา "บันทึกทั้งหมด" ของ Studio),
+  `BoardPage` / `LogPage` / `SettingsPage`, ย้ายตัวแฟลชไป `FlashPage` · `MainActivity` เป็นเจ้าของพอร์ต: แท็บ, สิทธิ์ USB, ต่ออัตโนมัติ, ปิด console ก่อนแฟลช
+- **ข้อควรระวังที่ออกแบบไว้:** เปิด console ห้ามส่ง `SET_CONTROL_LINE_STATE` (ลำดับ DTR/RTS ของ USB-Serial-JTAG รีเซ็ตชิปได้ — Studio ก็ตั้ง DTR/RTS = off)
+  · คำสั่งต้องเป็นบรรทัดเดียว (ชื่อผู้ช่วยที่มีขึ้นบรรทัดใหม่จะกลายเป็น 2 คำสั่ง) · log บน UI รวมการวาดใหม่ทุก 80 ms (log ไหลเร็วตอนบูต)
+- **ยังไม่มีบนมือถือ:** จอเสมือน, รัน tool, อัดเสียงไมค์, จัดการวิทยุ, OTA, ส่งออก/นำเข้าไฟล์ตั้งค่า
+**ทดสอบ:** unit tests 41 ข้อ ✓ (เพิ่ม 17: console 4, LineStream 5, ตั้งค่า/การ์ดสถานะ/ผล apitest 7, BoardLink 1) · lint 0 errors · ภาพจาก emulator (ไม่มีบอร์ด)
+· **ยังไม่ได้ลองกับบอร์ดจริง**
 
 ## T078: แอปมือถือ Android แฟลชเฟิร์มแวร์ผ่านสาย USB (OTG)
 
