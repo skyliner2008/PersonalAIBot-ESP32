@@ -63,9 +63,12 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Status every 3 s on the board tab; every 10 s elsewhere so the bar on top does not go stale. */
+    private var diagTicks = 0
     private val diagTick = object : Runnable {
         override fun run() {
-            if (link != null && tab == TAB_BOARD) send("diag", echo = false)
+            diagTicks++
+            if (link != null && (tab == TAB_BOARD || (tab != TAB_FLASH && diagTicks % 3 == 0))) send("diag", echo = false)
             main.postDelayed(this, DIAG_EVERY_MS)
         }
     }
