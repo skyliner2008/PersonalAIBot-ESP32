@@ -16,7 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
-| T078 | [[#T078 แอปมือถือ Android แฟลชเฟิร์มแวร์ผ่านสาย USB (OTG)]] | Tools/Flash/Android | 🔄 unit tests 24 ข้อ (บอร์ดจำลอง) + lint + build APK ผ่าน; ยังไม่ได้ลองกับบอร์ด/มือถือจริง |
+| T078 | [[#T078 แอปมือถือ Android แฟลชเฟิร์มแวร์ผ่านสาย USB (OTG)]] | Tools/Flash/Android | ✅ แฟลช "อัปเดต" สำเร็จบนบอร์ดจริงจากมือถือ Android (MD5 ตรง); โหมด factory ยังไม่ได้ลอง |
 | T077 | [[#T077 หน้าปัดรถ 3 รูปแบบ — วงกลมดิจิทัล สปอร์ต, เข็มวงกลม คลาสสิก, รถแข่ง]] | Vehicle/UI | ✅ host tests + build + ภาพ preview ทุกแบบ — รอดูบนบอร์ด |
 | T076 | [[#T076 หน้าปัดรถ — ฟีเจอร์ใหม่ เขียนเองทั้งหมด (MIT) จากแนวคิดของ redline-gauge]] | Vehicle/UI/BLE | 🔄 host tests + build + ภาพ preview ผ่าน — **รอทดสอบบนบอร์ด/กับรถจริง** |
 | T075 | [[#T075 สร้างกุญแจเซ็นอัปเดตจาก ESP32-AI Studio ด้วยปุ่มเดียว]] | Studio/OTA | ✅ Done — ทดสอบทุกปุ่มบน Xvfb (Linux); รอลองบน Windows |
@@ -153,7 +153,9 @@ PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ใ�
 - **ลองบน Android emulator (API 30, ไม่มี KVM):** หน้าจอภาษาไทย, สถานะ "ยังไม่พบบอร์ด", กล่องยืนยัน factory ทำงาน · พบข้อความ error ภาษา Java ดิบ
   (`CertPathValidatorException ...`) → `Net.friendly()` แปลงเป็นภาษาคน (ไม่มีเน็ต / เน็ตช้า / Wi-Fi ดักการเชื่อมต่อ)
 **ทดสอบ:** unit tests 24 ข้อ (JVM) ✓ รวม `FakeRom` จำลอง ROM ทั้งตัว + ไฟล์ release จริง · `lintDebug` 0 errors · APK release เซ็น v2 ตรวจด้วย apksigner ✓
-· **ยังไม่ได้ลองกับบอร์ดจริงและมือถือจริง**
+
+**ทดสอบบนบอร์ดจริง 2026-10-20 (มือถือ Android จริง, debug APK):** โหมด "อัปเดต" → พบบอร์ด 303A:1001, ดึง v4.2.0 จาก GitHub, sha256 ✓, รีเซ็ตเข้าโหมดแฟลชเองได้ (ไม่ต้องกด BOOT), เขียน otadata + app 3,525,840 ไบต์, MD5 ตรง, รีสตาร์ต — ทั้งหมดไม่ถึง 4 นาทีรวมดาวน์โหลด
+· ยังไม่ได้ลอง: โหมด "ติดตั้งใหม่ทั้งหมด" (factory 11 MB) และไฟล์ .bin ในเครื่อง
 
 ## T077: หน้าปัดรถ 3 รูปแบบ — วงกลมดิจิทัล สปอร์ต, เข็มวงกลม คลาสสิก, รถแข่ง
 
