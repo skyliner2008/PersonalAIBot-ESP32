@@ -19,6 +19,8 @@ class BoardPage(private val a: MainActivity, root: View) {
     private val chatList: ListView = root.findViewById(R.id.chatList)
     private val chatInput: EditText = root.findViewById(R.id.chatInput)
     private val chat = ArrayList<Pair<Boolean, String>>()
+    private val roomy = listOf(info, root.findViewById<View>(R.id.quickRow1), root.findViewById(R.id.quickRow2),
+        root.findViewById(R.id.chatTitle))
 
     private val adapter = object : BaseAdapter() {
         override fun getCount() = chat.size
@@ -54,6 +56,9 @@ class BoardPage(private val a: MainActivity, root: View) {
             if (id == EditorInfo.IME_ACTION_SEND || ev?.keyCode == KeyEvent.KEYCODE_ENTER) { ask(); true } else false
         }
     }
+
+    /** While typing (keyboard up), only the chat and its input: a phone screen has no room for the rest. */
+    fun compact(on: Boolean) = roomy.forEach { it.visibility = if (on) View.GONE else View.VISIBLE }
 
     private fun ask() {
         val t = chatInput.text.toString().trim()

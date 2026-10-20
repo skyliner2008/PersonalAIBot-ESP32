@@ -12,7 +12,7 @@
         android:lineSpacingExtra="2dp"
         android:text="@string/board_info_none" />
 
-    <LinearLayout style="@style/ButtonRow">
+    <LinearLayout android:id="@+id/quickRow1" style="@style/ButtonRow">
 
         <Button
             android:id="@+id/btnMute"
@@ -30,7 +30,7 @@
             android:text="@string/q_wake" />
     </LinearLayout>
 
-    <LinearLayout style="@style/ButtonRow">
+    <LinearLayout android:id="@+id/quickRow2" style="@style/ButtonRow">
 
         <Button
             android:id="@+id/btnRetry"
@@ -49,6 +49,7 @@
     </LinearLayout>
 
     <TextView
+        android:id="@+id/chatTitle"
         style="@style/Section"
         android:layout_marginTop="12dp"
         android:text="@string/chat_title" />

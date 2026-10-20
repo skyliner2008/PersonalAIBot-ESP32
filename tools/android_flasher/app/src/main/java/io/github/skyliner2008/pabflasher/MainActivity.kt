@@ -15,6 +15,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.View
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.TextView
 import org.json.JSONObject
@@ -84,6 +85,7 @@ class MainActivity : Activity() {
         logPage = LogPage(this, pages[TAB_LOG])
         settingsPage = SettingsPage(this, pages[TAB_SETTINGS])
         flashPage = FlashPage(this, pages[TAB_FLASH])
+        fitSystemBars()
 
         val filter = IntentFilter().apply {
             addAction(ACTION_USB_PERMISSION)
@@ -135,6 +137,31 @@ class MainActivity : Activity() {
         if (flashPage.busy) { flashPage.warnBusy(); return }
         @Suppress("DEPRECATION")
         super.onBackPressed()
+    }
+
+    /**
+     * Android 15 draws apps under the status and navigation bars (edge to edge, enforced for targetSdk 35): the tab
+     * bar ended up under the phone's back/home buttons and the title bar over the top of the page. Our own title bar
+     * pads itself below the status bar (its colour shows behind it), the rest by the navigation bar, the cutout and
+     * the keyboard - from Android 11 on, the same way on every phone.
+     */
+    private fun fitSystemBars() {
+        if (Build.VERSION.SDK_INT < 30) return  // older: the window already stops at the bars and the keyboard
+        window.setDecorFitsSystemWindows(false)
+        val title = findViewById<View>(R.id.appTitle)
+        val tabBar = findViewById<View>(R.id.tabBar)
+        val titlePad = title.paddingTop
+        findViewById<View>(R.id.root).setOnApplyWindowInsetsListener { v, insets ->
+            val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or
+                WindowInsets.Type.ime())
+            v.setPadding(bars.left, 0, bars.right, bars.bottom)
+            title.setPadding(title.paddingLeft, titlePad + bars.top, title.paddingRight, title.paddingBottom)
+            // keyboard up: the tabs and the status card make room for what is being typed
+            val typing = insets.isVisible(WindowInsets.Type.ime())
+            tabBar.visibility = if (typing) View.GONE else View.VISIBLE
+            boardPage.compact(typing)
+            insets
+        }
     }
 
     private fun showTab(i: Int) {
