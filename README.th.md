@@ -280,6 +280,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 | [12 วิทยุออนไลน์](wiki/12-Internet-Radio.md) | สตรีม, ผสม/ลดเสียง, ปลุกด้วยเสียงขณะเปิดเพลง |
 | [13 อัปเดตเฟิร์มแวร์ (OTA)](wiki/13-OTA-Update.md) | ผ่าน Wi-Fi จาก GitHub Releases, ตรวจไฟล์, กลับเวอร์ชันเดิมอัตโนมัติ |
 | [16 หน้าปัดรถ](wiki/16-Vehicle-Dash.md) | OBD-II (ELM327 BLE / สาย), Honda K-Line, ตัวจำลอง; การต่อสาย, layout, tool `vehicle` |
+| [18 แผนเชื่อมมือถือ](wiki/18-Phone-Link-Navigation-Plan.md) | แผน: GPS มือถือบนหน้าปัด, นำทางจาก Google Maps บนจอบอร์ด, สั่งมือถือด้วยเสียง (USB / Wi-Fi / BLE) — ความเป็นไปได้และเฟส |
 | [17 แอปมือถือ](wiki/17-Mobile-Flasher.md) | แอป Android ผ่านสาย USB-C: แฟลช (อัปเดตโดยเก็บการตั้งค่า, ตรวจไฟล์), สถานะ, log, ตั้งค่า, แชท |
 
 ## 🔒 ความปลอดภัย & ความเป็นส่วนตัว

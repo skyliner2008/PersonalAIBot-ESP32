@@ -281,6 +281,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 | [12 Internet radio](wiki/12-Internet-Radio.md) | Streaming, mixing/ducking, voice wake over music |
 | [13 Firmware update (OTA)](wiki/13-OTA-Update.md) | Over Wi-Fi from GitHub Releases, verified, automatic rollback |
 | [16 Vehicle dash](wiki/16-Vehicle-Dash.md) | OBD-II (ELM327 BLE / wired), Honda K-Line, simulator; wiring, layouts, the `vehicle` tool |
+| [18 Phone link plan](wiki/18-Phone-Link-Navigation-Plan.md) | Planned: phone GPS on the dash, Google Maps turn-by-turn on the board, voice commands to the phone (USB / Wi-Fi / BLE) — feasibility and phases |
 | [17 Phone app](wiki/17-Mobile-Flasher.md) | Android app over a USB-C cable: flash (update keeping settings, verified downloads), status, log, settings, chat |
 
 ## 🔒 Security & privacy
