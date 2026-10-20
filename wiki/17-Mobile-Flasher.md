@@ -20,7 +20,7 @@ status: active
 | 🧭 **นำทาง** (T081) | ส่ง GPS + จุดเลี้ยวจาก Google Maps ให้บอร์ด (Wi-Fi / USB), บอร์ดสั่งเปิด/หยุด Maps ได้ · สิทธิ์ที่ต้องใช้ + ปุ่มไปหน้าตั้งค่า · ทดสอบ Maps · ข้อความดิบจาก Maps → [[18-Phone-Link-Navigation-Plan]] |
 | ⬇️ **แฟลช** | ของเดิม (T078) — ระหว่างแฟลชแท็บอื่นหยุดเชื่อมต่อชั่วคราว แล้วต่อใหม่เองเมื่อบอร์ดรีสตาร์ต |
 
-![[images/mobile_board.png]] ![[images/mobile_log.png]] ![[images/mobile_settings.png]] ![[images/mobile_settings_device.png]]
+![[images/mobile_board.png]] ![[images/mobile_log.png]] ![[images/mobile_settings.png]] ![[images/mobile_settings_device.png]] ![[images/mobile_nav.png]]
 
 *ภาพจาก Android emulator ต่อกับ "บอร์ดจำลอง" ที่ตอบคำสั่ง console ด้วยข้อมูลตัวอย่าง (ใช้ถ่ายภาพเท่านั้น ไม่อยู่ในแอป) — ภาพ Log: เลื่อนความดังวิทยุ
 → ส่ง `set volume 68` ทันที แล้วปิด Search + กดบันทึกทั้งหมด → ส่งแค่ `set search 0`*

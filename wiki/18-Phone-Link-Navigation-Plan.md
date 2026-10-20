@@ -29,6 +29,9 @@ status: active
 ![[images/nav_right.png]] ![[images/nav_roundabout.png]] ![[images/dash_race_phone_nav.png]] ![[images/nav_icons.png]]
 *ภาพจาก `tools/dash_preview` (โค้ดจอจริงของบอร์ด รันบน PC) — ลูกศรวาดด้วยโค้ด, กลับรถไปทางขวา (ไทยขับชิดซ้าย)*
 
+![[images/mobile_nav.png]]
+*แท็บ "นำทาง" ของแอปมือถือ (Android emulator, ยังไม่จับคู่ / ยังไม่เริ่มส่ง)*
+
 ## ส่วนที่ทำ (T081)
 | ฝั่ง | ไฟล์ | ทำอะไร |
 |---|---|---|
