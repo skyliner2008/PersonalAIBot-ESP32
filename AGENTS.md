@@ -16,7 +16,7 @@ plus a Python/Tkinter PC companion app. Gemini Live for voice, on-device memory,
   `AgentRoutines.cpp`, `AgentDevice.cpp`, shared helpers in `AgentInternal.h`); tools in `AgentTools.*`, `WebTools*.*`
 - `src/ai/` Gemini Live client (own WebSocket frame reader on ESP-IDF transport), text model, model fallback
 - `src/app/` settings (NVS / SD) and `SecretBox` (AES-256-GCM sealing of Wi-Fi password + API key)
-- `src/vehicle/` + `src/ui/DashScreen.*` vehicle dash (simulator, ELM327 over BLE / UART, Honda K-Line; wiki 16).
+- `src/vehicle/` + `src/ui/DashScreen.*` vehicle dash (simulator, ELM327 over UART, BLE only with -DVEHICLE_BLE=1 (22 KB IRAM, T078), Honda K-Line; wiki 16).
   Written from scratch under MIT: do not copy code or art from moomdate/redline-gauge (PolyForm Noncommercial)
 - `wiki/` Obsidian knowledge base in Thai — start at `wiki/00-Home-Dashboard.md`
 

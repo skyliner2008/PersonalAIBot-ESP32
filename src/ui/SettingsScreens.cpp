@@ -199,6 +199,7 @@ void openVehicleSources() {
                                             "ELM327 ต่อสาย (GPIO 43/44)", "บอร์ดอื่นส่ง rpm=... (GPIO 43/44)"};
         for (uint8_t i = 0; i < (uint8_t)vehicle::SourceId::Count; i++) {
             const vehicle::SourceId id = (vehicle::SourceId)i;
+            if (id == vehicle::SourceId::ObdBle && !vehicle::kBleBuilt) continue;  // not in this firmware
             ListScreen::Item& it = l.add(vehicle::sourceNameTh(id), kHint[i], [id]() {
                 const char* err = gVehicle.setSource(id);
                 gUi.pop();

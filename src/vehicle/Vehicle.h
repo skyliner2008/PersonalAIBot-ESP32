@@ -7,7 +7,7 @@
  * OBD-II ELM327 over Bluetooth LE or a UART wire, text lines from another board. The UART ones use the
  * UART header (GPIO 43 TX, 44 RX), so not together with a device on those pins (agent/devices.json).
  *
- * Bluetooth: Arduino frees the BLE controller memory (~36 KB internal RAM) at boot unless something says
+ * Bluetooth (only built with -DVEHICLE_BLE=1, see VehicleData.h / T078): Arduino frees the BLE controller memory (~36 KB internal RAM) at boot unless something says
  * BLE is in use. bleInUse() (here) says so only when the saved source is OBD over BLE - picking that
  * source therefore takes one restart, and everything else keeps the RAM it had.
  *
@@ -72,6 +72,9 @@ public:
     /** SimTouch: the finger's throttle 0..1 (released = 0). */
     void setTouchThrottle(float t) { _touch = t; }
 
+    /** Show the dash (voice, the face shortcut). With no source chosen yet the simulator starts, so there is
+     *  something to see: returns true when it did. */
+    bool openDash();
     /** The dash screen asks for itself to open / close (voice, console); taken by the UI task. */
     void requestOpen() { _openRequest = true; }
     void requestClose() { _closeRequest = true; }

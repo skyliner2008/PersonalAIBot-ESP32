@@ -21,7 +21,7 @@ status: reference
 
 ไฟล์ factory เขียนตั้งแต่ `0x0` จึงล้างค่าตั้งค่าเดิมในบอร์ดด้วย — ถ้าจะอัปเดตโดยเก็บค่าเดิม ให้ build จากซอร์ส (`pio run -t upload`)
 
-**📱 จากมือถือ Android (T078):** ติดตั้ง `ESP32-AI-Flasher.apk` → เสียบสาย USB-C จากมือถือเข้าบอร์ด (OTG) → **แฟลชลงบอร์ด** — แอปโหลด release ล่าสุดเอง
+**📱 จากมือถือ Android (T080):** ติดตั้ง `ESP32-AI-Flasher.apk` → เสียบสาย USB-C จากมือถือเข้าบอร์ด (OTG) → **แฟลชลงบอร์ด** — แอปโหลด release ล่าสุดเอง
 และมีโหมด **อัปเดต** (`-app.bin`, เก็บการตั้งค่า/ความจำ) ด้วย — ดู [[17-Mobile-Flasher]]
 
 **ผู้ดูแลโปรเจกต์ — ออก release (แบบแมนนวล):** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py`

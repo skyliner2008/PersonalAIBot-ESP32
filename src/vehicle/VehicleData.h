@@ -15,7 +15,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+// OBD-II over Bluetooth LE is built in only with -DVEHICLE_BLE=1 (platformio.ini). Linking the BLE stack puts
+// ~22 KB of controller code in IRAM, which on the S3 comes out of the same SRAM as the internal heap: the
+// assistant's TLS then runs out ("esp-aes: Failed to allocate memory") even with the dash off (T078).
+#ifndef VEHICLE_BLE
+#define VEHICLE_BLE 0
+#endif
+
 namespace vehicle {
+
+constexpr bool kBleBuilt = VEHICLE_BLE != 0;
 
 /** Case-insensitive compare of n characters (MSVC has no strncasecmp: the host tests build there too). */
 inline bool ieqn(const char* a, const char* b, size_t n) {

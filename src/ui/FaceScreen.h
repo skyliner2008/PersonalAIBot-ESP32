@@ -10,10 +10,11 @@
  *   │        ████            ████              │  subtitle is shown)
  *   │                                          │
  *   │  ผมจำได้ว่าคุณชอบกาแฟดำไม่ใส่น้ำตาล          │  subtitle, 2 lines
+ *   │                                     (◠) │  dash shortcut (hidden under a subtitle)
  *   └──────────────────────────────────────────┘
  *
- * Touch: mic = mic on/off · gear = settings menu · tap elsewhere = stop speaking / wake / poke /
- *        retry after a pause · long press = new session
+ * Touch: mic = mic on/off · gear = settings menu · gauge (bottom right) = vehicle dash ·
+ *        tap elsewhere = stop speaking / wake / poke / retry after a pause · long press = new session
  */
 
 #pragma once
@@ -27,7 +28,8 @@
 
 class FaceScreen : public Screen {
 public:
-    void begin(std::function<void()> openMenu, std::function<void()> openRadio = nullptr);
+    void begin(std::function<void()> openMenu, std::function<void()> openRadio = nullptr,
+               std::function<void()> openDash = nullptr);
 
     // ---- Thread-safe (called from the agent task) ----
     void setState(AvatarState s);
@@ -52,7 +54,7 @@ public:
 
 private:
     Eyes _eyes;
-    std::function<void()> _openMenu, _openRadio;
+    std::function<void()> _openMenu, _openRadio, _openDash;
     SemaphoreHandle_t _lock = nullptr;
 
     volatile AvatarState _state = AVATAR_BOOT;
@@ -61,6 +63,7 @@ private:
     volatile bool _powerSave = false;
     void drawClock(LGFX_Sprite& c);
     void drawRadioIcon(LGFX_Sprite& c, int cx, int cy, uint16_t color);
+    void drawDashButton(LGFX_Sprite& c, int cx, int cy);
     UiStatus _status;
 
     static constexpr size_t kTextCap = 512;
@@ -83,6 +86,7 @@ private:
     int _lineCount = 0;
     bool _subtitleVisible = false;
     volatile bool _radioShown = false;  // "now playing" line drawn (tap on it opens the radio player)
+    volatile bool _dashShown = false;   // dash shortcut drawn (bottom right)
 
     void layout();
     void drawStatus(LGFX_Sprite& c, const UiStatus& s);

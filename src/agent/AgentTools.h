@@ -89,7 +89,7 @@ public:
         return "no phone is paired";
     }
     // ---- vehicle dash (wiki 16) ----
-    virtual bool vehicleEnabled() { return false; }  // false = the `vehicle` tool is not declared at all
+    virtual bool vehicleEnabled() { return false; }  // the firmware has the dash (true on the board) -> `vehicle` declared
     /** action "status" / "open" / "close" / "set_source". nullptr = ok, else why not. */
     virtual const char* vehicleAction(const char* action, const char* source, JsonObject result) {
         (void)action, (void)source, (void)result;

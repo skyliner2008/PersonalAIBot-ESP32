@@ -68,6 +68,10 @@ void Vehicle::begin(const char* agentDir) {
         Serial.println("[Vehicle] GPIO 43/44 belong to a device in devices.json - source turned off");
         _s.source = SourceId::Off;
     }
+    if (_s.source == SourceId::ObdBle && !kBleBuilt) {
+        Serial.println("[Vehicle] OBD over Bluetooth is not in this firmware (VEHICLE_BLE=0) - source turned off");
+        _s.source = SourceId::Off;
+    }
     snprintf(_status, sizeof(_status), "%s", _s.source == SourceId::Off ? "OFF" : "START");
     Serial.printf("[Vehicle] Source %s (%s)%s\n", sourceKey(_s.source), _s.kind == Kind::Car ? "car" : "motorcycle",
                   bleKeptAtBoot() ? " - BLE memory kept" : "");
@@ -107,6 +111,9 @@ DashConfig Vehicle::dashConfig() {
 
 const char* Vehicle::setSource(SourceId src) {
     if ((uint8_t)src >= (uint8_t)SourceId::Count) return "ไม่รู้จักแหล่งข้อมูลนี้";
+    if (src == SourceId::ObdBle && !kBleBuilt) {
+        return "เฟิร์มแวร์นี้ไม่มี OBD ผ่าน Bluetooth (กินหน่วยความจำที่ผู้ช่วยต้องใช้) — ใช้ ELM327 แบบสายแทน";
+    }
     if (usesUart(src) && (gPeriph.usesPin(UartLink::kTx) || gPeriph.usesPin(UartLink::kRx))) {
         return "GPIO 43/44 ถูกใช้โดยอุปกรณ์ใน devices.json อยู่ — ย้ายอุปกรณ์นั้นก่อน";
     }
@@ -120,6 +127,13 @@ const char* Vehicle::setSource(SourceId src) {
     if (_task) xTaskNotifyGive(_task);
     Serial.printf("[Vehicle] Source -> %s%s\n", sourceKey(src), needsRestart() ? " (restart once to start Bluetooth)" : "");
     return nullptr;
+}
+
+bool Vehicle::openDash() {  // the caller's task: setSource writes NVS (UI / agent: internal stacks)
+    const bool startSim = source() == SourceId::Off;
+    if (startSim) setSource(SourceId::SimAuto);
+    requestOpen();
+    return startSim;
 }
 
 void Vehicle::setKind(Kind k) {
@@ -332,11 +346,13 @@ void Vehicle::loop() {
                 link.close();
                 break;
             }
+#if VEHICLE_BLE
             case SourceId::ObdBle: {
                 BleElmLink link(s.bleAddr, s.bleType);
                 runElm(link, true);
                 break;
             }
+#endif
             case SourceId::PhoneGps:
                 runPhone();
                 break;
@@ -419,6 +435,7 @@ void Vehicle::runElm(VehicleLink& link, bool ble) {
                 ulTaskNotifyTake(pdTRUE, waitForever ? portMAX_DELAY : pdMS_TO_TICKS(ble ? 15000 : 5000));
                 continue;
             }
+#if VEHICLE_BLE
             if (ble) {
                 BleElmLink& b = static_cast<BleElmLink&>(link);
                 if (b.foundAddress()[0]) {  // a scan found it: connect straight away next time
@@ -430,6 +447,7 @@ void Vehicle::runElm(VehicleLink& link, bool ble) {
                     save();  // this task has an internal stack when it runs BLE
                 }
             }
+#endif
             elm.restart(millis());
         }
         const uint32_t now = millis();

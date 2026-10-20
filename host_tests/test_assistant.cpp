@@ -297,18 +297,29 @@ TEST(tool_declarations_per_model) {
     CHECK(bytes < 15000);  // billed every turn: keep the declarations compact
     printf("    tool declarations: %u bytes JSON\n", (unsigned)bytes);
 
-    // the vehicle dash: declared only while a source is on (a board without a car pays nothing)
+    // the vehicle dash: the board always declares it, so "เปิดหน้าปัด" works before a source is set (T079)
     rig.dev.vehicleOn = true;
     const size_t withVehicle = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
     CHECK_EQ(count, (size_t)43);
-    // an opt-in pack like `device`: the base set stays under 15 KB, the dash adds one small tool
-    CHECK(withVehicle - bytes < 400);
+    CHECK(withVehicle - bytes < 400);  // one small tool
+    CHECK(withVehicle < 15400);        // what the board really sends every session
     printf("    + vehicle dash tool: %u bytes JSON\n", (unsigned)(withVehicle - bytes));
+    {
+        // default build (VEHICLE_BLE = 0): the model is not offered the Bluetooth source it cannot pick (T078)
+        JsonDocument doc;
+        rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
+        std::string decl;
+        serializeJson(doc, decl);
+        CHECK(decl.find("\"obd_uart\"") != std::string::npos);
+        CHECK(decl.find("\"obd_ble\"") == std::string::npos);
+    }
     JsonDocument vr;
     CHECK(callTool(rig.tools, "vehicle", "{\"action\":\"status\"}", vr));
     CHECK(rig.dev.vehicleCall == "status:" && vr["result"]["readings"]["rpm"] == 2500);
     CHECK(callTool(rig.tools, "vehicle", "{\"action\":\"set_source\",\"source\":\"kline\"}", vr));
     CHECK(rig.dev.vehicleCall == "set_source:kline");
+    CHECK(callTool(rig.tools, "vehicle", "{\"action\":\"open\"}", vr));  // "เปิดหน้าปัด"
+    CHECK(rig.dev.vehicleCall == "open:");
     CHECK(!callTool(rig.tools, "vehicle", "{\"action\":\"set_source\",\"source\":\"nope\"}", vr));
     CHECK(!callTool(rig.tools, "vehicle", "{\"action\":\"drive\"}", vr));
     rig.dev.vehicleOn = false;
