@@ -101,9 +101,10 @@ class BoardPage(private val a: MainActivity, root: View) {
                 out += "วิทยุ: ${th[radio] ?: radio}" + (d.optString("radio_station").takeIf { it.isNotEmpty() }?.let { " — $it" } ?: "")
             }
             if (has("tokens_per_min")) out += "โทเคน/นาที: ${d.optInt("tokens_per_min")}"
-            val extra = listOf("memories" to "ความจำ", "open_tasks" to "งานค้าง", "reminders" to "การแจ้งเตือน",
-                "heap_kb" to "RAM ว่าง KB", "psram_kb" to "PSRAM ว่าง KB", "battery" to "แบต %")
-                .filter { has(it.first) }.joinToString(" • ") { "${it.second} ${d.opt(it.first)}" }
+            val extra = listOf(Triple("memories", "ความจำ", ""), Triple("open_tasks", "งานค้าง", ""),
+                Triple("reminders", "การแจ้งเตือน", ""), Triple("heap_kb", "RAM ว่าง", " KB"),
+                Triple("psram_kb", "PSRAM ว่าง", " KB"), Triple("battery", "แบต", "%"))
+                .filter { has(it.first) }.joinToString(" • ") { "${it.second} ${d.opt(it.first)}${it.third}" }
             if (extra.isNotEmpty()) out += extra
             if (has("uptime_s")) out += "เปิดมา ${uptime(d.optLong("uptime_s"))} • เฟิร์มแวร์ ${d.optString("fw")}"
             else if (has("fw")) out += "เฟิร์มแวร์ ${d.optString("fw")}"

@@ -60,7 +60,7 @@
     <string name="q_sleep">💤 พัก</string>
     <string name="q_wake">☀ ปลุก</string>
     <string name="q_retry">↻ ต่อ AI ใหม่</string>
-    <string name="q_new">🆕 บทสนทนาใหม่</string>
+    <string name="q_new">🆕 แชทใหม่</string>
     <string name="q_reboot">⟲ รีบูต</string>
     <string name="reboot">รีบูต</string>
     <string name="reboot_confirm">รีบูตบอร์ดตอนนี้?</string>
@@ -79,7 +79,7 @@
     <string name="log_help">help</string>
     <string name="log_history">คำสั่งที่เคยส่ง</string>
     <string name="log_history_short">↑</string>
-    <string name="cmd_hint">คำสั่ง console เช่น status, diag</string>
+    <string name="cmd_hint">คำสั่ง เช่น status</string>
 
     <string name="set_not_read">ยังไม่ได้อ่านค่าจากบอร์ด — เชื่อมต่อแล้วกด "อ่านค่าจากบอร์ด"</string>
     <string name="set_read_at">อ่านค่าล่าสุด %1$s • เฟิร์มแวร์ %2$s</string>

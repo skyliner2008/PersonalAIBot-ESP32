@@ -171,7 +171,7 @@ class SettingsFormTest {
             "radio_station":"Cool 93","tokens_per_min":1200,"uptime_s":7300,"heap_kb":80}""")
         val card = BoardPage.describe(d).joinToString("\n")
         for (want in listOf("พร้อมคุย", "-55 dBm", "192.168.1.9", "โมเดล: b (หลัก a)", "โควตาหมด", "ปิดไมค์",
-                "วิทยุ: กำลังเล่น — Cool 93", "1200", "2 ชม. 1 นาที", "RAM ว่าง KB 80", "4.2.0")) {
+                "วิทยุ: กำลังเล่น — Cool 93", "1200", "2 ชม. 1 นาที", "RAM ว่าง 80 KB", "4.2.0")) {
             assertTrue("missing '$want' in:\n$card", card.contains(want))
         }
         assertTrue(BoardPage.describe(JSONObject("{\"wifi\":false}")).any { "ยังไม่เชื่อมต่อ" in it })
