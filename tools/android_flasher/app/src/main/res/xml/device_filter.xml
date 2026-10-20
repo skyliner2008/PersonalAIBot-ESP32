@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Espressif 303A: the ESP32-S3's own USB port (USB-Serial-JTAG 1001) -->
+    <usb-device vendor-id="12346" />
+</resources>

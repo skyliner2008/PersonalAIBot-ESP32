@@ -22,6 +22,7 @@
 9. [โครงสร้างโปรเจกต์](#9-โครงสร้างโปรเจกต์)
 10. [Build, Test และสถานะ](#10-build-test-และสถานะ)
 11. [PC Studio app และ serial protocol](#11-pc-studio-app-และ-serial-protocol)
+12. [แอปแฟลชบนมือถือ (Android)](#12-แอปแฟลชบนมือถือ-android)
 
 ---
 
@@ -243,7 +244,9 @@ ESP32-AI/
 │   └── vehicle/            หน้าปัดรถ (T076): VehicleData, DashModel, SimEngine, Elm327, HondaKline, Vehicle (task), VehicleLink (UART / BLE)
 ├── host_tests/     test_main.cpp, run_tests.bat
 ├── tools/          gen_thai_font.py, gen_root_ca.py
-│   └── pc_app/     esp32_ai_studio.py (ESP32-AI Studio), run_studio.bat, requirements.txt
+│   ├── pc_app/     esp32_ai_studio.py (ESP32-AI Studio), run_studio.bat, requirements.txt
+│   ├── android_flasher/  แอป Android "ESP32-AI Flasher" (T078): แฟลชผ่าน USB OTG — UsbCdcPort, EspLoader (ROM protocol), FlashPlan, Releases
+│   └── build_flasher_apk.py  → dist/ESP32-AI-Flasher.apk (publish_release.py แนบให้ release)
 ├── _backup/        โค้ดและเอกสารก่อนอัปเกรด v2 / v3
 └── wiki/           Obsidian vault 00–10 + สำเนาเอกสารนี้
 ```
@@ -290,3 +293,16 @@ host_tests\run_tests.bat                  # unit tests บน PC (MSVC)
 - ความลับ: เฟิร์มแวร์ไม่พิมพ์ key/รหัส Wi-Fi (มีแค่ `keyLen`, `keyHint`) · แอปซ่อน `key=` ใน log และไม่เขียนความลับลงไฟล์ที่ส่งออก
 
 รายละเอียด: `wiki/10-PC-Studio-App.md`
+
+---
+
+## 12. แอปแฟลชบนมือถือ (Android)
+
+`tools/android_flasher/` (Kotlin, Android 8+, ไม่มีไลบรารีภายนอก) แฟลชบอร์ดผ่านสาย USB-C จากมือถือ (USB OTG) — ไม่มี server
+- USB: พอร์ตของ S3 (USB-Serial-JTAG 303A:1001) เป็น CDC-ACM → Android USB host API ตรงๆ (bulk + `SET_CONTROL_LINE_STATE`)
+- ROM bootloader ของ ESP32-S3: รีเซ็ตด้วย DTR/RTS แบบ esptool → `SYNC` → `GET_SECURITY_INFO` (chip 9) → `SPI_ATTACH` / `SPI_SET_PARAMS` 16 MB →
+  `FLASH_DEFL_*` บล็อก 1 KB (zlib) → `SPI_FLASH_MD5` → hard reset
+- อัปเดต = `-app.bin` ที่ 0x10000 + otadata `boot_app0` (NVS / LittleFS ไม่ถูกแตะ) · ติดตั้งใหม่ = `-factory.bin` ที่ 0x0 (ล้าง NVS)
+- ไฟล์จาก GitHub Releases ล่าสุด: sha256 ต้องตรง, `-app.bin.sig` ต้องผ่านเมื่อ build แอปพร้อมกุญแจใน `src/app/OtaPublicKey.h`
+
+รายละเอียด: `wiki/17-Mobile-Flasher.md`

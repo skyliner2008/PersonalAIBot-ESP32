@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ESP32-AI Flasher</string>
+    <string name="subtitle">แฟลชเฟิร์มแวร์ PersonalAIBot-ESP32 ลงบอร์ด ES3C28P (ESP32-S3) ผ่านสาย USB-C ที่เสียบกับมือถือ</string>
+
+    <string name="section_board">1. บอร์ด</string>
+    <string name="board_none">✖ ยังไม่พบบอร์ด — เสียบสาย USB-C จากมือถือเข้าพอร์ต USB ของบอร์ด (มือถือต้องรองรับ OTG และสายต้องส่งข้อมูลได้)</string>
+    <string name="board_found">✔ พบบอร์ด ESP32 (USB %1$04X:%2$04X) — พร้อมแฟลช</string>
+    <string name="board_other">✖ พบอุปกรณ์ USB %1$04X:%2$04X แต่ไม่ใช่พอร์ต USB ของ ESP32-S3 — ใช้พอร์ต Type-C ของบอร์ดโดยตรง</string>
+
+    <string name="section_firmware">2. เฟิร์มแวร์</string>
+    <string name="release_checking">กำลังตรวจเวอร์ชันล่าสุดบน GitHub…</string>
+    <string name="release_latest">เวอร์ชันล่าสุดบน GitHub: %1$s  (แตะเพื่อตรวจใหม่)</string>
+    <string name="release_failed">ตรวจเวอร์ชันบน GitHub ไม่ได้: %1$s — แตะเพื่อลองใหม่ หรือใช้ไฟล์ .bin ในเครื่อง</string>
+    <string name="mode_update">อัปเดต — เก็บการตั้งค่าและความจำไว้ (ไฟล์ -app.bin)</string>
+    <string name="mode_factory">ติดตั้งใหม่ทั้งหมด — ล้างการตั้งค่า Wi-Fi / API key (ไฟล์ -factory.bin)</string>
+    <string name="mode_file">ใช้ไฟล์ .bin ในเครื่อง…</string>
+    <string name="file_app">%1$s — ไฟล์ app (%2$,d ไบต์): อัปเดต เก็บการตั้งค่าไว้</string>
+    <string name="file_factory">%1$s — ไฟล์ factory (%2$,d ไบต์): ติดตั้งใหม่ทั้งหมด ล้างการตั้งค่า</string>
+    <string name="file_reading">กำลังอ่านไฟล์…</string>
+    <string name="file_not_firmware">ไฟล์นี้ไม่ใช่เฟิร์มแวร์ ESP32 (.bin)</string>
+
+    <string name="flash">3. แฟลชลงบอร์ด</string>
+    <string name="factory_title">ติดตั้งใหม่ทั้งหมด?</string>
+    <string name="factory_message">ไฟล์ factory จะล้างการตั้งค่าในบอร์ด (Wi-Fi, Gemini API key, การตั้งค่าอื่นๆ) ต้องตั้งค่าใหม่หลังแฟลช — ความจำที่เก็บใน LittleFS / การ์ด SD ไม่หาย\n\nถ้าแค่อยากอัปเดต ให้เลือก \"อัปเดต\" แทน</string>
+    <string name="factory_go">ล้างและติดตั้ง</string>
+    <string name="no_permission">ไม่ได้รับอนุญาตให้แอปใช้พอร์ต USB ของบอร์ด</string>
+    <string name="wait_flash">กำลังแฟลชอยู่ — อย่าถอดสายจนกว่าจะเสร็จ</string>
+    <string name="done">✔ แฟลชเสร็จแล้ว บอร์ดกำลังรีสตาร์ต ถอดสายได้</string>
+    <string name="done_app">อัปเดตเสร็จ — การตั้งค่าและความจำอยู่ครบ (ถ้าจอยังดำ กด RESET ที่บอร์ด 1 ครั้ง)</string>
+    <string name="done_factory">ติดตั้งเสร็จ — ตั้งค่า Wi-Fi + Gemini API key ใหม่บนบอร์ด หรือวาง ai-setup.txt ในการ์ด SD (ถ้าจอยังดำ กด RESET ที่บอร์ด 1 ครั้ง)</string>
+    <string name="error_prefix">✖ %1$s</string>
+
+    <string name="section_help">ถ้าเชื่อมต่อไม่ได้</string>
+    <string name="help">• ใช้สาย USB-C ↔ USB-C (หรือหัวแปลง OTG) ที่ส่งข้อมูลได้ ไม่ใช่สายชาร์จอย่างเดียว\n• เมื่อมีหน้าต่าง \"อนุญาตให้ ESP32-AI Flasher เข้าถึง\" ให้กดอนุญาต (ติ๊ก \"ใช้เป็นค่าเริ่มต้น\" จะไม่ถามอีก)\n• บอร์ดไม่เข้าโหมดแฟลช: กดปุ่ม BOOT ค้าง แตะ RESET แล้วปล่อย BOOT จากนั้นกดแฟลชอีกครั้ง\n• iPhone / iPad ใช้ไม่ได้ (iOS ไม่เปิดให้แอปคุยกับพอร์ต USB serial) — ใช้ Android หรือคอมพิวเตอร์\n• ระหว่างแฟลชอย่าถอดสาย ถ้าหลุดกลางทาง แค่เสียบใหม่แล้วแฟลชซ้ำได้เสมอ (ROM ของชิปไม่เสีย)</string>
+</resources>

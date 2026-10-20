@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a chip with a lightning bolt (108dp adaptive icon, art inside the 66dp safe zone) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="3"
+        android:pathData="M34,36 L34,72 M74,36 L74,72 M40,30 L68,30 M40,78 L68,78
+            M30,42 L34,42 M30,54 L34,54 M30,66 L34,66 M74,42 L78,42 M74,54 L78,54 M74,66 L78,66
+            M46,26 L46,30 M54,26 L54,30 M62,26 L62,30 M46,78 L46,82 M54,78 L54,82 M62,78 L62,82" />
+    <path
+        android:fillColor="#0F172A"
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="3"
+        android:pathData="M40,34 L68,34 Q70,34 70,36 L70,72 Q70,74 68,74 L40,74 Q38,74 38,72 L38,36 Q38,34 40,34 Z" />
+    <path
+        android:fillColor="#F97316"
+        android:pathData="M57,38 L45,57 L53,57 L50,70 L63,50 L55,50 Z" />
+</vector>

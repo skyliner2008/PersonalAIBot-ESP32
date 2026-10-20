@@ -16,6 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T078 | [[#T078 แอปมือถือ Android แฟลชเฟิร์มแวร์ผ่านสาย USB (OTG)]] | Tools/Flash/Android | 🔄 unit tests 24 ข้อ (บอร์ดจำลอง) + lint + build APK ผ่าน; ยังไม่ได้ลองกับบอร์ด/มือถือจริง |
 | T077 | [[#T077 หน้าปัดรถ 3 รูปแบบ — วงกลมดิจิทัล สปอร์ต, เข็มวงกลม คลาสสิก, รถแข่ง]] | Vehicle/UI | ✅ host tests + build + ภาพ preview ทุกแบบ — รอดูบนบอร์ด |
 | T076 | [[#T076 หน้าปัดรถ — ฟีเจอร์ใหม่ เขียนเองทั้งหมด (MIT) จากแนวคิดของ redline-gauge]] | Vehicle/UI/BLE | 🔄 host tests + build + ภาพ preview ผ่าน — **รอทดสอบบนบอร์ด/กับรถจริง** |
 | T075 | [[#T075 สร้างกุญแจเซ็นอัปเดตจาก ESP32-AI Studio ด้วยปุ่มเดียว]] | Studio/OTA | ✅ Done — ทดสอบทุกปุ่มบน Xvfb (Linux); รอลองบน Windows |
@@ -127,6 +128,30 @@ This page documents common issues encountered during development and their solut
 **ยืนยัน 2026-10-15:** ผู้ใช้เทียบบอร์ดกับ PC app — ตอน `invert = 0` บอร์ดเป็น **พื้นขาว + ตาน้ำเงิน** ส่วนภาพ framebuffer ใน app เป็น
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
+
+## T078: แอปมือถือ Android แฟลชเฟิร์มแวร์ผ่านสาย USB (OTG)
+
+**วันที่:** 2026-10-20 · **ผู้ใช้:** "ต้องการเพิ่ม app มือถือที่ไว้ Flash code ใส่บอร์ด โดยการเสียบสาย usb เชื่อมบอร์ดเข้ากับมือถือ"
+- **เลือกแอป native Android ไม่ใช่เว็บ:** ทดสอบแล้ว `release-assets.githubusercontent.com` (ปลายทาง redirect ของไฟล์ release) ไม่ส่ง
+  `Access-Control-Allow-Origin` → หน้าเว็บ (esptool-js / Web Serial) ดาวน์โหลด .bin จาก GitHub เองไม่ได้ ต้องฝากไฟล์ที่ hosting อื่นทุก release
+  · iOS ทำไม่ได้ทั้งเว็บและแอป (ไม่มี USB serial ให้แอป) → Android เท่านั้น
+- **ส่วนที่ทำ:** `tools/android_flasher/` (Kotlin, framework ล้วน ไม่มี AndroidX/ไลบรารี USB) — `UsbCdcPort` (CDC-ACM ผ่าน USB host API),
+  `Slip`/`Esp` (เฟรม + คำสั่ง ROM), `EspLoader` (รีเซ็ตเข้าโหมดแฟลช, sync, บีบอัด zlib, เขียนบล็อก 1 KB, ตรวจ MD5, hard reset),
+  `FlashPlan` (ตำแหน่งตาม `partitions_sr.csv`, ตรวจไฟล์ก่อนแตะบอร์ด), `FlashJob`, `Releases` (GitHub API, sha256, ลายเซ็น OTA), `MainActivity` (ภาษาไทย)
+  · `tools/build_flasher_apk.py` (+ `--create-keystore`, `--debug`) · `publish_release.py` แนบ `ESP32-AI-Flasher.apk` เมื่อมี
+- **ค่าที่ตรวจกับ esptool 5.6 (ซอร์สใน cache ของ PlatformIO):** ลำดับ DTR/RTS ของ `usb_jtag_bootloader_reset`, `FLASH_DEFL_BEGIN` ของ ROM S3 มี word ที่ 5
+  (encrypted) และ erase ต้องปัดขึ้นทีละ 1 KB, `SPI_ATTACH` ของ ROM ยาว 8 ไบต์, MD5 ของ ROM ตอบเป็นข้อความ hex 32 ตัว, ROM ไม่ต้องส่ง `FLASH_DEFL_END`,
+  status อยู่หลังข้อมูลตอบ (ROM เติมอีก 2 ไบต์), chip id จาก `GET_SECURITY_INFO` ที่ offset 12
+- **ตรวจกับไฟล์ release v4.2.0 จริง:** header ของ app/bootloader มี chip id 9, factory มี `AA 50` ที่ 0x8000, app ใน factory ตรงกับ -app.bin ทุกไบต์,
+  NVS (0x9000–0xE000) ในไฟล์ factory เป็น 0xFF ทั้งหมด (= แฟลช factory ล้างการตั้งค่า), otadata ที่แอปเขียนตอน "อัปเดต" = boot_app0 ในไฟล์ factory ทุกไบต์
+- **ปัญหาระหว่างทำ:** lint `UnspecifiedRegisterReceiverFlag` เตือนสาขา API < 33 ที่ไม่มี flag ให้ใช้ (suppress เฉพาะจุด) · mipmap ย้ายจาก `-v26` แล้ว build
+  แบบ incremental หา `ic_launcher` ไม่เจอ (ต้อง clean) · ในเครื่อง build ของ Claude, Maven Central ตอบ 429 → ใช้ mirror ของ Google ผ่าน init script
+  นอก repo (ไม่กระทบเครื่องผู้ใช้)
+- **รีวิวตัวเองก่อน commit:** timeout ของบล็อกเดิมใช้อัตราบีบอัดเฉลี่ยทั้งไฟล์ แต่บล็อก 0xFF ของไฟล์ factory แตกได้ ~1 MB → แก้ให้คิดจากขนาดหลังแตก
+  ของบล็อกนั้น (แบบ esptool) + test `blocksOfErasedPaddingGetTimeToWrite` (ROM จำลองใช้เวลาเขียนตามจริง) — ยืนยันว่า test นี้ fail กับโค้ดเดิม
+  · อ่านไฟล์ที่ผู้ใช้เลือก (อาจอยู่บน cloud) ย้ายออกจาก UI thread
+**ทดสอบ:** unit tests 24 ข้อ (JVM) ✓ รวม `FakeRom` จำลอง ROM ทั้งตัว + ไฟล์ release จริง · `lintDebug` 0 errors · APK release เซ็น v2 ตรวจด้วย apksigner ✓
+· **ยังไม่ได้ลองกับบอร์ดจริงและมือถือจริง**
 
 ## T077: หน้าปัดรถ 3 รูปแบบ — วงกลมดิจิทัล สปอร์ต, เข็มวงกลม คลาสสิก, รถแข่ง
 
