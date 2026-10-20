@@ -40,4 +40,13 @@ object Net {
     }
 
     fun text(url: String, accept: String = "application/vnd.github+json") = String(bytes(url, accept), Charsets.UTF_8)
+
+    /** An error the way a person reads it (no Java class names on the screen). */
+    fun friendly(e: Throwable): String = when (e) {
+        is java.net.UnknownHostException -> "ไม่มีอินเทอร์เน็ต (หา github.com ไม่เจอ)"
+        is java.net.SocketTimeoutException -> "อินเทอร์เน็ตช้าเกินไป ลองใหม่"
+        is javax.net.ssl.SSLException -> "เชื่อมต่อ GitHub แบบปลอดภัยไม่ได้ (Wi-Fi นี้ดักการเชื่อมต่อ? ลองใช้เน็ตมือถือ)"
+        is java.net.ConnectException -> "เชื่อมต่อ GitHub ไม่ได้"
+        else -> e.message ?: e.javaClass.simpleName
+    }
 }

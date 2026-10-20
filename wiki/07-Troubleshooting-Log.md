@@ -150,6 +150,8 @@ PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ใ�
 - **รีวิวตัวเองก่อน commit:** timeout ของบล็อกเดิมใช้อัตราบีบอัดเฉลี่ยทั้งไฟล์ แต่บล็อก 0xFF ของไฟล์ factory แตกได้ ~1 MB → แก้ให้คิดจากขนาดหลังแตก
   ของบล็อกนั้น (แบบ esptool) + test `blocksOfErasedPaddingGetTimeToWrite` (ROM จำลองใช้เวลาเขียนตามจริง) — ยืนยันว่า test นี้ fail กับโค้ดเดิม
   · อ่านไฟล์ที่ผู้ใช้เลือก (อาจอยู่บน cloud) ย้ายออกจาก UI thread
+- **ลองบน Android emulator (API 30, ไม่มี KVM):** หน้าจอภาษาไทย, สถานะ "ยังไม่พบบอร์ด", กล่องยืนยัน factory ทำงาน · พบข้อความ error ภาษา Java ดิบ
+  (`CertPathValidatorException ...`) → `Net.friendly()` แปลงเป็นภาษาคน (ไม่มีเน็ต / เน็ตช้า / Wi-Fi ดักการเชื่อมต่อ)
 **ทดสอบ:** unit tests 24 ข้อ (JVM) ✓ รวม `FakeRom` จำลอง ROM ทั้งตัว + ไฟล์ release จริง · `lintDebug` 0 errors · APK release เซ็น v2 ตรวจด้วย apksigner ✓
 · **ยังไม่ได้ลองกับบอร์ดจริงและมือถือจริง**
 

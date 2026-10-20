@@ -129,7 +129,7 @@ class MainActivity : Activity() {
                 release = r
                 getString(R.string.release_latest, r.tag)
             } catch (e: Exception) {
-                getString(R.string.release_failed, e.message ?: e.javaClass.simpleName)
+                getString(R.string.release_failed, Net.friendly(e))
             }
             runOnUiThread { releaseInfo.text = text }
         }
@@ -171,7 +171,7 @@ class MainActivity : Activity() {
                     localImage = null
                     fileInfo.visibility = View.GONE
                     modeGroup.check(lastMode)
-                    showError(e.message ?: e.toString())
+                    showError(Net.friendly(e))
                 }
             }
         }
@@ -229,7 +229,7 @@ class MainActivity : Activity() {
                 note(getString(if (kind == Kind.FACTORY) R.string.done_factory else R.string.done_app))
                 runOnUiThread { status.setText(R.string.done) }
             } catch (e: Exception) {
-                runOnUiThread { showError(e.message ?: e.toString()) }
+                runOnUiThread { showError(Net.friendly(e)) }
             } finally {
                 busy = false
                 runOnUiThread { setBusy(false); refreshBoard() }
