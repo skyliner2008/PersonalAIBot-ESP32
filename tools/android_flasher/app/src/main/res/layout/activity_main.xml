@@ -69,6 +69,21 @@
                 android:paddingBottom="24dp" />
         </ScrollView>
 
+        <ScrollView
+            android:id="@+id/pageNav"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:id="@+id/navBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingBottom="24dp" />
+        </ScrollView>
+
         <include layout="@layout/page_flash" />
     </FrameLayout>
 
@@ -93,6 +108,11 @@
             android:id="@+id/tabSettings"
             style="@style/Tab"
             android:text="@string/tab_settings" />
+
+        <TextView
+            android:id="@+id/tabNav"
+            style="@style/Tab"
+            android:text="@string/tab_nav" />
 
         <TextView
             android:id="@+id/tabFlash"

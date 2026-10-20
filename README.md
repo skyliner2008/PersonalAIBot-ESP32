@@ -37,6 +37,7 @@ Everything runs on the board itself: **no server, no Raspberry Pi, no vector dat
 | 📊 **Live data cards** | Weather + PM2.5, Thai fuel prices, stocks / gold / crypto / FX, technical analysis, market scanner, economic calendar, news, Wikipedia — drawn as graphics while the AI talks. |
 | 📻 **Internet radio** | A radio-app screen with 16 tested Thai stations (up to 40; `python tools/radio_check.py` checks a station export the way the board plays it): swipe and tap a station, ± volume, ⏸ pause, a red ⏻ button to switch the radio off, and tap the middle of the screen to talk to the assistant as usual. Say "play the luk thung station" or "station 4" and the assistant picks from your list. Edit the list (add, edit, delete, reorder, test URL) in ESP32-AI Studio. MP3/AAC via the Helix decoder; the radio dips to 12 % while you talk. Volume buttons and "turn it down" change the radio only — the assistant's voice stays at its own level (80 by default, `set aivolume`). After "play the radio" the assistant names the station and goes to sleep at once (it never answers the DJ), and "play the radio" with no station resumes the last one. [wiki/12](wiki/12-Internet-Radio.md) |
 | 🏁 **Vehicle dash** (new) | A dash for a car or motorcycle in three styles — **racing** (rpm bar), **round digital sport** (LED ring) and **classic needles** (tachometer + speedometer) — with shift light, speed, gear, engine / battery / intake readouts that turn yellow / red. Tap the header to switch styles. Data from OBD-II through an **ELM327 Bluetooth LE** adapter, **Honda K-Line** (Wave 110i / 125i, Click, PCX ... through an L9637D-type adapter), a wired ELM327, text lines from another board, or the built-in simulator (finger = throttle). The assistant reads the live values ("what's the engine temperature?") and warns out loud when the engine overheats or the battery stops charging. Not yet tested on a real vehicle. [wiki/16](wiki/16-Vehicle-Dash.md) |
+| 🧭 **Navigation with the phone** (new, not yet tried in a car) | Google Maps on your Android phone works out the route; the board shows each turn (arrow, distance, street, arrival) on its own screen or as a strip on the dash, and the assistant **says the turn ~20 s before it** ("อีก 300 เมตร เลี้ยวขวาเข้า ถ.พระราม 4"). Say "นำทางไปเซ็นทรัลเวิลด์" and the phone starts Google Maps; ask "อีกไกลไหม", "ถึงกี่โมง", "ตอนนี้อยู่ไหน". The phone's GPS can also be the dash's speed source (any vehicle). Over the phone's Wi-Fi hotspot or USB, paired once over USB, both sides prove the pairing (HMAC) before anything is accepted. [wiki/18](wiki/18-Phone-Link-Navigation-Plan.md) |
 | ⏰ **Personal assistant** | Timers, reminders (daily / weekdays / weekly), to-do list, notes, price alerts that speak up, calculator, unit & world-time conversion. |
 | 🔁 **Self-healing** | Automatic model fallback, quota-aware back-off, Google Search pause on quota (if enabled), session resumption, Wi-Fi reconnect. |
 | 🖥️ **ESP32-AI Studio** | Dark-mode PC app: all settings, live debug log, chat, remote screen with touch, mic recorder, tool runner, build & flash. |
@@ -242,10 +243,10 @@ Portable modules (memory, tools, scheduler, tasks, personas, model fallback, cal
 host_tests\run_tests.bat
 ```
 
-53 suites · 2,224 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+63 suites · 2,344 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
 
-The phone app has its own JVM tests (41: the console parser and settings, and the flasher against a simulated ESP32-S3 ROM bootloader with a virtual 16 MB flash):
+The phone app has its own JVM tests (56: the console parser and settings, the phone link incl. a real Wi-Fi handshake, Google Maps parsing, and the flasher against a simulated ESP32-S3 ROM bootloader with a virtual 16 MB flash):
 `cd tools/android_flasher && ./gradlew testDebugUnitTest`.
 
 ## 📁 Project layout
@@ -260,6 +261,7 @@ src/audio      AudioManager (I2S), ES8311 driver, resampler
 src/memory     MemoryStore (BM25 + graph), EpisodicLog
 src/display    LovyanGFX config, touch driver, Thai fonts 26/20 px
 src/system     I2C bus, storage (SD / LittleFS) · src/util  UTF-8, calculator, units, time, JSON helpers
+src/phone      phone app link: GPS, Google Maps turn-by-turn, spoken turns (USB / Wi-Fi, paired over USB) + src/ui/NavScreen
 src/vehicle    vehicle dash: readings, dash model, simulator, ELM327, Honda K-Line, UART / BLE links (+ src/ui/DashScreen)
 tools/pc_app   ESP32-AI Studio (Python + Tkinter + pyserial)
 tools/android_flasher  ESP32-AI Flasher: Android app over USB OTG — flasher (ROM protocol) + Studio-like status, log, settings, chat (Kotlin, no libraries)
@@ -281,7 +283,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 | [12 Internet radio](wiki/12-Internet-Radio.md) | Streaming, mixing/ducking, voice wake over music |
 | [13 Firmware update (OTA)](wiki/13-OTA-Update.md) | Over Wi-Fi from GitHub Releases, verified, automatic rollback |
 | [16 Vehicle dash](wiki/16-Vehicle-Dash.md) | OBD-II (ELM327 BLE / wired), Honda K-Line, simulator; wiring, layouts, the `vehicle` tool |
-| [18 Phone link plan](wiki/18-Phone-Link-Navigation-Plan.md) | Planned: phone GPS on the dash, Google Maps turn-by-turn on the board, voice commands to the phone (USB / Wi-Fi / BLE) — feasibility and phases |
+| [18 Phone link & navigation](wiki/18-Phone-Link-Navigation-Plan.md) | Phone GPS on the dash, Google Maps turn-by-turn on the board, the assistant says each turn, "navigate to …" by voice (Wi-Fi / USB) |
 | [17 Phone app](wiki/17-Mobile-Flasher.md) | Android app over a USB-C cable: flash (update keeping settings, verified downloads), status, log, settings, chat |
 
 ## 🔒 Security & privacy

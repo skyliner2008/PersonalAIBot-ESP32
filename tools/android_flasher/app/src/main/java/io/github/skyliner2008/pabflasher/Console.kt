@@ -9,7 +9,7 @@ import java.io.IOException
  */
 object Console {
     val TAGS = setOf("CONFIG", "OPTIONS", "TOOLS", "DIAG", "WIFISCAN", "APITEST", "RECINFO", "RADIOLIST", "TOOL",
-        "OTA", "MEM", "WAKEWORD")
+        "OTA", "MEM", "WAKEWORD", "PHONE", "PHONEINFO")
 
     class Tagged(val tag: String, val name: String?, val json: String)
 

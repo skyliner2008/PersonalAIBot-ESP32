@@ -30,7 +30,8 @@
         <item name="android:layout_height">match_parent</item>
         <item name="android:layout_weight">1</item>
         <item name="android:gravity">center</item>
-        <item name="android:textSize">14sp</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:lineSpacingMultiplier">0.9</item>
         <item name="android:textColor">@color/tab_text</item>
         <item name="android:background">@drawable/tab</item>
     </style>

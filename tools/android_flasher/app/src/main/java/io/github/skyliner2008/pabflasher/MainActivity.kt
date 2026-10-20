@@ -41,6 +41,7 @@ class MainActivity : Activity() {
     private lateinit var boardPage: BoardPage
     private lateinit var logPage: LogPage
     private lateinit var settingsPage: SettingsPage
+    private lateinit var navPage: NavPage
 
     private val main = Handler(Looper.getMainLooper())
     private val linkWorker = Executors.newSingleThreadExecutor()
@@ -81,13 +82,14 @@ class MainActivity : Activity() {
         linkStatus = findViewById(R.id.linkStatus)
         linkButton = findViewById(R.id.linkButton)
         pages = listOf(findViewById(R.id.pageBoard), findViewById(R.id.pageLog), findViewById(R.id.pageSettings),
-            findViewById(R.id.pageFlash))
+            findViewById(R.id.pageNav), findViewById(R.id.pageFlash))
         tabs = listOf(findViewById(R.id.tabBoard), findViewById(R.id.tabLog), findViewById(R.id.tabSettings),
-            findViewById(R.id.tabFlash))
+            findViewById(R.id.tabNav), findViewById(R.id.tabFlash))
         boardPage = BoardPage(this, pages[TAB_BOARD])
         logPage = LogPage(this, pages[TAB_LOG])
         settingsPage = SettingsPage(this, pages[TAB_SETTINGS])
         flashPage = FlashPage(this, pages[TAB_FLASH])
+        navPage = NavPage(this, pages[TAB_NAV])
         fitSystemBars()
 
         val filter = IntentFilter().apply {
@@ -108,8 +110,23 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        Hub.uiVisible = true
         refreshBoard()
         autoConnect()
+        if (tab == TAB_NAV) navPage.onShow()
+    }
+
+    override fun onPause() {
+        Hub.uiVisible = false
+        navPage.onHide()
+        super.onPause()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        @Suppress("DEPRECATION")
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        navPage.refresh()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -172,6 +189,7 @@ class MainActivity : Activity() {
         pages.forEachIndexed { k, p -> p.visibility = if (k == i) View.VISIBLE else View.GONE }
         tabs.forEachIndexed { k, t -> t.isSelected = k == i }
         try { getPreferences(MODE_PRIVATE).edit().putInt("tab", i).apply() } catch (_: Exception) {}
+        if (i == TAB_NAV) navPage.onShow() else navPage.onHide()
         if (i == TAB_BOARD && link != null) send("diag", echo = false)
         if (i == TAB_SETTINGS && link != null && config == null) send("config", echo = false)
     }
@@ -209,6 +227,8 @@ class MainActivity : Activity() {
                     updateLinkBar()
                     logPage.local(getString(R.string.link_connected_log))
                     for (c in listOf("config", "options", "diag")) send(c, echo = false)
+                    // the phone link rides the console while plugged in (wiki 18): pairs the board for Wi-Fi too
+                    Hub.get(this).usbConnected { line -> send(line, echo = false) }
                 }
             } catch (e: Exception) {
                 main.post {
@@ -222,6 +242,7 @@ class MainActivity : Activity() {
     private fun disconnect() {
         val l = link ?: return
         link = null
+        Hub.get(this).usbGone()
         linkWorker.execute { l.close() }
         updateLinkBar()
         logPage.local(getString(R.string.link_closed_log))
@@ -230,6 +251,7 @@ class MainActivity : Activity() {
     private fun onLost(e: IOException) {
         val l = link ?: return
         link = null
+        Hub.get(this).usbGone()
         linkWorker.execute { l.close() }
         logPage.local(getString(R.string.link_lost_log, e.message ?: ""))
         updateLinkBar()
@@ -246,6 +268,7 @@ class MainActivity : Activity() {
         }
         val l = link ?: return
         link = null
+        Hub.get(this).usbGone()
         l.close()
         main.post { updateLinkBar(); logPage.local(getString(R.string.link_flash_log)) }
     }
@@ -288,6 +311,7 @@ class MainActivity : Activity() {
                         "DIAG" -> { diag = JSONObject(t.json); boardPage.onDiag(diag!!); updateLinkBar() }
                         "WIFISCAN" -> settingsPage.onWifiScan(t.json)
                         "APITEST" -> settingsPage.onApiTest(JSONObject(t.json))
+                        "PHONE" -> Hub.get(this).handleRequest(t.json)  // the board asks: navigate / stop
                     }
                 } catch (e: Exception) {
                     logPage.local("✖ ${t.tag}: ${e.message}")
@@ -356,7 +380,8 @@ class MainActivity : Activity() {
         const val TAB_BOARD = 0
         const val TAB_LOG = 1
         const val TAB_SETTINGS = 2
-        const val TAB_FLASH = 3
+        const val TAB_NAV = 3
+        const val TAB_FLASH = 4
         private const val DIAG_EVERY_MS = 3000L
     }
 }

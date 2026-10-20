@@ -35,10 +35,11 @@
 
     <string name="flash_subtitle">แฟลชเฟิร์มแวร์ PersonalAIBot-ESP32 ลงบอร์ด ES3C28P (ESP32-S3) ผ่านสาย USB-C ที่เสียบกับมือถือ (ระหว่างแฟลช แท็บอื่นจะหยุดเชื่อมต่อชั่วคราว)</string>
 
-    <string name="tab_board">🤖 บอร์ด</string>
-    <string name="tab_log">📜 Log</string>
-    <string name="tab_settings">⚙️ ตั้งค่า</string>
-    <string name="tab_flash">⬇️ แฟลช</string>
+    <string name="tab_board">🤖\nบอร์ด</string>
+    <string name="tab_log">📜\nLog</string>
+    <string name="tab_settings">⚙️\nตั้งค่า</string>
+    <string name="tab_nav">🧭\nนำทาง</string>
+    <string name="tab_flash">⬇️\nแฟลช</string>
 
     <string name="link_connect">เชื่อมต่อ</string>
     <string name="link_disconnect">ตัดการเชื่อมต่อ</string>
@@ -139,4 +140,34 @@
     <string name="set_rotation">หมุนจอ 180°</string>
     <string name="set_finance">การเงิน (ข้อมูลจาก TradingView)</string>
     <string name="set_finance_on">เปิด tool การเงิน (วิเคราะห์เทคนิค, สแกนหุ้น, ปฏิทินเศรษฐกิจ, แจ้งเตือนราคา)</string>
+
+    <string name="nav_channel">เชื่อมบอร์ดสำหรับนำทาง</string>
+    <string name="nav_service_title">ESP32-AI: ส่ง GPS + การนำทางให้บอร์ด</string>
+    <string name="nav_service_text">แตะเพื่อเปิดแอป — หยุดได้ที่แท็บนำทาง</string>
+    <string name="nav_start">▶ เริ่มส่ง GPS + การนำทางให้บอร์ด</string>
+    <string name="nav_stop">■ หยุดส่ง</string>
+    <string name="nav_how">ในรถ: เปิด Hotspot ของมือถือ แล้วตั้ง Wi-Fi ของบอร์ดเป็น Hotspot นี้ (บอร์ดใช้เน็ตจากมือถือ + หามือถือเจอเอง) · ที่บ้าน: มือถือกับบอร์ดใช้ Wi-Fi เดียวกันก็ได้ · เสียบสาย USB ครั้งแรก 1 ครั้งเพื่อจับคู่ · นำทางด้วย Google Maps ตามปกติ หรือพูดกับบอร์ดว่า "นำทางไป …"</string>
+    <string name="nav_link_usb">🔌 บอร์ด: เชื่อมทาง USB</string>
+    <string name="nav_link_wifi">📶 บอร์ด: เชื่อมทาง Wi-Fi (%1$s)</string>
+    <string name="nav_link_waiting">⏳ รอบอร์ดต่อเข้ามาทาง Wi-Fi…</string>
+    <string name="nav_link_off">บอร์ด: ยังไม่ได้เริ่มส่ง (กดปุ่มด้านล่าง)</string>
+    <string name="nav_paired">✔ จับคู่กับบอร์ดแล้ว</string>
+    <string name="nav_not_paired">✖ ยังไม่ได้จับคู่ — เสียบสาย USB เข้าบอร์ด 1 ครั้ง (แท็บบอร์ดต้องขึ้น "เชื่อมต่อแล้ว")</string>
+    <string name="nav_no_fix">GPS: ยังไม่มีพิกัด</string>
+    <string name="nav_maps_idle">Google Maps: ไม่ได้นำทาง</string>
+    <string name="nav_perms">สิทธิ์ที่ต้องใช้</string>
+    <string name="nav_perm_location">ตำแหน่ง (GPS)</string>
+    <string name="nav_perm_notify">แสดงการแจ้งเตือน (ให้บริการทำงานต่อตอนปิดจอ)</string>
+    <string name="nav_perm_listener">อ่านการแจ้งเตือน (จุดเลี้ยวจาก Google Maps)</string>
+    <string name="nav_perm_overlay">แสดงทับแอปอื่น (บอร์ดสั่งเปิด Maps ได้)</string>
+    <string name="nav_perm_battery">ไม่จำกัดการใช้แบตเตอรี่</string>
+    <string name="nav_perm_fix">เปิด</string>
+    <string name="nav_perm_help">ถ้าสวิตช์ "อ่านการแจ้งเตือน" หรือ "แสดงทับแอปอื่น" กดไม่ได้ (Android 13+ กับแอปที่ติดตั้งจากไฟล์): ข้อมูลแอป → ⋮ มุมขวาบน → "อนุญาตการตั้งค่าที่ถูกจำกัด" แล้วกลับมาเปิดใหม่ · HONOR: แบตเตอรี่ → เปิดแอป → จัดการเอง (เปิดทั้ง 3 ช่อง) · Samsung: แบตเตอรี่ → ไม่จำกัด และเอาแอปออกจาก "แอปที่ไม่ได้ใช้ (sleeping)"</string>
+    <string name="nav_app_info">ข้อมูลแอป (อนุญาตการตั้งค่าที่ถูกจำกัด)</string>
+    <string name="nav_test">ทดสอบในมือถือ</string>
+    <string name="nav_test_hint">จุดหมาย เช่น เซ็นทรัลเวิลด์</string>
+    <string name="nav_test_go">นำทางด้วย Maps</string>
+    <string name="nav_test_stop">หยุดนำทาง</string>
+    <string name="nav_raw">ข้อความล่าสุดจาก Google Maps (ส่งให้ผู้พัฒนาถ้าลูกศร/ระยะผิด):\n%1$s</string>
+    <string name="nav_events">เหตุการณ์ล่าสุด</string>
 </resources>

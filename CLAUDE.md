@@ -18,6 +18,7 @@
 - `src/agent/` — `AgentController.cpp` (setup/loop) + `AgentSession.cpp` / `AgentMic.cpp` / `AgentRoutines.cpp` / `AgentDevice.cpp`,
   `AgentTools.*` (function declarations), `WebTools*.*` (tools ข้อมูล, HTTPS เท่านั้น)
 - `src/ai/` Gemini Live client · `src/audio/` I2S/ES8311/วิทยุ · `src/ui/` ดวงตา/การ์ด/เมนู/หน้าปัด · `src/memory/` ความจำ · `src/app/` Settings + SecretBox
+- `src/phone/` เชื่อมแอปมือถือ: GPS + นำทาง Google Maps + AI พูดเตือนก่อนเลี้ยว (USB / Wi-Fi, จับคู่ด้วย USB, handshake HMAC — wiki 18)
 - `src/vehicle/` หน้าปัดรถ (ตัวจำลอง, ELM327 BLE/UART, Honda K-Line — wiki 16; เขียนเองทั้งหมด ห้ามคัดลอกโค้ด redline-gauge: license PolyForm NC)
 - `tools/pc_app/` ESP32-AI Studio · `tools/android_flasher/` แอป Android ผ่าน USB OTG (แฟลช + สถานะ/log/ตั้งค่า/แชท ใช้ protocol เดียวกับ Studio) · `host_tests/` unit tests · `wiki/` Obsidian vault
 
