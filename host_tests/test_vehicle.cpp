@@ -50,6 +50,8 @@ TEST(vehicle_readings_and_text_lines) {
         CHECK(parseSource(sourceKey((SourceId)i), id) && id == (SourceId)i);  // every key reads back
     }
     CHECK(usesUart(SourceId::HondaK) && usesUart(SourceId::ObdUart) && !usesUart(SourceId::ObdBle));
+    CHECK(parseSource("gps", id) && id == SourceId::PhoneGps && !usesUart(SourceId::PhoneGps));  // wiki 18
+    CHECK(strcmp(sourceNameTh(SourceId::PhoneGps), "GPS มือถือ") == 0);
 
     DashStyle st;
     for (uint8_t i = 0; i < (uint8_t)DashStyle::Count; i++) {

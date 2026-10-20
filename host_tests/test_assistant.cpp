@@ -198,6 +198,15 @@ public:
     bool vehicleOn = false;
     std::string vehicleCall;
     bool vehicleEnabled() override { return vehicleOn; }
+    bool phoneOn = false;
+    std::string navCall;
+    bool phonePaired() override { return phoneOn; }
+    const char* navigateAction(const char* action, const char* to, JsonObject r) override {
+        navCall = std::string(action) + ":" + to;
+        if (!strcmp(action, "go") && !strcmp(to, "offline")) return "the phone is not connected";
+        r["navigating"] = !strcmp(action, "go");
+        return nullptr;
+    }
     const char* vehicleAction(const char* action, const char* source, JsonObject r) override {
         vehicleCall = std::string(action) + ":" + source;
         if (!strcmp(action, "set_source") && !strcmp(source, "nope")) return "unknown source";
@@ -303,6 +312,21 @@ TEST(tool_declarations_per_model) {
     CHECK(!callTool(rig.tools, "vehicle", "{\"action\":\"set_source\",\"source\":\"nope\"}", vr));
     CHECK(!callTool(rig.tools, "vehicle", "{\"action\":\"drive\"}", vr));
     rig.dev.vehicleOn = false;
+
+    // the phone app (wiki 18): `navigate` only once a phone was paired, small like the dash tool
+    rig.dev.phoneOn = true;
+    const size_t withPhone = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
+    CHECK_EQ(count, (size_t)43);
+    CHECK(withPhone - bytes < 450);
+    printf("    + navigate tool: %u bytes JSON\n", (unsigned)(withPhone - bytes));
+    JsonDocument nr;
+    CHECK(callTool(rig.tools, "navigate", "{\"action\":\"go\",\"to\":\"เซ็นทรัลเวิลด์\"}", nr));
+    CHECK(rig.dev.navCall == "go:เซ็นทรัลเวิลด์" && nr["result"]["navigating"] == true);
+    CHECK(!callTool(rig.tools, "navigate", "{\"action\":\"go\"}", nr));  // where to?
+    CHECK(!callTool(rig.tools, "navigate", "{\"action\":\"go\",\"to\":\"offline\"}", nr));
+    CHECK(callTool(rig.tools, "navigate", "{\"action\":\"status\"}", nr) && rig.dev.navCall == "status:");
+    CHECK(!callTool(rig.tools, "navigate", "{\"action\":\"fly\"}", nr));
+    rig.dev.phoneOn = false;
 
     // optional finance pack off -> 36 (no trading tools exist at all)
     rig.tools.setFinancePack(false);

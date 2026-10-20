@@ -34,6 +34,7 @@
 #include "system/Storage.h"
 #include "ui/CardScreen.h"
 #include "ui/DashScreen.h"
+#include "ui/NavScreen.h"
 #include "ui/FaceScreen.h"
 #include "ui/KeyboardScreen.h"
 #include "ui/RadioScreen.h"
@@ -41,6 +42,7 @@
 #include "ui/UiManager.h"
 #include "util/JsonFile.h"
 #include "util/Utf8.h"
+#include "phone/PhoneLink.h"
 #include "vehicle/Vehicle.h"
 
 static LGFX_ES3C28P lcd;
@@ -181,6 +183,15 @@ static void uiTask(void*) {
             gUi.push(&gDashUi);
         }
         if (gVehicle.takeCloseRequest() && gUi.top() == &gDashUi) gUi.pop();
+
+        // navigation from the phone (wiki 18): its screen over the face (the dash shows a strip instead)
+        // (taken only over the face: from a menu it opens once the user is back, if still navigating)
+        if (!agent.powerSave() && (gUi.atRoot() || gUi.top() == &gCard || gUi.top() == &gRadioUi) &&
+            gPhone.takeNavStarted() && gPhone.nav().fresh(millis())) {
+            gUi.popToRoot();
+            gUi.push(&gNavUi);
+        }
+        if (gPhone.takeNavEnded() && gUi.top() == &gNavUi) gUi.pop();
 
         // radio player screen: opens when a station starts (voice or console) over the face; the power-save
         // clock is the face itself, so the player steps aside while dimmed and comes back on wake
@@ -530,6 +541,7 @@ static void handleConsoleLine(String line) {
         Serial.println("radio list: radiolist | radioadd name|url|genre | radioedit <n> name|url|genre | radiodel <n> | radiomove <from> <to> | radioreset | radio <n>");
         Serial.println("vehicle dash: dash (DASH <json>) | dash open|close | dash source <off|sim|touch|kline|obd_ble|obd_uart|serial>");
         Serial.println("     dash style <race|digital|classic> | dash kind <car|moto> | dash shift <rpm> | dash max <rpm> | dash kdump | dash ble forget | dash baud <elm|text> <n>");
+        Serial.println("phone app (wiki 18): phone (PHONEINFO <json>) | phone {json} (from the app) | phone nav <place> | phone stop | phone unpair");
     } else if (cmd == "config") {
         printConfig();
     } else if (cmd == "options") {
@@ -598,6 +610,24 @@ static void handleConsoleLine(String line) {
         }
         if (why) d["error"] = why;
         printTagged("DEVICE", d);
+    } else if (cmd == "phone") {  // the phone app (wiki 18): its messages over USB, status, tests
+        if (rest.startsWith("{")) {
+            gPhone.onLine(rest.c_str(), PhoneLink::Via::Usb);  // GPS 1 Hz: no echo
+            return;
+        }
+        JsonDocument d;
+        if (rest == "unpair") {
+            gPhone.unpair();
+        } else if (rest.startsWith("nav ")) {
+            String to = rest.substring(4);
+            to.trim();
+            if (!gPhone.request("navigate", to.c_str())) d["error"] = "no phone connected";
+        } else if (rest == "stop") {
+            if (!gPhone.request("stop")) d["error"] = "no phone connected";
+        }
+        if (!d.is<JsonObject>()) d.to<JsonObject>();  // keeps an "error" already set
+        gPhone.describe(d.as<JsonObject>());
+        printTagged("PHONEINFO", d);
     } else if (cmd == "dash") {  // vehicle dash (wiki 16): status / open / source / settings
         const int sp2 = rest.indexOf(' ');
         const String sub = sp2 < 0 ? rest : rest.substring(0, sp2);
@@ -960,6 +990,7 @@ void setup() {
     if (!audio.begin(&i2c)) gFace.setSystemText("ระบบเสียงผิดพลาด (ES8311 / I2S) ดู Serial log", 0);
     gStations.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // radio_stations.json
     gRadio.begin(&audio);  // Internet radio task (idle until play_radio)
+    gPhone.begin();  // before the agent: a paired phone declares the `navigate` tool (wiki 18)
     agent.begin(&audio, &gFace, &storage);
     gVehicle.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // after the devices (GPIO 43/44)
 

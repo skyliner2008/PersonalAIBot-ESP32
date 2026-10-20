@@ -289,6 +289,7 @@ void AgentController::loop() {
         handleScheduler(now);
         handleDevices(now);
         handleVehicle(now);
+        handleNavigation(now);
         lap("scheduler");
         handleSleepAndRestarts(now);
         lap("sleep");

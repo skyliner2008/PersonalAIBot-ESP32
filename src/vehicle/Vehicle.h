@@ -117,6 +117,7 @@ private:
     void runKline(VehicleLink& link);
     void runElm(VehicleLink& link, bool ble);
     void runText(VehicleLink& link);
+    void runPhone();
 };
 
 extern Vehicle gVehicle;

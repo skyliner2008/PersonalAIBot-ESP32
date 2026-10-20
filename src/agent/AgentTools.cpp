@@ -113,6 +113,7 @@ const AgentTools::Entry AgentTools::kHandlers[] = {
     {"play_radio", &AgentTools::playRadio},
     {"device", &AgentTools::device},
     {"vehicle", &AgentTools::vehicle},
+    {"navigate", &AgentTools::navigate},
     {nullptr, nullptr},
 };
 
@@ -264,12 +265,22 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     }
     if (_device.vehicleEnabled()) {  // only once a dash source is chosen (menu / console): no cost otherwise
         static const char* const kVehActions[] = {"status", "open", "close", "set_source", nullptr};
-        static const char* const kVehSources[] = {"off", "sim", "touch", "kline", "obd_ble", "obd_uart", "serial", nullptr};
+        static const char* const kVehSources[] = {"off", "sim", "touch", "kline", "obd_ble", "obd_uart", "serial", "phone", nullptr};
         static const Param vehp[] = {
             {"action", "STRING", nullptr, true, kVehActions},
             {"source", "STRING", nullptr, false, kVehSources},
         };
         declare(d, b, "vehicle", "Car / motorcycle dash: live rpm, speed, engine temp, battery; show or hide it.", vehp, 2);
+    }
+    if (_device.phonePaired()) {  // only once the phone app was paired over USB: no cost otherwise
+        static const char* const kNavActions[] = {"go", "stop", "status", "where", nullptr};
+        static const Param navp[] = {
+            {"action", "STRING", nullptr, true, kNavActions},
+            {"to", "STRING", "go: destination as the user said it.", false, nullptr},
+        };
+        declare(d, b, "navigate",
+                "Google Maps on the user's phone: go / stop, next turn + arrival (status), current place (where).",
+                navp, 2);
     }
 
     // ---- Live data with on-screen graphics (run by webtools::WebTools, answered asynchronously) ----
@@ -783,6 +794,17 @@ bool AgentTools::vehicle(JsonObjectConst a, JsonObject r, const char*& e) {
         return (e = "action must be status, open, close or set_source"), false;
     }
     if (const char* why = _device.vehicleAction(action, a["source"] | "", r)) return (e = why), false;
+    return true;
+}
+
+bool AgentTools::navigate(JsonObjectConst a, JsonObject r, const char*& e) {
+    const char* action = a["action"] | "status";
+    if (strcmp(action, "go") && strcmp(action, "stop") && strcmp(action, "status") && strcmp(action, "where")) {
+        return (e = "action must be go, stop, status or where"), false;
+    }
+    const char* to = a["to"] | "";
+    if (!strcmp(action, "go") && !*to) return (e = "to (the destination) is required"), false;
+    if (const char* why = _device.navigateAction(action, to, r)) return (e = why), false;
     return true;
 }
 

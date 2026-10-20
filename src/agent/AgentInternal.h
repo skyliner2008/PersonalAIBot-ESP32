@@ -16,6 +16,7 @@
 
 #include "../app/AppConfig.h"
 #include "../audio/RadioPlayer.h"
+#include "../phone/PhoneLink.h"
 #include "../audio/RadioStations.h"
 #include "../system/OtaUpdater.h"
 #include "../system/Peripherals.h"

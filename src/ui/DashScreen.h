@@ -11,12 +11,14 @@
  *   classic  two dials (tachometer with the red zone + gear window, speedometer + digital speed),
  *            a shift lamp between them, engine / battery / intake readouts along the bottom
  *
+ * Navigating with Google Maps on the phone (wiki 18): the header shows the next turn instead of the status.
  * Tap the status in the header: next style (saved). Simulator "touch": hold the dash - further right =
  * more throttle. Long press: reset the peak. The dials' faces are drawn once into a PSRAM sprite.
  */
 
 #pragma once
 
+#include "../phone/PhoneProtocol.h"
 #include "../vehicle/DashModel.h"
 #include "UiManager.h"
 
@@ -46,6 +48,7 @@ private:
     int _pressed = 0;
     float _speedNeedle = 0;            // the speedometer needle moves smoothly between readings
     LGFX_Sprite* _face = nullptr;      // classic: dial faces (ticks, numbers, red zone)
+    phone::Nav _nav;                   // the next turn from the phone (wiki 18)
     uint32_t _faceKey = 0;
 
     void cycleStyle();

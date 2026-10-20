@@ -135,6 +135,8 @@ public:
     const char* deviceAction(const char* action, const char* name, JsonVariantConst value, JsonObject result) override;
     bool vehicleEnabled() override;
     const char* vehicleAction(const char* action, const char* source, JsonObject result) override;
+    bool phonePaired() override;
+    const char* navigateAction(const char* action, const char* to, JsonObject result) override;
     /** Re-read agent/devices.json (console `devices reload`); the next session sees the new list. */
     void reloadDevices();
 
@@ -334,6 +336,8 @@ private:
 
     // Reminders
     std::vector<PsString> _announcements;
+    PsString _navSay;  // the next turn: goes before the other announcements, dropped once it is too late
+    uint32_t _navSayAt = 0;
     bool _ringing = false;
     uint32_t _ringUntil = 0, _nextChime = 0, _nextSchedulerCheck = 0;
 
@@ -403,6 +407,7 @@ private:
     void bargeInNow(uint32_t now);  // the wake word while the AI talks: stop the reply, listen
     void handleDevices(uint32_t now);  // inputs with "notify" -> an announcement
     void handleVehicle(uint32_t now);  // dash warnings (engine too hot, not charging) -> an announcement
+    void handleNavigation(uint32_t now);  // the next turn from Google Maps on the phone -> said (wiki 18)
     void markAnswered() { _replyWatchAt = 0; }
     void startRecording(uint8_t sec);
     void recordPairs(const int16_t* mic, const int16_t* ref, size_t n);
