@@ -18,7 +18,7 @@ fun otaPublicKeyPem(): String {
         .replace("\\n", "\n")
 }
 
-/** Release signing: ~/.pab-esp32/flasher-keystore.properties (tools/build_flasher_apk.py), never in the repo. */
+/** Optional release signing: ~/.pab-esp32/flasher-keystore.properties (tools/build_flasher_apk.py), never in the repo. */
 val keystoreProps = Properties().apply {
     val f = File(System.getenv("PAB_FLASHER_KEYSTORE_PROPS")
         ?: "${System.getProperty("user.home")}/.pab-esp32/flasher-keystore.properties")
@@ -55,7 +55,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.findByName("release")
+            // no keystore of your own: the Android SDK's debug key (~/.android/debug.keystore) - phones then take
+            // updates only from APKs built on this PC (another PC: uninstall the app once, then install)
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 

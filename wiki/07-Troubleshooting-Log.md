@@ -134,6 +134,24 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T084: ออก release แล้วขึ้นเตือนเรื่องกุญแจ — ไม่มีแอปมือถือใน v4.3.0, "-app.bin is NOT signed"
+
+**วันที่:** 2026-10-21 · **ผู้ใช้:** "เรื่องกุญแจ มันซับซ้อนเกินไป ... บอร์ด และ sd-card จะอยู่แต่ละผู้ใช้"
+
+**อาการ:** `build_flasher_apk.py` หยุดเพราะไม่มี release keystore → v4.3.0 ไม่มี `ESP32-AI-Flasher.apk` (release immutable เพิ่มทีหลังไม่ได้)
+และ `make_release.py` / `publish_release.py` เตือน `NOT signed` ทุกครั้ง ทั้งที่บอร์ดอัปเดตได้ปกติ
+
+**สาเหตุ:** กุญแจทั้งสองเป็นของฝั่งคนออก release ไม่เกี่ยวกับการเก็บรหัสของผู้ใช้ — รหัส Wi-Fi / API key อยู่ใน `secrets.json`
+บน SD แบบ SecretBox (AES-256-GCM, กุญแจจาก MAC + eFuse ของชิป) อยู่แล้ว: การ์ดอื่น/บอร์ดอื่น = ตั้งใหม่, OTA เขียนแค่ช่องโปรแกรม ค่าจึงอยู่ครบ
+
+**แก้ (v4.3.1):**
+- `build.gradle.kts`: ไม่มี keystore ของตัวเอง → release ใช้ debug signing ของ SDK · `build_flasher_apk.py` ไม่บังคับ keystore แล้ว
+- `publish_release.py` build APK ให้ทุก release เมื่อพบ Android SDK (build ล้ม = ไม่ publish)
+- ลายเซ็น OTA เป็นทางเลือก: เอาคำเตือน `NOT signed` ออกจากสองสคริปต์ (โค้ดเซ็น/ตรวจยังอยู่ เปิดได้ด้วย `ota_keygen.py`)
+- พบระหว่างทาง: Android Studio อัปเดต `jbr` เป็น **JDK 25** → Gradle 8.11 ล้มทันที (ข้อความมีแค่ `25.0.3`) ·
+  `build_flasher_apk.py` หา JDK 17–23 เอง (JAVA_HOME → jbr → `~/.gradle/jdks` → ...) แล้วตั้ง `JAVA_HOME` ให้ Gradle
+- ตรวจ: APK release 749 KB เซ็นด้วย `CN=Android Debug` (apksigner) · แอป unit tests ผ่าน
+
 ## T083: เชื่อมมือถือ ↔ บอร์ด — GPS + นำทาง Google Maps + AI พูดเตือนก่อนเลี้ยว
 
 **วันที่:** 2026-10-20 · **ผู้ใช้:** "เพิ่มระบบ gps นำทาง ใช้ gps มือถือ ส่งข้อมูลหลายช่องทาง usb, บลูทูธ, wifi สั่งงานด้วยเสียงผ่านบอร์ดควบคุมมือถือ"

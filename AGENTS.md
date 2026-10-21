@@ -9,7 +9,7 @@ plus a Python/Tkinter PC companion app. Gemini Live for voice, on-device memory,
 - Host unit tests (after one `pio run`, which fetches ArduinoJson): `host_tests\run_tests.bat` (MSVC) or `bash host_tests/run_tests.sh`
 - PC app: `pip install -r tools/pc_app/requirements.txt` then `python tools/pc_app/esp32_ai_studio.py`
 - Android phone app (wiki 17: flasher + Studio-like status/log/settings/chat over the same serial protocol): `python tools/build_flasher_apk.py` (needs JDK 17+ and the Android SDK) → `dist/ESP32-AI-Flasher.apk`;
-  tests `cd tools/android_flasher && ./gradlew testDebugUnitTest`. Its release keystore lives outside the repo; never create or commit it for the user.
+  tests `cd tools/android_flasher && ./gradlew testDebugUnitTest`. No keystore is needed (the release APK falls back to the SDK debug key); an optional own keystore lives outside the repo — never create or commit it for the user.
 
 ## Layout
 - `src/agent/` AgentController split by concern (`AgentController.cpp` setup/loop, `AgentSession.cpp`, `AgentMic.cpp`,
@@ -27,4 +27,4 @@ plus a Python/Tkinter PC companion app. Gemini Live for voice, on-device memory,
 - When you change behaviour, update the matching wiki page, the change log in `wiki/00-Home-Dashboard.md`,
   and both READMEs (`README.md`, `README.th.md`). Keep both copies of `PROJECT_ARCHITECTURE_SPEC.md` identical.
 - Releases are manual: bump `FIRMWARE_VERSION`, commit, push, `python tools/publish_release.py` (immutable releases).
-  OTA images are signed (ECDSA P-256) with a private key that lives outside the repo (`tools/ota_keygen.py`, once); never commit it.
+  OTA signing (ECDSA P-256) is optional and off by default; if enabled (`tools/ota_keygen.py`), the private key lives outside the repo — never commit it.

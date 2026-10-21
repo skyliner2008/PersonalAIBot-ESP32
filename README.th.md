@@ -9,7 +9,7 @@
 [![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%203.3.12%20%28IDF%205.5%29-F5822A?logo=platformio&logoColor=white)](platformio.ini)
 [![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
-[![Firmware](https://img.shields.io/badge/firmware-v4.3.0-3ddc84)](src/app/AppConfig.h)
+[![Firmware](https://img.shields.io/badge/firmware-v4.3.1-3ddc84)](src/app/AppConfig.h)
 [![Tests](https://img.shields.io/badge/host%20tests-2%2C350%20checks%20passing-3ddc84)](host_tests/)
 [![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -79,7 +79,7 @@
    (ถ้าหาบอร์ดไม่เจอ: กด **BOOT** ค้าง → แตะ **RESET** → ปล่อย BOOT แล้วกด Connect ใหม่)
 3. ช่อง Flash Address ใส่ **`0x0`** → เลือกไฟล์ `.bin` → **Program** เสร็จแล้วกด **RESET** ที่บอร์ด
 
-ใช้ command line ก็ได้: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v4.3.0-factory.bin`
+ใช้ command line ก็ได้: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v4.3.1-factory.bin`
 
 **📱 แฟลชจากมือถือ Android (ไม่ต้องมีคอม):** ติดตั้งแอป **ESP32-AI Flasher** (`ESP32-AI-Flasher.apk` จากหน้า release หรือ build เอง:
 `python tools/build_flasher_apk.py`) เสียบสาย USB-C จากมือถือเข้าบอร์ด (มือถือต้องรองรับ USB OTG) แล้วกด **แฟลชลงบอร์ด**
@@ -307,7 +307,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 - **เพิ่ม tool:** ประกาศใน `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`) tool ที่ใช้เน็ตใส่ใน `src/agent/WebToolsExtra.cpp` และวาด `CardData` (ดู [wiki/11](wiki/11-Data-Tools-and-Cards.md))
 - **ทดสอบไม่ต้องมีบอร์ด:** `host_tests\run_tests.bat` — บนบอร์ดเรียก tool ทุกตัวได้จากแท็บ 🧰 ใน Studio หรือ serial (`tool <name> {json}`)
 - **ดูบทสนทนากับ Live API:** พิมพ์ `trace on` ใน serial → ขึ้นบรรทัด `[Trace]` ทุกข้อความจากเซิร์ฟเวอร์ (transcript, การเรียก tool, `generationComplete` / `turnComplete` — ก้อนเสียงแค่นับจำนวน) และทุกข้อความ JSON ที่บอร์ดส่ง (`trace off` ปิด, ไม่บันทึกค่า) — ใช้หาสาเหตุ AI ตอบซ้ำ 2 รอบหลังเรียก tool ([T071](wiki/07-Troubleshooting-Log.md))
-- **ออก Release:** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py` สคริปต์จะ build ไฟล์ factory (`tools/make_release.py`) สร้าง Release แบบร่าง แนบไฟล์ factory และไฟล์ OTA `-app.bin` (พร้อม `.sha256` และลายเซ็น `-app.bin.sig`) เผยแพร่ แล้วดาวน์โหลดกลับมาเทียบ sha256 โดยรัน host tests ก่อนเผยแพร่เสมอ (`--skip-tests` ใช้เฉพาะเครื่องที่ไม่มี compiler) — Release ของ repo นี้เป็นแบบ **immutable** เผยแพร่แล้วแก้ไฟล์หรือใช้ชื่อ tag ซ้ำไม่ได้ ทุกครั้งต้องใช้เลขเวอร์ชันใหม่ (`--dry-run` = ตรวจอย่างเดียว) **ครั้งเดียวก่อน release แรกที่เซ็น:** ESP32-AI Studio แท็บ 🔧 เฟิร์มแวร์ → **🔑 สร้างกุญแจ** (หรือ `pip install cryptography` → `python tools/ota_keygen.py`) → commit `src/app/OtaPublicKey.h` และสำรองกุญแจส่วนตัวที่สคริปต์บอกที่อยู่ไว้ (อยู่นอก repo) — บอร์ดที่ build พร้อมกุญแจนั้นจะติดตั้งเฉพาะอัปเดตที่เซ็นด้วยกุญแจนี้ ([wiki 13](wiki/13-OTA-Update.md))
+- **ออก Release:** แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → `git push` → `python tools/publish_release.py` สคริปต์จะ build ไฟล์ factory (`tools/make_release.py`) สร้าง Release แบบร่าง แนบไฟล์ factory และไฟล์ OTA `-app.bin` (พร้อม `.sha256`) และแอปมือถือ `ESP32-AI-Flasher.apk` (build ให้อัตโนมัติเมื่อเครื่องมี Android SDK ไม่ต้องสร้าง keystore — เซ็นด้วย debug key ของ SDK เว้นแต่สร้าง keystore เองด้วย `--create-keystore`) เผยแพร่ แล้วดาวน์โหลดกลับมาเทียบ sha256 โดยรัน host tests ก่อนเผยแพร่เสมอ (`--skip-tests` ใช้เฉพาะเครื่องที่ไม่มี compiler) — Release ของ repo นี้เป็นแบบ **immutable** เผยแพร่แล้วแก้ไฟล์หรือใช้ชื่อ tag ซ้ำไม่ได้ ทุกครั้งต้องใช้เลขเวอร์ชันใหม่ (`--dry-run` = ตรวจอย่างเดียว) รหัส Wi-Fi และ API key ไม่ต้องใช้กุญแจ release เลย: เก็บใน SD card ของบอร์ดแบบเข้ารหัสด้วยกุญแจที่คำนวณจากชิปของบอร์ดนั้น (เปลี่ยนการ์ดหรือเปลี่ยนบอร์ด = ตั้งใหม่) และอัปเดต OTA แล้วยังอยู่ครบ **ทางเลือก — เซ็นอัปเดต OTA:** ESP32-AI Studio แท็บ 🔧 เฟิร์มแวร์ → **🔑 สร้างกุญแจ** (หรือ `pip install cryptography` → `python tools/ota_keygen.py`) → commit `src/app/OtaPublicKey.h` และสำรองกุญแจส่วนตัวที่สคริปต์บอกที่อยู่ไว้ (อยู่นอก repo) — บอร์ดที่ build พร้อมกุญแจนั้นจะติดตั้งเฉพาะอัปเดตที่เซ็นด้วยกุญแจนี้ ([wiki 13](wiki/13-OTA-Update.md))
 - **CI:** [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml) ทำแบบเดียวกันบน GitHub Actions แต่ตอนนี้ตั้งเป็นกดรันเองเท่านั้น (*Actions → Firmware → Run workflow*) และ job ออก release จะรอ job host-tests ผ่านก่อน — `tools/make_release.py` ไม่ยอมทำงานถ้า `include/secrets.h` มีค่าจริง และสแกนไฟล์หาสิ่งที่หน้าตาเหมือน API key
 - **เอกสาร:** โฟลเดอร์ `wiki/` เป็น Obsidian vault — ปัญหาที่แก้ได้ช่วยบันทึกใน [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md)
 

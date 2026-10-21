@@ -91,13 +91,16 @@ MainActivity (แท็บ + สิทธิ์ USB + เจ้าของพ�
 
 ## Build / ทดสอบ
 ```bash
-python tools/build_flasher_apk.py --create-keystore   # ครั้งเดียว: ~/.pab-esp32/flasher-release.jks + flasher-keystore.properties (สำรองไว้!)
 python tools/build_flasher_apk.py                     # unit tests + APK release → dist/ESP32-AI-Flasher.apk (+ .sha256)
-python tools/build_flasher_apk.py --debug             # APK debug ไม่ต้องมี keystore (ลงมือถือตัวเอง)
+python tools/build_flasher_apk.py --debug             # APK debug (debuggable สำหรับทดสอบ)
+python tools/build_flasher_apk.py --create-keystore   # ทางเลือก: keystore ของตัวเอง ~/.pab-esp32/flasher-release.jks (สำรองไว้!)
 cd tools/android_flasher && ./gradlew testDebugUnitTest lintDebug
 ```
 - ต้องมี JDK 17+ และ Android SDK (ลง Android Studio ได้ครบ) — หา SDK จาก `ANDROID_HOME` / `local.properties` / `%LOCALAPPDATA%\Android\Sdk`
-- keystore อยู่**นอก repo** เหมือนกุญแจ OTA (สร้างเมื่อผู้ใช้สั่งเท่านั้น) · APK รุ่นใหม่ลงทับได้เฉพาะเมื่อเซ็นด้วยกุญแจเดิม — หายแล้วต้องถอนแอปก่อนลงใหม่
+- **ไม่ต้องมี keystore (v4.3.1, T084):** ไม่มี keystore ของตัวเอง → APK release เซ็นด้วย debug key ของ Android SDK (`~/.android/debug.keystore`
+  SDK สร้างให้เอง) · `publish_release.py` build APK ให้ทุก release เมื่อเครื่องมี Android SDK · APK รุ่นใหม่ลงทับได้เฉพาะเมื่อเซ็นด้วยกุญแจเดิม
+  → build บน PC เครื่องเดิมก็อัปเดตทับได้ตลอด; ย้ายไป PC เครื่องอื่น = ถอนแอปบนมือถือครั้งเดียวแล้วลงใหม่
+- keystore ของตัวเอง (ถ้าสร้าง) อยู่**นอก repo** (สร้างเมื่อผู้ใช้สั่งเท่านั้น)
 - **unit tests 41 ข้อ (JVM)** — console (T081): แยก TAG/สี/แชท, ซ่อน `set key`/`set pass`/`key=`, บรรทัดถูกตัดกลางตัวอักษรไทย, ข้ามภาพ/เสียงไบนารี
   และ resync เมื่อมีข้อความแทรก, ค่าตั้งที่ต้องส่ง (เปลี่ยนเฉพาะที่แก้, โปรไฟล์ก่อน, ค่าเป็นบรรทัดเดียว), การ์ดสถานะ/ผลทดสอบ key ภาษาไทย,
   `BoardLink` อ่าน/เขียนจริงผ่าน thread และ**ไม่แตะ DTR/RTS** · แฟลช (T080): `FakeRom` จำลองบอร์ดทั้งตัว — แอปเดิมที่ไม่สนใจโปรโตคอลจนกว่าจะได้ลำดับ DTR/RTS, ROM loader ที่ตรวจ checksum/ลำดับบล็อก/ขนาด

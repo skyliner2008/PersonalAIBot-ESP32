@@ -99,9 +99,7 @@ def sign_app(app: Path) -> None:
 
 def _sign(app: Path, sig_file: Path, ota_keygen) -> None:
     public = ota_keygen.header_pem()
-    if not public:
-        print("\nWARNING: no release key in src/app/OtaPublicKey.h - the -app.bin is NOT signed "
-              "(run tools/ota_keygen.py once, or ESP32-AI Studio > เฟิร์มแวร์ > สร้างกุญแจ)")
+    if not public:  # signing is optional: boards without a built-in key check sha256 + version marker
         return
     key_path = ota_keygen.key_path()
     if not key_path.exists():

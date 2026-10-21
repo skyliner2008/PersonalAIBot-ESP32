@@ -63,7 +63,7 @@ sha256 มาจาก release เดียวกับไฟล์ จึงจ
   · clone ใหม่ / header ถูกล้าง: `python tools/ota_keygen.py --header` (หรือปุ่ม 🔑 อีกครั้ง) เขียน header จากกุญแจเดิม · ไม่ยอมสร้างกุญแจทับของเดิม
   · PC ใหม่: Studio **📂 นำกุญแจสำรองกลับมา...** (ต้องตรงกับ header) · **💾 สำรองกุญแจ...** ไม่ยอมบันทึกไว้ในโฟลเดอร์โปรเจกต์
 - `tools/make_release.py` เซ็น `-app.bin` → `dist/...-app.bin.sig` (ตรวจซ้ำด้วย public key ก่อนเขียน) · header มีกุญแจแต่หากุญแจส่วนตัวไม่เจอ/ไม่ตรง = หยุด
-  · header ว่าง = เตือน "NOT signed" แล้วทำต่อแบบเดิม · `publish_release.py` แนบ `.sig` · GitHub Actions: ใส่ PEM ใน secret `OTA_SIGNING_KEY`
+  · header ว่าง = ไม่เซ็น และไม่เตือนแล้ว (v4.3.1, T084 — ลายเซ็นเป็นทางเลือก ค่าปกติคือไม่เซ็น) · `publish_release.py` แนบ `.sig` · GitHub Actions: ใส่ PEM ใน secret `OTA_SIGNING_KEY`
 - **บนบอร์ด:** เฟิร์มแวร์ที่ build พร้อมกุญแจ → release ที่ไม่มี `.sig` = "ไม่มีลายเซ็น (.sig) - ไม่ติดตั้ง" · ลายเซ็นไม่ผ่าน =
   "ลายเซ็นไม่ถูกต้อง ... ไม่ติดตั้ง" (`[OTA] Signature check failed: bad signature`) · ผ่าน = `[OTA] Signature OK (release key)`
   · boot log บอกโหมด: `updates must be signed by the release key` / `no release key built in` · `ota` (JSON) มี `signed_updates`

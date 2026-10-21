@@ -8,11 +8,11 @@
 - Build เฟิร์มแวร์: `pio run` · แฟลช: `pio run -t upload` · serial: `pio device monitor`
 - Host unit tests (ต้อง `pio run` ก่อน 1 ครั้ง): `host_tests\run_tests.bat` (MSVC) หรือ `bash host_tests/run_tests.sh` (g++/clang++)
 - PC Studio: `python tools/pc_app/esp32_ai_studio.py`
-- แอปมือถือแฟลชบอร์ด (Android, wiki 17): `python tools/build_flasher_apk.py` (`--debug` / `--create-keystore` ครั้งเดียว — keystore อยู่นอก repo
-  ห้ามสร้างแทนผู้ใช้) → `dist/ESP32-AI-Flasher.apk` (publish_release แนบให้) · tests: `cd tools/android_flasher && ./gradlew testDebugUnitTest`
+- แอปมือถือแฟลชบอร์ด (Android, wiki 17): `python tools/build_flasher_apk.py` (ไม่ต้องมี keystore: เซ็นด้วย debug key ของ SDK · `--create-keystore` เป็นทางเลือก
+  ห้ามสร้างแทนผู้ใช้) → `dist/ESP32-AI-Flasher.apk` (publish_release build + แนบให้เองเมื่อมี Android SDK) · tests: `cd tools/android_flasher && ./gradlew testDebugUnitTest`
 - ออก Release (GitHub Actions ใช้ไม่ได้ — บัญชีติด billing): แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → push →
   `python tools/publish_release.py` (build + host tests + draft → upload → publish; release เป็น immutable ต้องขึ้นเลขใหม่ทุกครั้ง)
-  · ลายเซ็น OTA: ครั้งเดียว `python tools/ota_keygen.py` หรือปุ่ม 🔑 ในแท็บเฟิร์มแวร์ของ Studio (กุญแจส่วนตัวอยู่นอก repo — ห้าม commit / ห้ามสร้างแทนผู้ใช้) แล้ว make_release เซ็น `-app.bin` ให้
+  · ลายเซ็น OTA (ทางเลือก ค่าปกติไม่เซ็น — ผู้ใช้เห็นว่าไม่จำเป็น): `python tools/ota_keygen.py` หรือปุ่ม 🔑 ในแท็บเฟิร์มแวร์ของ Studio (กุญแจส่วนตัวอยู่นอก repo — ห้าม commit / ห้ามสร้างแทนผู้ใช้) แล้ว make_release เซ็น `-app.bin` ให้
 
 ## โครงสร้างหลัก
 - `src/agent/` — `AgentController.cpp` (setup/loop) + `AgentSession.cpp` / `AgentMic.cpp` / `AgentRoutines.cpp` / `AgentDevice.cpp`,

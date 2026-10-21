@@ -8,8 +8,8 @@ Publish the factory firmware as a GitHub Release - manual path (GitHub Actions c
 
 The repository uses IMMUTABLE releases, so the order matters and is fixed here:
     1. create the release as a DRAFT        (assets can only be attached to drafts)
-    2. upload the .bin, .sha256 and the -app.bin.sig (tools/ota_keygen.py)
-       + dist/ESP32-AI-Flasher.apk when it was built (tools/build_flasher_apk.py - the Android phone flasher)
+    2. upload the .bin, .sha256 (+ the -app.bin.sig only if a key was made with tools/ota_keygen.py - optional)
+       + dist/ESP32-AI-Flasher.apk, built here by tools/build_flasher_apk.py when an Android SDK is installed
     3. publish (and mark it latest)
     4. download it again and compare the sha256
 A tag that ever belonged to a published release can never be reused (v3.2.0 is burned that way):
@@ -135,14 +135,19 @@ def main() -> None:
         signed = bool(ota_keygen.header_pem())
     except ota_keygen.KeygenError as e:
         sys.exit(str(e))
-    if signed:
+    if signed:  # optional (tools/ota_keygen.py); without a key the board checks sha256 + version marker
         files.append(sig)
-    else:
-        print("WARNING: no release key (tools/ota_keygen.py): this release is not signed")
     for f in files:
         if not f.exists():
             sys.exit(f"missing {f}")
     apk = ROOT / "dist" / "ESP32-AI-Flasher.apk"  # same name every release: .../releases/latest/download/<it>
+    import build_flasher_apk
+    if build_flasher_apk.find_sdk():  # fresh phone app for every release (no keystore needed)
+        apk_cmd = [sys.executable, str(ROOT / "tools" / "build_flasher_apk.py")]
+        if "--skip-tests" in sys.argv:
+            apk_cmd.append("--skip-tests")
+        if subprocess.run(apk_cmd, cwd=ROOT).returncode != 0:
+            sys.exit("Phone app build failed: nothing was published.")
     if apk.exists() and (ROOT / "dist" / (apk.name + ".sha256")).exists():
         files += [apk, ROOT / "dist" / (apk.name + ".sha256")]
     else:
