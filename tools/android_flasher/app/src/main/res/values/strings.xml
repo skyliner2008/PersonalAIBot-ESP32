@@ -163,7 +163,11 @@
     <string name="nav_perm_battery">ไม่จำกัดการใช้แบตเตอรี่</string>
     <string name="nav_perm_fix">เปิด</string>
     <string name="nav_perm_help">ถ้าสวิตช์ "อ่านการแจ้งเตือน" หรือ "แสดงทับแอปอื่น" กดไม่ได้ (Android 13+ กับแอปที่ติดตั้งจากไฟล์): ข้อมูลแอป → ⋮ มุมขวาบน → "อนุญาตการตั้งค่าที่ถูกจำกัด" แล้วกลับมาเปิดใหม่ · HONOR: แบตเตอรี่ → เปิดแอป → จัดการเอง (เปิดทั้ง 3 ช่อง) · Samsung: แบตเตอรี่ → ไม่จำกัด และเอาแอปออกจาก "แอปที่ไม่ได้ใช้ (sleeping)"</string>
-    <string name="nav_app_info">ข้อมูลแอป (อนุญาตการตั้งค่าที่ถูกจำกัด)</string>
+    <string name="nav_app_info">🔓 ข้อมูลแอป (กด ⋮ ขวาบน → อนุญาตการตั้งค่าที่ถูกจำกัด)</string>
+    <string name="nav_perm_listener_dialog_title">สิทธิ์อ่านการแจ้งเตือน (Android 13+)</string>
+    <string name="nav_perm_listener_dialog_msg">หากระบบขึ้นเตือนว่า \"แอปถูกปฏิเสธไม่ให้เข้าถึง\":\n\n1. แตะ \"ข้อมูลแอป (ปลดล็อค ⋮)\"\n2. แตะจุด 3 จุด (⋮) ที่มุมขวาบน\n3. เลือก \"อนุญาตการตั้งค่าที่ถูกจำกัด\" (สแกนนิ้วหรือใส่รหัส)\n4. กลับมาที่นี่แล้วกด \"ไปเปิดสิทธิ์\"\n\n(หากเคยปลดล็อคแล้ว กด \"ไปเปิดสิทธิ์\" ได้เลยครับ)</string>
+    <string name="nav_perm_go_settings">ไปเปิดสิทธิ์</string>
+    <string name="nav_app_info_btn">ข้อมูลแอป (ปลดล็อค ⋮)</string>
     <string name="nav_test">ทดสอบในมือถือ</string>
     <string name="nav_test_hint">จุดหมาย เช่น เซ็นทรัลเวิลด์</string>
     <string name="nav_test_go">นำทางด้วย Maps</string>

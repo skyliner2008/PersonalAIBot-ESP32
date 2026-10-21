@@ -51,7 +51,21 @@ class NavPage(private val a: MainActivity, root: View) : PhoneHub.Observer {
             perm(R.string.nav_perm_notify, { has(Manifest.permission.POST_NOTIFICATIONS) }) { askRuntime() }
         }
         perm(R.string.nav_perm_listener, { MapsListener.enabled(a) }) {
-            open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            if (Build.VERSION.SDK_INT >= 33 && !MapsListener.enabled(a)) {
+                android.app.AlertDialog.Builder(a)
+                    .setTitle(R.string.nav_perm_listener_dialog_title)
+                    .setMessage(R.string.nav_perm_listener_dialog_msg)
+                    .setPositiveButton(R.string.nav_perm_go_settings) { _, _ ->
+                        open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                    }
+                    .setNeutralButton(R.string.nav_app_info_btn) { _, _ ->
+                        open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + a.packageName)))
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            } else {
+                open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }
         }
         perm(R.string.nav_perm_overlay, { Settings.canDrawOverlays(a) }) {
             open(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + a.packageName)))
@@ -61,10 +75,10 @@ class NavPage(private val a: MainActivity, root: View) : PhoneHub.Observer {
             val i = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + a.packageName))
             open(i)
         }
-        text(a.getString(R.string.nav_perm_help), dim = true)
         button(R.string.nav_app_info) {
             open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + a.packageName)))
         }
+        text(a.getString(R.string.nav_perm_help), dim = true)
 
         section(R.string.nav_test)
         dest = EditText(a).apply {

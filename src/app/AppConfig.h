@@ -10,7 +10,7 @@
 
 #pragma once
 
-#define FIRMWARE_VERSION        "4.3.1"
+#define FIRMWARE_VERSION        "4.3.2"
 #define OTA_REPO                "skyliner2008/PersonalAIBot-ESP32"  // GitHub Releases the board updates from
 
 // ============================================================
