@@ -121,6 +121,8 @@ ESP32-AI/
 
 | Date | Activity | Related Docs |
 |------|----------|--------------|
+| 2026-10-22 | **แก้หน้าปัดกระตุก + ข้อความเหลือง "กำลังรอข้อมูลจากรถ..." กระพริบ (T087):** race ระหว่าง core — ค่าที่ใหม่กว่า `now` ของ UI ถูกนับว่าเก่า; `fresh()` เปลี่ยนเป็นเทียบแบบ signed (รถ + GPS/นำทางมือถือ) | [[07-Troubleshooting-Log]] · [[16-Vehicle-Dash]] |
+| 2026-10-22 | **แก้ log `errno: 104 Connection reset by peer` ทุก 4 วิ (T086):** บอร์ดที่จับคู่มือถือแล้วบน Wi-Fi บ้านลองต่อ router (gateway) ถี่เกินไป → ถอยเวลาเป็นสูงสุด ~4 นาที, ต่อทันทีเมื่อแอปประกาศ UDP หรือ gateway เปลี่ยน | [[07-Troubleshooting-Log]] · [[18-Phone-Link-Navigation-Plan]] |
 | 2026-10-21 | **Release v4.3.2 — แก้ปัญหาสิทธิ์แอปมือถือ Android 13+ (T085):** เพิ่ม dialog แนะนำวิธีแก้ "แอปถูกปฏิเสธไม่ให้เข้าถึง" (Restricted Settings), ดันปุ่ม "ข้อมูลแอป (ปลดล็อค ⋮)" ขึ้นมาให้เห็นชัดทันที ไม่หลุดขอบจอ | [[07-Troubleshooting-Log#T085 ปัญหาสิทธิ์ "แอปถูกปฏิเสธไม่ให้เข้าถึง" (Restricted Settings) บน Android 13+]] · [[17-Mobile-Flasher]] · [[18-Phone-Link-Navigation-Plan]] |
 | 2026-10-14 | Project initialized, wiki created, v1 compiled | All pages |
 | 2026-10-14 | Code review: พบปัญหา sample rate, ES8311 init, WebSocket 15 KB, TLS insecure, echo, tools ไม่ถูกประกาศ | [[07-Troubleshooting-Log]] |

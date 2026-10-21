@@ -65,7 +65,8 @@ struct Gps {
     float accuracy = 0;  // metres
     uint32_t at = 0;
     bool valid = false;
-    bool fresh(uint32_t now) const { return valid && (uint32_t)(now - at) <= kGpsStaleMs; }
+    // signed: a fix newer than the caller's `now` (another task stored it just after) is fresh too
+    bool fresh(uint32_t now) const { return valid && (int32_t)(now - at) <= (int32_t)kGpsStaleMs; }
 };
 
 struct Nav {
@@ -77,7 +78,7 @@ struct Nav {
     float leftKm = -1;
     int leftMin = -1;
     uint32_t at = 0;
-    bool fresh(uint32_t now) const { return active && (uint32_t)(now - at) <= kNavStaleMs; }
+    bool fresh(uint32_t now) const { return active && (int32_t)(now - at) <= (int32_t)kNavStaleMs; }
 };
 
 enum class Kind : uint8_t { Unknown, Hello, Pair, Gps, Nav, NavEnd, Place, Result, Ping };

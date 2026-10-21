@@ -244,8 +244,9 @@ void PhoneLink::loop() {
     WiFiClient client;
     WiFiUDP udp;
     bool udpOn = false, proven = false;
-    IPAddress announced;
+    IPAddress announced, probedGw;
     uint32_t announcedAt = 0, nextTry = 0, lastRx = 0;
+    uint8_t gwFails = 0;
     char nonce[33] = "", token[sizeof(_token)];
     char line[512];
     size_t len = 0;
@@ -274,6 +275,7 @@ void PhoneLink::loop() {
             const int r = udp.read(b, sizeof(b) - 1);
             b[r > 0 ? r : 0] = '\0';
             if (!strncmp(b, "PABPHONE", 8)) {
+                if (!announcedAt || millis() - announcedAt >= 30000) nextTry = millis();  // the app just showed up
                 announced = udp.remoteIP();
                 announcedAt = millis();
             }
@@ -282,10 +284,22 @@ void PhoneLink::loop() {
         if (!client.connected()) {
             if (proven) drop("closed");
             if ((int32_t)(now - nextTry) >= 0) {
-                nextTry = now + 4000;
                 // the phone's hotspot: the phone is the gateway; else the address it announced
-                const IPAddress ip = announcedAt && now - announcedAt < 30000 ? announced : WiFi.gatewayIP();
-                if (ip != IPAddress(0, 0, 0, 0) && client.connect(ip, kTcpPort, 1500)) {
+                const bool heard = announcedAt && now - announcedAt < 30000;
+                const IPAddress gw = WiFi.gatewayIP();
+                if (gw != probedGw) {  // another Wi-Fi (e.g. the phone's hotspot came up): probe it right away
+                    probedGw = gw;
+                    gwFails = 0;
+                }
+                const IPAddress ip = heard ? announced : gw;
+                // a home router is not the phone: it refuses every probe (and the core logs each one),
+                // so back off 4 s -> 8 -> ... -> ~4 min until the app announces itself or the Wi-Fi changes
+                nextTry = now + (heard ? 4000 : 4000u << gwFails);
+                const bool ok = ip != IPAddress(0, 0, 0, 0) && client.connect(ip, kTcpPort, 1500);
+                if (!ok) {
+                    if (!heard && gwFails < 6) gwFails++;
+                } else {
+                    gwFails = 0;
                     client.setNoDelay(true);
                     snprintf(nonce, sizeof(nonce), "%08lx%08lx", (unsigned long)esp_random(), (unsigned long)esp_random());
                     char hello[96];

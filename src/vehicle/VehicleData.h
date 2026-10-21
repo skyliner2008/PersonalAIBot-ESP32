@@ -72,9 +72,10 @@ struct Snapshot {
         ch[c].at = now;
         ch[c].valid = true;
     }
-    /** Updated within kStaleMs (millis() wrap safe). */
+    /** Updated within kStaleMs (millis() wrap safe). A reading newer than `now` is fresh: the UI takes its `now`
+     *  at the start of a frame and the vehicle task (the other core) may publish a few ms after that. */
     bool fresh(Channel c, uint32_t now) const {
-        return c < kChannelCount && ch[c].valid && (uint32_t)(now - ch[c].at) <= kStaleMs;
+        return c < kChannelCount && ch[c].valid && (int32_t)(now - ch[c].at) <= (int32_t)kStaleMs;
     }
     float value(Channel c) const { return c < kChannelCount ? ch[c].value : 0.0f; }
     bool anyFresh(uint32_t now) const {

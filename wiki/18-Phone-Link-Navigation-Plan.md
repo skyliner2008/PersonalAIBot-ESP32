@@ -37,7 +37,7 @@ status: active
 |---|---|---|
 | บอร์ด | `src/phone/PhoneProtocol.h` | ข้อความ, ระยะภาษาไทย, `TurnAnnouncer` (ครั้งเดียวต่อจุด ~20 วิล่วงหน้า 200–800 ม., ไม่พูดในระยะ < 30 ม., เว้น 8 วิ, ถึงจุดหมาย) — host tests |
 | บอร์ด | `src/util/Sha256.h` | SHA-256 + HMAC (ตรง RFC 4231 + Python) สำหรับ handshake |
-| บอร์ด | `src/phone/PhoneLink.{h,cpp}` | จับคู่ทาง USB เท่านั้น (NVS `phone`), task Wi-Fi (stack PSRAM) ต่อไป gateway / IP ที่แอปประกาศ, handshake พิสูจน์ token ทั้งสองฝั่ง, รับแต่ข้อความ `phone` ทาง Wi-Fi |
+| บอร์ด | `src/phone/PhoneLink.{h,cpp}` | จับคู่ทาง USB เท่านั้น (NVS `phone`), task Wi-Fi (stack PSRAM) ต่อไป gateway / IP ที่แอปประกาศ (gateway ที่ไม่ตอบ = router บ้าน → ถอยเวลา 4 วิ → ~4 นาที, T086), handshake พิสูจน์ token ทั้งสองฝั่ง, รับแต่ข้อความ `phone` ทาง Wi-Fi |
 | บอร์ด | `vehicle::SourceId::PhoneGps` | แหล่ง "GPS มือถือ" ของหน้าปัด (ความเร็ว) |
 | บอร์ด | `src/ui/NavScreen` + หัว `DashScreen` | จอนำทาง / แถบนำทางบนหน้าปัด 3 แบบ (แตะแถบ = เปิดจอนำทาง) |
 | บอร์ด | tool `navigate` + `handleNavigation` | go / stop / status / where (ประกาศเมื่อจับคู่แล้ว +364 bytes) · คำพูดเลี้ยวลัดคิวประกาศอื่น, ทิ้งถ้าช้าเกิน 15 วิ · console `phone` · `diag.phone` |

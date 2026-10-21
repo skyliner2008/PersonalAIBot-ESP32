@@ -26,6 +26,8 @@ TEST(vehicle_readings_and_text_lines) {
     CHECK(!s.fresh(kRpm, 1000 + kStaleMs + 1));  // old data shows "--", never a frozen value
     s.set(kSpeed, 50, 0xFFFFFF00u);
     CHECK(s.fresh(kSpeed, 0x00000100u));  // across the millis() wrap
+    CHECK(s.fresh(kRpm, 995));  // published just after the UI took its `now` (T087): fresh, not 49 days old
+    CHECK(s.fresh(kSpeed, 0xFFFFFEF0u));
 
     Snapshot t;
     CHECK_EQ(parseTextLine("rpm=3200 spd=86 clt=87 volt=13.9 iat=42 gear=3", t, 5), 6);
