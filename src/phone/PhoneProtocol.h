@@ -11,7 +11,7 @@
  *                    phone {"t":"pair","token":"..."} (USB only: plugging the cable in pairs) · {"t":"ping"}
  *   board -> phone   PHONE {"id":3,"do":"navigate","to":"เซ็นทรัลเวิลด์"} · {"id":4,"do":"stop"}
  * Wi-Fi handshake v2 (the token never crosses the air - anyone on the same Wi-Fi could read it, T090):
- *   board  hello {"nonce":"<board nonce>","fw":"4.3.4","v":2}
+ *   board  hello {"nonce":"<board nonce>","fw":"4.4.0","v":2}
  *   phone  phone {"t":"hello","app":"2.0.0","nonce":"<phone nonce>"}           (no proof yet)
  *   board  auth {"proof":hmac(token, "board|<phone nonce>")}
  *   phone  phone {"t":"auth","proof":hmac(token, "phone|<board nonce>")}

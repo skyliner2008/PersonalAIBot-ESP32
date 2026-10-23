@@ -35,7 +35,7 @@ status: active
 ## Handshake Wi-Fi v2 + ตราประทับต่อบรรทัด (T090)
 
 ```
-board  hello {"nonce":"<Nb>","fw":"4.3.4","v":2}
+board  hello {"nonce":"<Nb>","fw":"4.4.0","v":2}
 phone  phone {"t":"hello","app":"2.0.0","nonce":"<Np>"}              ← ยังไม่พิสูจน์อะไร
 board  auth {"proof":hmac(token,"board|<Np>")}
 phone  phone {"t":"auth","proof":hmac(token,"phone|<Nb>")}
