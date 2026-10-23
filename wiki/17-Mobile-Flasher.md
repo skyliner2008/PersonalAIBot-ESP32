@@ -17,6 +17,30 @@ status: active
 > | `tools/mobile_app/composeApp` | แอป Jarvis (Kotlin Multiplatform + Compose): แชท/Live เสียง Gemini, ความจำ, tools, avatar Godot, automation ฯลฯ — package `com.skyliner2008.jarvis` (applicationId เดิมของ Jarvis → ติดตั้งทับแอป Jarvis เดิมได้ ข้อมูลอยู่ครบ ถ้าเซ็นด้วยกุญแจเดียวกัน) |
 > | `tools/mobile_app/esp32` | Android library = ESP32-AI Flasher เดิม (โค้ด + test ไม่เปลี่ยน, package `io.github.skyliner2008.pabflasher`) เปิดด้วย `pabflasher.MainActivity` |
 >
+> **T091 — คำปลุกในมือถือ "Hey Jarvis"** (openWakeWord บน ONNX Runtime ในเครื่อง, แอป 2.1.0) — คำปลุกกับ Live ผลัดกันใช้ไมค์:
+> - **ไม่มี Live เปิดอยู่** (จอเปิดหรือดับ, ไม่ต้องเปิด Always Live): ฟังคำปลุกด้วยไมค์ของตัวเอง (`WakeWordService`)
+> - **"Hey Jarvis"** → เสียงชิป → เปิด Live (จอดับก็เปิดในพื้นหลัง) · Always Live ที่พักจออยู่ยังขึ้นจอเต็มเหมือนเดิม
+> - **Live เปิดอยู่:** คำปลุกหยุดฟัง เสียงไปหา Gemini ตามปกติ (กดเปิด Live เองก็เหมือนกัน; โหมดประชุม/แปลภาษาก็ให้ไมค์เช่นกัน)
+> - **ไม่มีการคุย** (AI ไม่ได้พูด, ผู้ใช้ไม่ได้พูดจบประโยค) ครบเวลาที่ตั้ง (1/2/5/10 นาที, ค่าเริ่ม 5) → **Live ปิดเอง** → กลับมาฟังคำปลุก
+>   · Live ปิดเพราะเหตุอื่น (กดปิด, error) ก็กลับมาฟังเช่นกัน (`WakeWordController` เช็คทุก 5 วิ)
+> - **คำปลุก 3 แบบ** (Settings → คำปลุก): **Hey Jarvis** (โมเดลสำเร็จรูป) · **+ เสียงฉัน** (ฝึก "Hey Jarvis" ด้วยเสียงผู้ใช้ 5 ครั้ง:
+>   ปลุกเมื่อโมเดลเดิมผ่าน **หรือ** เสียงตรงกับที่ฝึก ขณะมีคนพูด — ไม่รอคะแนนโมเดลเดิม: "Hey Jarvis" ของผู้ใช้ตอนพูดปกติได้แค่ 0.00–0.08
+>   แม้กับ openWakeWord ทางการ แต่ตรงกับเสียงที่ฝึกที่ระยะ 0.016–0.052 (เกณฑ์ ~0.08, ประโยคอื่น 0.21–0.25))
+> - เสียงที่อัดตอนฝึก 5 ครั้งล่าสุด: `Android/data/com.skyliner2008.jarvis/files/wake_enrol/take_N.pcm` (16 kHz PCM16, `adb pull` ไปตรวจบน PC; ลบไปพร้อมแอป) · **คำของฉัน** (ตั้งคำเอง ภาษาไทยได้ เช่น "จาวิส" —
+>   เทียบกับเสียงที่ฝึกอย่างเดียว ขณะมีคนพูด) · ปุ่ม **ฝึกเสียง** อัด 5 ครั้ง ครั้งละ 2.5 วิ (คำปลุกปล่อยไมค์ระหว่างอัด) · **ล้าง** ลบเสียงที่ฝึก
+> - **เทียบเสียงที่ฝึก (`PersonalWake`):** เก็บ speech embedding ของ Google (96 ค่า/80 ms ที่ openWakeWord คำนวณอยู่แล้ว) ของแต่ละครั้ง →
+>   เทียบเสียงสดด้วย DTW (พูดช้า/เร็วก็ตรงกัน) · เกณฑ์เรียนจากเสียงที่ฝึกเอง (ระยะของคู่ที่ห่างเป็นอันดับ 2 × 1.15; ความไวคูณเพิ่ม/ลด)
+>   · เก็บใน Settings DB `wake_profile_jarvis` / `wake_profile_custom` · ไม่ต้องเทรนโมเดล ไม่ใช้เน็ต · จำเสียงคนที่ฝึกเป็นหลัก
+> - **คะแนนเฉลี่ย (`WakeScorer`):** ตัวตรวจตัดเสียงเป็นช่วง 80 ms — "Hey Jarvis" เดียวกันเลื่อนไป 0–70 ms คะแนนแกว่ง 0.19…0.98 (ต้นเหตุ "เสียงเดิม บางครั้งติด")
+>   → รัน 2 ตัวห่างกัน 40 ms แล้วเฉลี่ยคะแนนล่าสุดของทั้งคู่ (เกณฑ์ = ความไว × 0.8) → 0.47…0.99 บนเสียงเดียวกัน · เฉลี่ย 3 ค่าต่ำไป (0.32)
+> - มือถือเชื่อมบอร์ด ESP32 อยู่ (USB / Wi-Fi) = มือถือไม่ตอบคำปลุก (บอร์ดตอบ "Jarvis" เอง)
+> - ตั้งค่า: Settings → **คำปลุก (Hey Jarvis)** — เปิด/ปิด, แบบคำปลุก + ฝึกเสียง, ปิด Live เมื่อไม่มีการคุย, ความไว (0.35 / 0.5 / 0.65) · ปิดคำปลุก = Always Live ใช้แบบเดิม (เสียงดัง + ถอดเสียง)
+> - **ดู log:** Logcat กรอง tag `WakeWord` — `no Live session - listening`, `listening (mode …) - best in the last 5 s: average score … (need …), voice distance … (match <= …)`, `near miss`,
+>   `wake word heard (mode …, average score …, voice distance …)`, `… takes the mic - wake word stops listening`, `no conversation for … min - closing the Live session`
+> - ยังไม่ได้ทำ: คำสั่งที่พูดต่อท้าย "Hey Jarvis" ทันที (ก่อน Live พร้อม ~1–2 วิ) ยังไม่ถูกส่ง — รอเสียงชิป/AI ทักก่อนแล้วค่อยพูด
+> - โมเดล `assets/models/openwakeword/` (~3.7 MB, **CC BY-NC-SA 4.0** — ใช้แบบไม่ใช่เชิงพาณิชย์) · ตัว port Kotlin `OpenWakeWord.kt` ตรวจกับ
+>   package Python ทางการบนเสียงเดียวกัน (`OpenWakeWordTest`: ทุก chunk ต่างไม่เกิน 0.05, "Hey Jarvis" ≈ 0.998, ประโยคอื่น < 0.002)
+>
 > **T090:** ปิดหน้าบอร์ด (✕ / back) ตอนต่อ USB อยู่ → แอปสลับไปส่ง GPS/การนำทางทาง Wi-Fi ให้เอง (เดิมส่งเข้าพอร์ตที่ปิดแล้ว) ·
 > อยู่หน้า Jarvis ก็นับว่าแอปเปิดอยู่บนจอ (บอร์ดสั่งเปิด Google Maps ได้โดยไม่ต้องมีสิทธิ์ "แสดงทับแอปอื่น") · handshake Wi-Fi v2 (wiki 18)
 > **T089:** หน้าบอร์ดใช้ธีมเดียวกับ Jarvis (พื้นมืด `#0A0A14`, การ์ด `#1C1C2E`, ฟ้า Cyan `#00E5FF`, หัวกลาง + ปุ่ม ✕ กลับ Jarvis) ·

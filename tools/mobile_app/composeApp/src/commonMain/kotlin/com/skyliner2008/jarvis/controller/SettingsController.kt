@@ -168,6 +168,26 @@ class SettingsController(
             database.jarvisDatabaseQueries.getSetting("prefer_free_only").executeAsOneOrNull() == "true"
         }
         _preferFreeOnly.value = savedPreferFreeOnly
+        _wakeWord.value = withContext(Dispatchers.IO) {
+            val q = database.jarvisDatabaseQueries
+            val d = com.skyliner2008.jarvis.voice.WakeWordConfig()
+            com.skyliner2008.jarvis.voice.WakeWordConfig(
+                enabled = q.getSetting("wake_enabled").executeAsOneOrNull()?.toBooleanStrictOrNull() ?: d.enabled,
+                // >= 1: a session always closes itself after a quiet spell (an old "never" = 0 becomes the default)
+                sleepAfterMinutes = q.getSetting("wake_sleep_min").executeAsOneOrNull()?.toIntOrNull()
+                    ?.takeIf { it >= 1 } ?: d.sleepAfterMinutes,
+                threshold = q.getSetting("wake_threshold").executeAsOneOrNull()?.toFloatOrNull()?.coerceIn(0.2f, 0.95f) ?: d.threshold,
+                mode = q.getSetting("wake_mode").executeAsOneOrNull()?.toIntOrNull()?.coerceIn(0, 2) ?: d.mode,
+            )
+        }
+        com.skyliner2008.jarvis.voice.WakeGate.config = _wakeWord.value
+        withContext(Dispatchers.IO) {
+            val q = database.jarvisDatabaseQueries
+            val pv = com.skyliner2008.jarvis.voice.PersonalWake
+            com.skyliner2008.jarvis.voice.WakeGate.personalJarvis = pv.decode(q.getSetting("wake_profile_jarvis").executeAsOneOrNull())
+            com.skyliner2008.jarvis.voice.WakeGate.personalCustom = pv.decode(q.getSetting("wake_profile_custom").executeAsOneOrNull())
+        }
+        refreshWakeProfiles()
 
         // Auto-migration logic for deprecated live models
         if (deprecatedLiveModels.contains(savedLiveModel)) {
@@ -351,6 +371,46 @@ class SettingsController(
                 .onFailure { logDebug("JarvisVM", "Vision provider sync skipped: ${it.message}") }
 
             fetchModels()
+        }
+    }
+
+    /** The phone's wake word "hey jarvis" (T091): applied at once, saved as wake_*. */
+    private val _wakeWord = MutableStateFlow(com.skyliner2008.jarvis.voice.WakeWordConfig())
+    val wakeWord: StateFlow<com.skyliner2008.jarvis.voice.WakeWordConfig> = _wakeWord.asStateFlow()
+
+    fun setWakeWord(cfg: com.skyliner2008.jarvis.voice.WakeWordConfig) {
+        _wakeWord.value = cfg
+        com.skyliner2008.jarvis.voice.WakeGate.config = cfg
+        scope.launch(Dispatchers.IO) {
+            val q = database.jarvisDatabaseQueries
+            q.insertSetting("wake_enabled", cfg.enabled.toString())
+            q.insertSetting("wake_sleep_min", cfg.sleepAfterMinutes.toString())
+            q.insertSetting("wake_threshold", cfg.threshold.toString())
+            q.insertSetting("wake_mode", cfg.mode.toString())
+        }
+    }
+
+    /** What the user has recorded: label + number of takes per mode (1 = "Hey Jarvis", 2 = own word); null = none. */
+    data class WakeProfiles(val jarvis: String?, val custom: String?)
+
+    private val _wakeProfiles = MutableStateFlow(WakeProfiles(null, null))
+    val wakeProfiles: StateFlow<WakeProfiles> = _wakeProfiles.asStateFlow()
+
+    private fun refreshWakeProfiles() {
+        val g = com.skyliner2008.jarvis.voice.WakeGate
+        fun d(p: com.skyliner2008.jarvis.voice.PersonalWake?) = p?.let { "${it.label} · ${it.templates.size} ครั้ง" }
+        _wakeProfiles.value = WakeProfiles(d(g.personalJarvis), d(g.personalCustom))
+    }
+
+    /** Saves the user's recordings for a mode (null = forget them). Applied at once. */
+    fun setWakeProfile(mode: Int, profile: com.skyliner2008.jarvis.voice.PersonalWake?) {
+        val g = com.skyliner2008.jarvis.voice.WakeGate
+        val key = if (mode == com.skyliner2008.jarvis.voice.WakeMode.CUSTOM) "wake_profile_custom" else "wake_profile_jarvis"
+        if (mode == com.skyliner2008.jarvis.voice.WakeMode.CUSTOM) g.personalCustom = profile else g.personalJarvis = profile
+        g.enroller?.saved(mode, profile)
+        refreshWakeProfiles()
+        scope.launch(Dispatchers.IO) {
+            database.jarvisDatabaseQueries.insertSetting(key, profile?.encode() ?: "")
         }
     }
 

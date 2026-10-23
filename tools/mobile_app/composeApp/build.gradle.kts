@@ -120,6 +120,12 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
+        // OpenWakeWordTest runs the wake word models on the PC: the desktop build of the same ONNX Runtime
+        val androidUnitTest by getting {
+            dependencies {
+                implementation("com.microsoft.onnxruntime:onnxruntime:1.23.0")
+            }
+        }
     }
 }
 

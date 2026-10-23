@@ -257,6 +257,8 @@ class SpecialistSessionController(
     /** เริ่ม/คืนการถือไมค์ให้โหมดนี้ */
     private fun startMic() {
         val channel = micChannel ?: return
+        // the phone's wake word lets go of the mic for the whole meeting / translation (paused included)
+        com.skyliner2008.jarvis.voice.WakeGate.liveListener?.liveStarting("specialist")
         pcmAudioEngine.onVolumeChanged = { volume -> _audioLevel.value = volume.coerceIn(0f, 1f) }
         pcmAudioEngine.startRecording { bytes ->
             if (!_isPaused.value) {
@@ -332,6 +334,7 @@ class SpecialistSessionController(
         pcmAudioEngine.stopPlaying()
         micChannel?.close()
         micChannel = null
+        if (wasRunning) com.skyliner2008.jarvis.voice.WakeGate.liveListener?.liveStopped("specialist")
         _isPaused.value = false
         _audioLevel.value = 0f
         accumulatedActiveMs = currentActiveMs()

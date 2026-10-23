@@ -373,6 +373,9 @@ class AlwaysLiveManager(private val context: Context) {
     private var verifyingHotword = false
 
     private fun startHotwordDetection() {
+        // the on-device wake word ("hey jarvis", T091) listens whenever no session holds the mic (WakeWordController);
+        // the energy + SpeechRecognizer wake only without it
+        if (com.skyliner2008.jarvis.voice.WakeGate.config.enabled && com.skyliner2008.jarvis.voice.WakeWordService.available) return
         if (hotwordDetector == null) {
             hotwordDetector = HotwordDetector(context) {
                 onHotwordEnergyDetected()

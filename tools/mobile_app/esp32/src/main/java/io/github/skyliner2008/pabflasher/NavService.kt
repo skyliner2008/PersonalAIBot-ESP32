@@ -31,6 +31,9 @@ object Hub {
     /** A screen of the app is in front: Android lets it open Google Maps without the overlay permission. */
     @Volatile var uiVisible = false
 
+    /** The phone is talking to the board (USB or Wi-Fi): the board answers "Jarvis", the phone's wake word stays quiet. */
+    val linkedToBoard: Boolean get() = hub?.let { it.via != "none" } == true
+
     fun get(ctx: Context): PhoneHub = hub ?: synchronized(this) {
         hub ?: run {
             val app = ctx.applicationContext

@@ -263,7 +263,7 @@ src/system     บัส I2C, ที่เก็บข้อมูล (SD / Litt
 src/phone      เชื่อมแอปมือถือ: GPS, นำทาง Google Maps, AI พูดเตือนก่อนเลี้ยว (USB / Wi-Fi, จับคู่ทาง USB) + src/ui/NavScreen
 src/vehicle    หน้าปัดรถ: ค่าจากรถ, โมเดลหน้าปัด, ตัวจำลอง, ELM327, Honda K-Line, UART / BLE (+ src/ui/DashScreen)
 tools/pc_app   ESP32-AI Studio (Python + Tkinter + pyserial)
-tools/mobile_app  แอปมือถือ "Personal AI Bot": ผู้ช่วย Jarvis (composeApp จากโปรเจค PersonalAIBot; TradingView อย่างเดียว ไม่มี MT5) + หน้าบอร์ด ESP32
+tools/mobile_app  แอปมือถือ "Personal AI Bot": ผู้ช่วย Jarvis (composeApp จากโปรเจค PersonalAIBot; TradingView อย่างเดียว ไม่มี MT5; คำปลุก "Hey Jarvis" ในเครื่อง) + หน้าบอร์ด ESP32
                (โมดูล esp32: แฟลชผ่าน USB OTG, สถานะ / log / ตั้งค่า / แชท แบบ Studio, นำทาง GPS ให้บอร์ด)
 tools/         gen_thai_font.py, gen_root_ca.py
 host_tests/    unit tests บน PC

@@ -265,7 +265,7 @@ src/system     I2C bus, storage (SD / LittleFS) · src/util  UTF-8, calculator, 
 src/phone      phone app link: GPS, Google Maps turn-by-turn, spoken turns (USB / Wi-Fi, paired over USB) + src/ui/NavScreen
 src/vehicle    vehicle dash: readings, dash model, simulator, ELM327, Honda K-Line, UART / BLE links (+ src/ui/DashScreen)
 tools/pc_app   ESP32-AI Studio (Python + Tkinter + pyserial)
-tools/mobile_app  Phone app "Personal AI Bot": the Jarvis assistant (composeApp, from the PersonalAIBot project; TradingView only, no MT5) + the ESP32 board screen
+tools/mobile_app  Phone app "Personal AI Bot": the Jarvis assistant (composeApp, from the PersonalAIBot project; TradingView only, no MT5; on-device wake word "Hey Jarvis") + the ESP32 board screen
                (esp32 module: USB OTG flasher, Studio-like status, log, settings, chat, GPS navigation for the board)
 tools/         gen_thai_font.py, gen_root_ca.py
 host_tests/    PC unit tests

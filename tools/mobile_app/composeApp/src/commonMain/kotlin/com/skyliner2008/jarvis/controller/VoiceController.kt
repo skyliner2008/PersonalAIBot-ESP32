@@ -6,6 +6,7 @@ import com.skyliner2008.jarvis.logDebug
 import com.skyliner2008.jarvis.logError
 import com.skyliner2008.jarvis.voice.PcmAudioEngine
 import com.skyliner2008.jarvis.voice.VoiceManager
+import com.skyliner2008.jarvis.voice.WakeGate
 import io.ktor.util.encodeBase64
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +63,23 @@ class VoiceController(
     private val _isMuted = MutableStateFlow(false)
     val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
 
+    /** How the wake word opens this Live session and closes it after a quiet spell (T091, WakeGate). */
+    private val wakeControl: WakeGate.SessionControl = object : WakeGate.SessionControl {
+        override val live: Boolean get() = _isListening.value
+
+        override fun sleep() {
+            if (!_isListening.value) return
+            logDebug("JARVIS_VM", "😴 No conversation for ${WakeGate.config.sleepAfterMinutes} min - Live session closes, the wake word listens")
+            stopVoiceInput()
+        }
+
+        override fun startFromWake() {
+            if (_isListening.value) return
+            logDebug("JARVIS_VM", "⏰ Wake word - starting Live")
+            startVoiceInput()
+        }
+    }
+
     /** Real Live session readiness. Connected is emitted only after the Live setup handshake completes. */
     val liveConnectionState: StateFlow<com.skyliner2008.jarvis.data.ConnectionState> = orchestrator.liveConnectionState
 
@@ -116,7 +134,11 @@ class VoiceController(
         scope.launch {
             _isAiSpeaking.collect { playing -> orchestrator.setLiveLocalOutputActive(playing || ttsFallbackSpeaking) }
         }
+        // the wake word (T091) opens this session and closes it after a quiet spell (WakeWordController)
+        WakeGate.sessionControl = wakeControl
     }
+
+    /** The session was put to sleep by mode B (not stopped by the user): only then may the wake word restart it. */
 
     fun toggleMute() {
         setMicMuted(!_isMuted.value)
@@ -136,6 +158,8 @@ class VoiceController(
 
     fun startVoiceInput() {
         if (_isListening.value) return
+        WakeGate.liveListener?.liveStarting("live")     // the wake word lets go of the mic first
+        WakeGate.touch(kotlinx.datetime.Clock.System.now().toEpochMilliseconds())
         userVoiceDetector.reset()                       // the mic is not running yet: no race with its thread
         _userVoice.value = false
         _isListening.value = true
@@ -277,6 +301,7 @@ class VoiceController(
                             runCatching { com.skyliner2008.jarvis.sound.RobotSoundPlayer.playChirpStart() }
                         }
                         _isAiSpeaking.value = true
+                        WakeGate.touch(kotlinx.datetime.Clock.System.now().toEpochMilliseconds())  // a reply: not idle
                         val rms = calculatePcmRms(pcmBytes)
                         _audioLevel.value = (rms * 2.5f).coerceIn(0f, 1f)
                         pcmAudioEngine.playAudio(pcmBytes)
@@ -328,6 +353,7 @@ class VoiceController(
                 // (เดิมตรวจทุกชิ้นของ transcript ระหว่างพูด → คำสั่งยิงซ้ำ, ส่งข้อความตอบกลับเป็นท่อนๆ)
                 launch {
                     orchestrator.liveUserTurnFinalFlow.collect { text ->
+                        WakeGate.touch(kotlinx.datetime.Clock.System.now().toEpochMilliseconds())  // the user talked
                         withContext(Dispatchers.Main) { handleLocalCommands(text) }
                     }
                 }
@@ -453,6 +479,7 @@ class VoiceController(
         disconnectJob = scope.launch(Dispatchers.IO) {
             orchestrator.endLiveVoiceSession()
         }
+        WakeGate.liveListener?.liveStopped("live")  // no session: the wake word listens again
     }
 
     /** รีสตาร์ท Live Voice Session เพื่อเชื่อมต่อ WebSocket ใหม่ด้วย Setup Parameters ของ Persona ใหม่ */
@@ -523,6 +550,8 @@ class VoiceController(
 
     /** cleanup — เรียกจาก ViewModel.onCleared */
     fun shutdown() {
+        // this screen's session is gone: the wake word opens the app instead (a newer screen may have registered already)
+        if (WakeGate.sessionControl === wakeControl) WakeGate.sessionControl = null
         pcmAudioEngine.release()
     }
 }

@@ -136,6 +136,54 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T091: คำปลุก "Hey Jarvis" ในแอปมือถือ — openWakeWord, กั้นเสียง (A) และพักเซสชัน (B)
+
+**วันที่:** 2026-10-23 · **ผู้ใช้:** ขอ wake word สำหรับแอปมือถือ (มีแต่บนบอร์ด) — แอปคุยในพื้นหลังตอนพักจอได้อยู่แล้ว → เลือก "ทำทั้งแบบ A และแบบ B ด้วย openWakeWord"
+
+**เดิม:** จอดับ + Live เปิด = Gemini ฟังทุกเสียงตลอด (เปลืองโทเคน/เน็ต, ตอบเสียงทีวี) · Live ปิด = energy VAD + `SpeechRecognizer` (ช้า เปลืองแบต คำแรกหลุด)
+
+**ทำ:**
+- โมเดล openWakeWord v0.5.1 (mel + speech embedding + `hey_jarvis_v0.1`) ใน `assets/models/openwakeword` — รันบน ONNX Runtime ที่แอปมีอยู่แล้ว
+- `OpenWakeWord.kt` (commonMain): port ของ `utils.py`/`model.py` 0.6 — chunk 80 ms, mel บน chunk + 3 hop ก่อนหน้า, embedding 76 เฟรม, classifier 16 embedding,
+  5 ผลแรกเป็น 0 · `OnnxWakeWordModels.kt` (androidMain) · `WakeWordService` โหลดโมเดล + ตัวฟังด้วยไมค์ของตัวเอง (VOICE_RECOGNITION)
+- `WakeGate` (commonMain): แบบ A ใน callback ไมค์ของ `VoiceController` — ปิดอยู่ไม่ส่งอะไรเลย (เงียบก็คิดโทเคน), เก็บเสียงย้อนหลัง 1.5 วิ, เปิด 8 วิหลังพูด/AI พูด
+- แบบ B: `AlwaysLiveManager` เช็คทุก 10 วิตอนจอดับ — เงียบเกินเวลาที่ตั้ง → `sessionControl.sleep()` แล้วเปิดตัวฟังของ `WakeWordService` → ได้ยิน → `wake()` (จอยังดับ)
+  · `VoiceController` จำว่าเป็นการพักโดยคำปลุก (`sleptForWakeWord`) — เซสชันที่ผู้ใช้กดปิดเองจะไม่ถูกปลุก
+- ไม่ reset ตัวตรวจหลังได้ยินคำปลุก (reset ใช้ ~0.2 วิบน thread ไมค์ → คำสั่งต่อจาก "Jarvis" หาย) — ใช้ช่วงพัก 2 วิแทน
+- `Hub.linkedToBoard` → `WakeGate.suppressed`: เชื่อมบอร์ดอยู่ มือถือไม่ตอบ
+- ตั้งค่าใน Settings (`wake_enabled`, `wake_gate`, `wake_sleep_min`, `wake_threshold`)
+
+**แก้ตามที่ผู้ใช้ลอง (2026-10-24):** พูด "Hey Jarvis" ตอนพักจอแล้วไม่มีอะไรเกิดขึ้น — log: ไม่ได้เปิด Always Live และไม่มี Live (กด Back ออกจากแอป)
+แต่รอบแรกคำปลุกทำงานเฉพาะในสถานะ BACKGROUND_LISTEN ของ Always Live → ไม่มีอะไรฟังอยู่ · แก้: `WakeWordController` รับ screen off/on ของทั้งแอป
+(Always Live ยังจัดการเองผ่าน `enter`/`leave` เดียวกัน) · ไม่มี Live → ตัวฟังของตัวเอง → ได้ยิน → `startFromWake()` เปิด Live ในพื้นหลัง ·
+log คะแนนทุก 5 วิ + near miss · ทดสอบบนมือถือจริง: จอดับ → เปิดเสียง "Hey Jarvis" จากลำโพง PC → `wake word heard (score 0.55)` →
+Live READY ใน ~1 วิ → AI ทัก "สวัสดีค่ะบอส จาวิสพร้อมคุย…" (จอยังดับ)
+
+**เปลี่ยนตาม flow ที่ผู้ใช้กำหนด (2026-10-24):** ผู้ใช้เห็นใน log ว่าปลุกแล้ว WakeWord ยังตรวจต่อ (ผ่านไมค์ของ Live, แบบ A) และ Live ต่อค้างตลอด
+(เวลาพักตั้งไว้ "ไม่พัก") — ต้องการ: *ไม่มี Live = ฟังคำปลุก (จอเปิด/ปิดก็ได้) · Live เปิด = หยุดฟัง · ไม่มีการคุยครบเวลา = Live ปิดเอง แล้วฟังใหม่*
+→ ตัดแบบ A (กั้นเสียง) ออก, `WakeGate` เหลือการประสานงาน: `LiveListener.liveStarting/liveStopped(owner)` (Live / โหมดประชุม-แปล) ให้คำปลุกปล่อยไมค์ก่อน,
+`touch()` เมื่อ AI พูด / ผู้ใช้พูดจบประโยค / เริ่มเซสชัน, `idleExpired()` (อย่างน้อย 1 นาที — ค่า "ไม่พัก" เดิมกลายเป็น 5) ·
+`WakeWordController` เช็คทุก 5 วิ: Live เงียบเกินเวลา → `sleep()` (ปิด Live), ไม่มีใครถือไมค์ → เปิดตัวฟัง · Settings: ตัวเลือก 1/2/5/10 นาที ·
+ทดสอบบนมือถือ (จอเปิด, ไม่มี Live): `no Live session - listening` → เสียง "Hey Jarvis" จากลำโพง PC → `wake word heard (score 0.63)` → Live READY 0.8 วิ
+
+**สำเนียง / เสียงเดิมติดบ้างไม่ติดบ้าง (2026-10-24):** ผู้ใช้ต้องพูดโทนต่ำถึงจะติด, เล่นเสียงที่อัดไว้ซ้ำติดบ้างไม่ติดบ้าง · log: คะแนน 0.36–0.49
+(เกณฑ์ 0.5) มีครั้งเดียว 0.96 · สาเหตุ: (1) โมเดล hey_jarvis ฝึกจากเสียงสังเคราะห์สำเนียงอังกฤษ (2) chunk 80 ms — วัดบน PC: "Hey Jarvis" เดียวกัน
+เลื่อน 0–70 ms คะแนนสูงสุด 0.19…0.98 · แก้: `WakeScorer` 2 เฟสห่าง 40 ms + เฉลี่ย (2 ค่า: 0.47…0.99, เทียบ 3 ค่า 0.32…0.98 จึงเลือก 2) ·
+โหมด "+ เสียงฉัน" / "คำของฉัน" (`PersonalWake`, DTW บน speech embedding, เกณฑ์เรียนจากเสียงที่ฝึก) · ทดสอบด้วยโมเดลจริงบน PC (`PersonalWakeTest`):
+"Hey Jarvis" พูดเร็ว (โมเดลเดิมให้ 0.29) ไม่ติดโหมดปกติ แต่ติดเมื่อฝึกเสียง, "Hello robot" (แทนคำไทย — PC ไม่มีเสียง TTS ไทย) ติดทั้งในประโยค
+และพูดช้า, ประโยคอื่น 5 ประโยค (รวม "Hello Roberta, the robot arm...") ไม่ติด, บันทึก/โหลดโปรไฟล์ได้ค่าเดิม · Jarvis tests 723 ผ่าน
+
+**ฝึกแล้วยังไม่ติด (2026-10-24):** log ตอนฝึก: โมเดลเดิมให้เสียงฝึก 0.00–0.03 · ดึง `wake_enrol/take_*.pcm` มาตรวจ: เสียงครบคำ ~0.5 วิ
+ไม่โดนตัด — package openWakeWord ทางการให้ 0.00–0.08 (ขยาย 8 เท่าก็ไม่ขึ้น) → โหมด 1 ที่รอคะแนนเดิม ≥ 0.12 จึงไม่เคยเทียบเสียงที่ฝึกเลย ·
+เทียบแบบเว้นทีละไฟล์บน PC: ครั้งที่เว้นไว้ 0.016–0.052 (เกณฑ์ 0.073–0.089), ประโยคอื่น 0.21–0.25 → เอาด่าน 0.12 ออก
+(เทียบทุกครั้งที่มีคนพูด) + test `mode1MatchesTheUsersVoiceEvenWhenTheStockModelGivesNothing` · บนมือถือ: เปิดเสียงฝึกของผู้ใช้ผ่านลำโพง PC →
+`wake word heard (mode 1, average score 0.00, voice distance 0.076)` · เสียงของผู้ใช้ไม่เก็บใน repo (test ใช้ TTS แทน)
+
+**ตรวจ:** สร้างเสียงทดสอบด้วย Windows TTS (David/Zira: "Hey Jarvis ..." และประโยคอื่น) → package `openwakeword` ทางการ (Python, onnx) ให้คะแนนอ้างอิง →
+`OpenWakeWordTest` รันโมเดลจริงบน PC (onnxruntime desktop) ต่างไม่เกิน 0.05 ทุก chunk หลังช่วงเริ่ม, ป้อนทีละขนาดไม่เท่ากันได้ผลเท่ากัน ·
+`WakeGateTest` 8 ข้อ · Jarvis tests 722 ผ่าน · ติดตั้งบน SM-S908E: log `openWakeWord ready (hey jarvis)`, ไม่มี crash ·
+**ยังไม่ได้ลองพูดใส่มือถือจริงตอนพักจอ** (ต้องเปิด Always Live แล้วดับจอ)
+
 ## T090: แก้จากรีวิวทั้งโปรเจค — handshake Wi-Fi v2, การนำทางหลังปิดหน้าบอร์ด, คิวแจ้งเตือน
 
 **วันที่:** 2026-10-23 · **ผู้ใช้:** "แก้ทุกข้อที่รีวิวเจอ ทั้งแอปมือถือและเฟิร์มแวร์ รวมถึงลำดับ handshake Wi-Fi"

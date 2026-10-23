@@ -246,7 +246,7 @@ ESP32-AI/
 ├── host_tests/     test_main.cpp, run_tests.bat
 ├── tools/          gen_thai_font.py, gen_root_ca.py
 │   ├── pc_app/     esp32_ai_studio.py (ESP32-AI Studio), run_studio.bat, requirements.txt
-│   ├── mobile_app/   แอปมือถือ "Personal AI Bot" (T088): composeApp = Jarvis จากโปรเจค PersonalAIBot (ไม่มี MT5, T089) + esp32 = หน้าบอร์ด ESP32 (ธีม Jarvis)
+│   ├── mobile_app/   แอปมือถือ "Personal AI Bot" (T088): composeApp = Jarvis จากโปรเจค PersonalAIBot (ไม่มี MT5, T089; คำปลุก "Hey Jarvis" openWakeWord ในเครื่อง, T091) + esp32 = หน้าบอร์ด ESP32 (ธีม Jarvis)
 │   │                 (แฟลชผ่าน USB OTG T080, สถานะ/log/ตั้งค่า/แชท T081, นำทาง T083 — UsbCdcPort, EspLoader, FlashPlan, BoardLink, Console)
 │   └── build_mobile_apk.py  → dist/PersonalAIBot-Mobile.apk (publish_release.py แนบให้ release)
 ├── _backup/        โค้ดและเอกสารก่อนอัปเกรด v2 / v3

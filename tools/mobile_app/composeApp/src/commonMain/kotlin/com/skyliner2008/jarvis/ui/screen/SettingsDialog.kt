@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -60,6 +61,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -760,6 +762,9 @@ fun SettingsDialog(
             }
         }
 
+        // ─── Wake word section (T091) ───────────────────────────────────────
+        WakeWordSection(viewModel)
+
         // ─── Backup / Restore section ───────────────────────────────────────
         BackupSection()
 
@@ -896,6 +901,222 @@ fun SettingsDialog(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * The phone's wake word "hey jarvis" (openWakeWord on the phone, T091): listens whenever no Live session is open (screen
+ * on or off); the session closes itself after the chosen quiet spell and the wake word listens again.
+ */
+@Composable
+private fun WakeWordSection(viewModel: JarvisViewModel) {
+    val cfg by viewModel.settings.wakeWord.collectAsStateWithLifecycle()
+    var expanded by remember { mutableStateOf(false) }
+    SectionCard(
+        title = "คำปลุก (Hey Jarvis)",
+        icon = Icons.Default.RecordVoiceOver,
+        expanded = expanded,
+        onToggle = { expanded = !expanded },
+    ) {
+        WakeSwitchRow(
+            "คำปลุกในเครื่อง",
+            "ไม่มี Live เปิดอยู่ (จอเปิดหรือดับ) พูด \"Hey Jarvis\" แล้วเปิด Live ให้ — ตรวจในมือถือ ไม่ส่งเสียงขึ้นเน็ต · ระหว่าง Live เปิดจะไม่ฟังคำปลุก",
+            cfg.enabled,
+        ) { viewModel.settings.setWakeWord(cfg.copy(enabled = it)) }
+        if (cfg.enabled) {
+            val profiles by viewModel.settings.wakeProfiles.collectAsStateWithLifecycle()
+            var enrolMode by remember { mutableStateOf<Int?>(null) }
+            Spacer(Modifier.height(8.dp))
+            Text("คำปลุก", color = Color.White, fontSize = BodySize, fontWeight = FontWeight.Medium)
+            Text(
+                "Hey Jarvis = โมเดลสำเร็จรูป · + เสียงฉัน = ฝึก \"Hey Jarvis\" ด้วยเสียงคุณ (ติดทั้งโมเดลเดิมและเสียงที่ฝึก) · " +
+                    "คำของฉัน = ตั้งคำเอง ภาษาไทยได้ (จำเสียงคุณเป็นหลัก)",
+                color = Color.White.copy(alpha = 0.55f), fontSize = HelperSize,
+            )
+            WakeChoices(
+                listOf(
+                    com.skyliner2008.jarvis.voice.WakeMode.STANDARD to "Hey Jarvis",
+                    com.skyliner2008.jarvis.voice.WakeMode.PERSONAL_JARVIS to "+ เสียงฉัน",
+                    com.skyliner2008.jarvis.voice.WakeMode.CUSTOM to "คำของฉัน",
+                ),
+                cfg.mode,
+            ) { viewModel.settings.setWakeWord(cfg.copy(mode = it)) }
+            if (cfg.mode != com.skyliner2008.jarvis.voice.WakeMode.STANDARD) {
+                val have = if (cfg.mode == com.skyliner2008.jarvis.voice.WakeMode.CUSTOM) profiles.custom else profiles.jarvis
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        have?.let { "เสียงที่ฝึกไว้: $it" } ?: "ยังไม่ได้ฝึกเสียง — กด \"ฝึกเสียง\" แล้วพูด 5 ครั้ง",
+                        color = if (have == null) JarvisTheme.Amber else Color.White.copy(alpha = 0.75f),
+                        fontSize = HelperSize,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { enrolMode = cfg.mode }) { Text("ฝึกเสียง", color = JarvisTheme.Cyan) }
+                    if (have != null) {
+                        TextButton(onClick = { viewModel.settings.setWakeProfile(cfg.mode, null) }) {
+                            Text("ล้าง", color = JarvisTheme.Red.copy(alpha = 0.85f))
+                        }
+                    }
+                }
+            }
+            enrolMode?.let { m ->
+                WakeEnrolDialog(m, onDone = { profile ->
+                    if (profile != null) viewModel.settings.setWakeProfile(m, profile)
+                    enrolMode = null
+                })
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("ปิด Live เมื่อไม่มีการคุย", color = Color.White, fontSize = BodySize, fontWeight = FontWeight.Medium)
+            Text(
+                "ไม่มีการสั่งงานหรือคุยโต้ตอบตามเวลานี้ Live จะปิดเอง แล้วกลับมาฟังคำปลุก",
+                color = Color.White.copy(alpha = 0.55f), fontSize = HelperSize,
+            )
+            WakeChoices(listOf(1 to "1 นาที", 2 to "2 นาที", 5 to "5 นาที", 10 to "10 นาที"), cfg.sleepAfterMinutes) {
+                viewModel.settings.setWakeWord(cfg.copy(sleepAfterMinutes = it))
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("ความไวคำปลุก", color = Color.White, fontSize = BodySize, fontWeight = FontWeight.Medium)
+            Text(
+                "ไว = ได้ยินง่ายแต่ปลุกผิดบ่อยกว่า · เข้ม = ต้องพูดชัด",
+                color = Color.White.copy(alpha = 0.55f), fontSize = HelperSize,
+            )
+            WakeChoices(listOf(35 to "ไว", 50 to "ปกติ", 65 to "เข้ม"), (cfg.threshold * 100 + 0.5f).toInt()) {
+                viewModel.settings.setWakeWord(cfg.copy(threshold = it / 100f))
+            }
+        }
+    }
+}
+
+/**
+ * Records the user saying the wake word 5 times (2.5 s each; the wake word listener lets go of the mic meanwhile) and
+ * builds the personal profile (WakeScorer.enrol + PersonalWake.build). Mode 1: "Hey Jarvis"; mode 2: their own word.
+ */
+@Composable
+private fun WakeEnrolDialog(mode: Int, onDone: (com.skyliner2008.jarvis.voice.PersonalWake?) -> Unit) {
+    val custom = mode == com.skyliner2008.jarvis.voice.WakeMode.CUSTOM
+    val target = 5
+    val scope = rememberCoroutineScope()
+    val takes = remember { mutableStateListOf<com.skyliner2008.jarvis.voice.EnrolTake>() }
+    var label by remember { mutableStateOf(if (custom) "จาวิส" else "Hey Jarvis") }
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("") }
+    val enroller = com.skyliner2008.jarvis.voice.WakeGate.enroller
+    // the wake word listener stays off while the dialog is open (not on / off around every take)
+    androidx.compose.runtime.DisposableEffect(enroller) {
+        enroller?.hold(true)
+        onDispose { enroller?.hold(false) }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDone(null) },
+        containerColor = JarvisTheme.Surface,
+        title = { Text(if (custom) "ฝึกคำปลุกของฉัน" else "ฝึก \"Hey Jarvis\" ด้วยเสียงฉัน", color = JarvisTheme.Cyan) },
+        text = {
+            Column {
+                if (custom) {
+                    OutlinedTextField(
+                        value = label,
+                        onValueChange = { if (!busy && takes.isEmpty()) label = it.take(30) },
+                        label = { Text("คำปลุก (สิ่งที่จะพูด)", fontSize = HelperSize) },
+                        singleLine = true,
+                        enabled = !busy && takes.isEmpty(),
+                        colors = fieldColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                Text(
+                    "กด \"อัด\" แล้วพูด \"$label\" ตามปกติ 1 ครั้ง (มีเวลา 2.5 วินาที) ทำ $target ครั้ง ในที่เงียบๆ " +
+                        "ระยะห่างจากมือถือเหมือนตอนใช้งานจริง",
+                    color = Color.White.copy(alpha = 0.75f), fontSize = HelperSize,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("อัดแล้ว ${takes.size} / $target", color = Color.White, fontSize = BodySize, fontWeight = FontWeight.Medium)
+                takes.forEachIndexed { i, t ->
+                    Text(
+                        "ครั้งที่ ${i + 1}: เสียงยาว ${t.speechMs} ms" +
+                            if (!custom) " · โมเดลเดิมให้คะแนน %.2f".format(t.stockScore) else "",
+                        color = Color.White.copy(alpha = 0.6f), fontSize = HelperSize,
+                    )
+                }
+                if (status.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(status, color = if (busy) JarvisTheme.Cyan else JarvisTheme.Amber, fontSize = BodySize)
+                }
+                if (enroller == null) {
+                    Text("ยังโหลดโมเดลคำปลุกไม่เสร็จ — ลองใหม่อีกครั้ง", color = JarvisTheme.Red, fontSize = HelperSize)
+                }
+            }
+        },
+        confirmButton = {
+            Row {
+                TextButton(
+                    enabled = !busy && enroller != null && takes.size < target && label.isNotBlank(),
+                    onClick = {
+                        val e = enroller ?: return@TextButton
+                        busy = true
+                        status = "🎤 พูดเลย: \"$label\""
+                        scope.launch {
+                            val pcm = e.record(2_500)
+                            val take = pcm?.let { e.analyse(it) }
+                            status = when {
+                                pcm == null -> "อัดเสียงไม่ได้ (สิทธิ์ไมค์?)"
+                                take == null || take.template.isEmpty() -> "ไม่ได้ยินเสียงพูด — ลองใหม่ ดังขึ้นอีกนิด"
+                                else -> { takes += take; "" }
+                            }
+                            busy = false
+                        }
+                    },
+                ) { Text("อัด", color = JarvisTheme.Cyan) }
+                TextButton(
+                    enabled = !busy && takes.size >= com.skyliner2008.jarvis.voice.PersonalWake.MIN_TAKES,
+                    onClick = {
+                        val p = com.skyliner2008.jarvis.voice.PersonalWake.build(takes.map { it.template }, label.trim())
+                        if (p == null) status = "เสียงที่อัดสั้นเกินไป — อัดใหม่" else onDone(p)
+                    },
+                ) { Text("บันทึก", color = JarvisTheme.Green) }
+            }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = { onDone(null) }) { Text("ยกเลิก", color = Color.White.copy(alpha = 0.7f)) }
+        },
+    )
+}
+
+@Composable
+private fun WakeSwitchRow(title: String, help: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = Color.White, fontSize = BodySize, fontWeight = FontWeight.Medium)
+            Text(help, color = Color.White.copy(alpha = 0.55f), fontSize = HelperSize)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(checkedThumbColor = JarvisTheme.Card, checkedTrackColor = JarvisTheme.Cyan),
+        )
+    }
+}
+
+@Composable
+private fun WakeChoices(options: List<Pair<Int, String>>, selected: Int, onPick: (Int) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for ((value, label) in options) {
+            val on = value == selected
+            Surface(
+                color = if (on) JarvisTheme.Cyan.copy(alpha = 0.18f) else JarvisTheme.Card,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { onPick(value) },
+            ) {
+                Text(
+                    label,
+                    color = if (on) JarvisTheme.Cyan else Color.White.copy(alpha = 0.75f),
+                    fontSize = HelperSize,
+                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                    modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun SectionCard(
