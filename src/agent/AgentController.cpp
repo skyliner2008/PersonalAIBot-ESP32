@@ -144,7 +144,7 @@ void AgentController::handleAsks() {
         flushUserTurn();
         _episodes.append('u', p, nowEpoch());
         _face->pushTranscript('u', p);
-        _announcements.emplace_back(p);  // sent by deliverAnnouncements() once the session is ready
+        announce(PsString(p));  // sent by deliverAnnouncements() once the session is ready
         Serial.printf("[Agent] Typed message queued (%u bytes)\n", (unsigned)strlen(p));
         psramFree(p);
     }

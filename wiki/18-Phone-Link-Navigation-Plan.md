@@ -13,7 +13,7 @@ status: active
 สั่งมือถือได้แค่ **Google Maps** (นำทาง / หยุด) · มือถือทดสอบ **HONOR X9d** และ **Samsung S22 Ultra**
 
 ## วิธีใช้ (สิ่งที่ทำแล้ว)
-1. **แฟลชเฟิร์มแวร์รุ่นนี้** (หรือรุ่น release ถัดไป) และติดตั้งแอป ESP32-AI Flasher รุ่นใหม่
+1. **แฟลชเฟิร์มแวร์รุ่นนี้** (หรือรุ่น release ถัดไป) และติดตั้งแอปมือถือ Personal AI Bot รุ่นใหม่ (หน้าบอร์ด ESP32 → แท็บนำทาง; T088)
 2. **จับคู่ครั้งเดียว:** เสียบสาย USB เข้าบอร์ด เปิดแอป แท็บบอร์ดขึ้น "เชื่อมต่อแล้ว" → แอปส่ง token ให้บอร์ด (log บอร์ด `OK phone paired`)
    — บอร์ดจะประกาศ tool `navigate` ให้ AI ตั้งแต่เซสชันถัดไป
 3. แท็บ **🧭 นำทาง** ในแอป: เปิดสิทธิ์ทุกข้อในรายการ (ตำแหน่ง, แจ้งเตือน, **อ่านการแจ้งเตือน**, **แสดงทับแอปอื่น**, ไม่จำกัดแบต) → กด **▶ เริ่มส่ง**
@@ -32,16 +32,34 @@ status: active
 ![[images/mobile_nav.png]]
 *แท็บ "นำทาง" ของแอปมือถือ (Android emulator, ยังไม่จับคู่ / ยังไม่เริ่มส่ง)*
 
+## Handshake Wi-Fi v2 + ตราประทับต่อบรรทัด (T090)
+
+```
+board  hello {"nonce":"<Nb>","fw":"4.3.4","v":2}
+phone  phone {"t":"hello","app":"2.0.0","nonce":"<Np>"}              ← ยังไม่พิสูจน์อะไร
+board  auth {"proof":hmac(token,"board|<Np>")}
+phone  phone {"t":"auth","proof":hmac(token,"phone|<Nb>")}
+session = hmac(token, "session|<Nb>|<Np>")
+ทุกบรรทัดต่อจากนี้: <line>\t<seq>.<32 hex แรกของ hmac(session, "<p|b>|<seq>|<line>")>   (seq นับจาก 0 แยกแต่ละทิศ)
+```
+- **ทำไม:** v1 แอป (ฝั่งที่เปิดรับการเชื่อมต่อ) ตอบ proof ให้ทุกคนที่ส่ง hello มา → คนใน Wi-Fi เดียวกันประกาศ `PABPHONE` ให้บอร์ดต่อมาหาตัวเอง
+  แล้วเอา nonce ของบอร์ดไปขอ proof จากแอปจริง (relay) → บอร์ดเชื่อว่าเป็นมือถือ แล้วส่ง GPS/การนำทางปลอมได้ · v2: แอปพิสูจน์หลังบอร์ด
+  + ทุกบรรทัดผูกกับ session key → คนกลางทำได้แค่ส่งต่อ ปลอม/ส่งซ้ำ/สลับลำดับไม่ได้ (เจอ = ตัดการเชื่อมต่อ)
+- **ไม่เข้ากันกับรุ่นเก่า:** บอร์ด v2 + แอปเก่า → บอร์ดตัด "the phone app is too old" · แอปใหม่ + บอร์ดเก่า → แอปบันทึก "board's firmware is too old"
+  → อัปเดตทั้งคู่ (ทาง USB ไม่เปลี่ยน)
+- ทดสอบ: host test `phone_wifi_lines_are_sealed` + `PhoneLinkTest.sealsMatchTheBoard` ใช้ค่าเดียวกัน (= Python hmac),
+  `wifiHandshakeThenRequestsBothWays` (บรรทัดที่ไม่มีตรา → ตัดการเชื่อมต่อ ไม่ทำตาม), `oldBoardFirmwareIsToldToUpdate`
+
 ## ส่วนที่ทำ (T083)
 | ฝั่ง | ไฟล์ | ทำอะไร |
 |---|---|---|
 | บอร์ด | `src/phone/PhoneProtocol.h` | ข้อความ, ระยะภาษาไทย, `TurnAnnouncer` (ครั้งเดียวต่อจุด ~20 วิล่วงหน้า 200–800 ม., ไม่พูดในระยะ < 30 ม., เว้น 8 วิ, ถึงจุดหมาย) — host tests |
 | บอร์ด | `src/util/Sha256.h` | SHA-256 + HMAC (ตรง RFC 4231 + Python) สำหรับ handshake |
-| บอร์ด | `src/phone/PhoneLink.{h,cpp}` | จับคู่ทาง USB เท่านั้น (NVS `phone`), task Wi-Fi (stack PSRAM) ต่อไป gateway / IP ที่แอปประกาศ (gateway ที่ไม่ตอบ = router บ้าน → ถอยเวลา 4 วิ → ~4 นาที, T086), handshake พิสูจน์ token ทั้งสองฝั่ง, รับแต่ข้อความ `phone` ทาง Wi-Fi |
+| บอร์ด | `src/phone/PhoneLink.{h,cpp}` | จับคู่ทาง USB เท่านั้น (NVS `phone`), task Wi-Fi (stack PSRAM) ต่อไป gateway / IP ที่แอปประกาศ (gateway ที่ไม่ตอบ = router บ้าน → ถอยเวลา 4 วิ → ~4 นาที, T086), handshake พิสูจน์ token ทั้งสองฝั่ง (v2: บอร์ดพิสูจน์ก่อน, T090) + ทุกบรรทัดหลัง handshake มีตราประทับ `\t<seq>.<mac>` (HMAC ด้วย session key ของการเชื่อมต่อนั้น), รับแต่ข้อความ `phone` ทาง Wi-Fi, คิวคำขอถูกล้างเมื่อหลุด, บรรทัดยาวเกินถูกทิ้งทั้งบรรทัด |
 | บอร์ด | `vehicle::SourceId::PhoneGps` | แหล่ง "GPS มือถือ" ของหน้าปัด (ความเร็ว) |
 | บอร์ด | `src/ui/NavScreen` + หัว `DashScreen` | จอนำทาง / แถบนำทางบนหน้าปัด 3 แบบ (แตะแถบ = เปิดจอนำทาง) |
 | บอร์ด | tool `navigate` + `handleNavigation` | go / stop / status / where (ประกาศเมื่อจับคู่แล้ว +364 bytes) · คำพูดเลี้ยวลัดคิวประกาศอื่น, ทิ้งถ้าช้าเกิน 15 วิ · console `phone` · `diag.phone` |
-| แอป | `PhoneProtocol.kt`, `PhoneHub.kt`, `WifiBoardServer.kt` | ข้อความ/HMAC เดียวกับบอร์ด, USB ก่อน Wi-Fi, server TCP 47800 + ประกาศ UDP 47801, เขียน socket ใน thread ของตัวเอง |
+| แอป | `PhoneProtocol.kt`, `PhoneHub.kt`, `WifiBoardServer.kt` | ข้อความ/HMAC/ตราประทับเดียวกับบอร์ด (handshake v2: แอปไม่พิสูจน์อะไรก่อนบอร์ด), USB ก่อน Wi-Fi, server TCP 47800 + ประกาศ UDP 47801, เขียน socket ใน thread ของตัวเอง |
 | แอป | `MapsParser.kt`, `MapsListener` | อ่านการแจ้งเตือนนำทางของ Google Maps (ไทย/อังกฤษ, ลำดับช่องไม่สำคัญ) → ลูกศร/ระยะ/ETA · ปุ่ม "ออก" ของ Maps = หยุดนำทาง |
 | แอป | `NavService` | foreground service (type location): GPS 1 Hz, ชื่อสถานที่ (Geocoder ทุก 1 นาที/300 ม.), keep-alive |
 | แอป | `NavPage` (แท็บ 🧭 นำทาง) | สถานะ, เริ่ม/หยุด, รายการสิทธิ์ + ปุ่มไปหน้าตั้งค่า, ทดสอบ Maps, ข้อความดิบจาก Maps, เหตุการณ์ |

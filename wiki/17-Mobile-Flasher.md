@@ -4,9 +4,27 @@ created: 2026-10-20
 status: active
 ---
 
-# 📱 แอปมือถือ — ESP32-AI Flasher (Android): แฟลช + คอนโซลบอร์ดแบบ Studio
+# 📱 แอปมือถือ — Personal AI Bot (Android): ผู้ช่วย Jarvis + หน้าบอร์ด ESP32 (แฟลช + คอนโซลแบบ Studio)
 
 > **Related:** [[00-Home-Dashboard]] | [[02-Installation-and-Setup]] | [[13-OTA-Update]] | [[10-PC-Studio-App]] | [[07-Troubleshooting-Log#T080 แอปมือถือ Android แฟลชเฟิร์มแวร์ผ่านสาย USB (OTG)]] | [[07-Troubleshooting-Log#T081 แอปมือถือ — สถานะ, log, ตั้งค่า, แชท แบบ ESP32-AI Studio]]
+
+> **ตั้งแต่ 2026-10-23 (T088):** แอปมือถือของ repo นี้คือ **แอป Jarvis จากโปรเจค PersonalAIBot (`composeApp`)** ที่ย้ายมาไว้ใน
+> `tools/mobile_app/` แล้วเติมหน้า **"บอร์ด ESP32"** (ไอคอนชิป 🔲 ที่แถบบนของ Jarvis) — หน้านี้คือแอป ESP32-AI Flasher เดิมทั้งชุด
+> (แท็บบอร์ด / Log / ตั้งค่า / นำทาง / แฟลช ตามตารางด้านล่าง) ทำงานเหมือนเดิมทุกอย่าง · เสียบบอร์ดตอนแอปปิดอยู่ Android จะเสนอเปิดหน้านี้ตรงๆ
+>
+> | โมดูล | คืออะไร |
+> |---|---|
+> | `tools/mobile_app/composeApp` | แอป Jarvis (Kotlin Multiplatform + Compose): แชท/Live เสียง Gemini, ความจำ, tools, avatar Godot, automation ฯลฯ — package `com.skyliner2008.jarvis` (applicationId เดิมของ Jarvis → ติดตั้งทับแอป Jarvis เดิมได้ ข้อมูลอยู่ครบ ถ้าเซ็นด้วยกุญแจเดียวกัน) |
+> | `tools/mobile_app/esp32` | Android library = ESP32-AI Flasher เดิม (โค้ด + test ไม่เปลี่ยน, package `io.github.skyliner2008.pabflasher`) เปิดด้วย `pabflasher.MainActivity` |
+>
+> **T090:** ปิดหน้าบอร์ด (✕ / back) ตอนต่อ USB อยู่ → แอปสลับไปส่ง GPS/การนำทางทาง Wi-Fi ให้เอง (เดิมส่งเข้าพอร์ตที่ปิดแล้ว) ·
+> อยู่หน้า Jarvis ก็นับว่าแอปเปิดอยู่บนจอ (บอร์ดสั่งเปิด Google Maps ได้โดยไม่ต้องมีสิทธิ์ "แสดงทับแอปอื่น") · handshake Wi-Fi v2 (wiki 18)
+> **T089:** หน้าบอร์ดใช้ธีมเดียวกับ Jarvis (พื้นมืด `#0A0A14`, การ์ด `#1C1C2E`, ฟ้า Cyan `#00E5FF`, หัวกลาง + ปุ่ม ✕ กลับ Jarvis) ·
+> **ถอด MT5 ออกทั้งหมด** (เทอร์มินัล MT5, Auto Trading, tools `trading_mt5_*`, ตารางฐานข้อมูล MT5 — ลบทิ้งตอนอัปเกรด) —
+> ข้อมูลการเงินในแอปมาจาก TradingView อย่างเดียว ตรงกับเฟิร์มแวร์ (ไม่มี MT5 ตั้งแต่ v3.4) ·
+> ไฟล์ที่ git-ignore และต้องคัดลอกเองถ้าต้องการ: `composeApp/google-services.json` (Firebase/Vertex AI), `composeApp/libs/godot-lib.*.aar`
+> (ไม่มี = Gradle ดึงจาก Maven), `composeApp/src/androidMain/godot-assets/` (หุ่น 3D ของ Avatar mode export จาก `pet_godot/` ของ repo PersonalAIBot;
+> ไม่มี = ใช้หน้าหุ่น 2D) · APK release ~224 MB (Godot + โมเดล ML) · Android 8.0+
 
 แฟลช PersonalAIBot-ESP32 ลงบอร์ด ES3C28P จากมือถือ Android โดยเสียบสาย USB-C จากมือถือเข้าพอร์ต Type-C ของบอร์ด —
 ไม่ต้องมีคอมพิวเตอร์ ไม่ต้องลงไดรเวอร์ ไม่ต้อง root — และ (T081) ใช้เป็น **ESP32-AI Studio ฉบับพกพา**: ดูสถานะ, log สด, ตั้งค่า, แชท
@@ -35,18 +53,18 @@ status: active
 
 | | |
 |---|---|
-| โค้ด | `tools/android_flasher/` (Kotlin, ไม่มี AndroidX — APK ~0.7 MB) · package `io.github.skyliner2008.pabflasher` |
+| โค้ด | `tools/mobile_app/esp32/` (Kotlin, ไม่มี AndroidX) · package `io.github.skyliner2008.pabflasher` — อยู่ในแอป `tools/mobile_app/composeApp` |
 | มือถือ | Android 8.0+ (API 26) ที่รองรับ **USB OTG** · iPhone/iPad ใช้ไม่ได้ (iOS ไม่ให้แอปคุยกับพอร์ต USB serial) |
 | สาย | USB-C ↔ USB-C (หรือ OTG adapter + สาย A↔C) ที่**ส่งข้อมูลได้** |
-| Build | `python tools/build_flasher_apk.py` → `dist/ESP32-AI-Flasher.apk` · `publish_release.py` แนบไฟล์นี้ให้ release อัตโนมัติถ้ามี |
+| Build | `python tools/build_mobile_apk.py` → `dist/PersonalAIBot-Mobile.apk` · `publish_release.py` แนบไฟล์นี้ให้ release อัตโนมัติถ้ามี |
 
 ![[images/flasher_main.png]] ![[images/flasher_factory_confirm.png]]
 
 *ภาพจาก Android emulator (API 30) — ในเครื่องที่ถ่าย GitHub ถูกดักด้วย proxy จึงขึ้นข้อความ "เชื่อมต่อแบบปลอดภัยไม่ได้"; บนมือถือจริงจะเป็น "เวอร์ชันล่าสุดบน GitHub: v…"*
 
 ## ใช้งาน
-1. ติดตั้ง `ESP32-AI-Flasher.apk` (จาก GitHub Release หรือ build เอง) — Android จะถามให้อนุญาต "ติดตั้งแอปที่ไม่รู้จัก" ครั้งแรก
-2. เปิดแอป → เสียบสายเข้าบอร์ด → ขึ้น "✔ พบบอร์ด ESP32 (USB 303A:1001)" (เสียบตอนแอปปิดอยู่ Android จะเสนอให้เปิดแอปนี้ —
+1. ติดตั้ง `PersonalAIBot-Mobile.apk` (จาก GitHub Release หรือ build เอง) — Android จะถามให้อนุญาต "ติดตั้งแอปที่ไม่รู้จัก" ครั้งแรก
+2. เปิดแอป → แตะไอคอนชิปที่แถบบน (หน้า "บอร์ด ESP32") → เสียบสายเข้าบอร์ด → ขึ้น "✔ พบบอร์ด ESP32 (USB 303A:1001)" (เสียบตอนแอปปิดอยู่ Android จะเสนอให้เปิดแอปนี้ —
    ติ๊ก "ใช้เป็นค่าเริ่มต้น" แล้วจะไม่ถามสิทธิ์ USB อีก)
 3. เลือกเฟิร์มแวร์:
    - **อัปเดต** — ดาวน์โหลด `-app.bin` ของ release ล่าสุด เขียนที่ app0 (0x10000) + otadata = `boot_app0` (0xe000) → **การตั้งค่า Wi-Fi/API key และความจำอยู่ครบ**
@@ -91,17 +109,18 @@ MainActivity (แท็บ + สิทธิ์ USB + เจ้าของพ�
 
 ## Build / ทดสอบ
 ```bash
-python tools/build_flasher_apk.py                     # unit tests + APK release → dist/ESP32-AI-Flasher.apk (+ .sha256)
-python tools/build_flasher_apk.py --debug             # APK debug (debuggable สำหรับทดสอบ)
-python tools/build_flasher_apk.py --create-keystore   # ทางเลือก: keystore ของตัวเอง ~/.pab-esp32/flasher-release.jks (สำรองไว้!)
-cd tools/android_flasher && ./gradlew testDebugUnitTest lintDebug
+python tools/build_mobile_apk.py                      # unit tests (esp32) + APK release → dist/PersonalAIBot-Mobile.apk (+ .sha256)
+python tools/build_mobile_apk.py --debug              # APK debug (debuggable สำหรับทดสอบ)
+python tools/build_mobile_apk.py --create-keystore    # ทางเลือก: keystore ของตัวเอง ~/.pab-esp32/flasher-release.jks (สำรองไว้!)
+cd tools/mobile_app && ./gradlew :esp32:testDebugUnitTest   # test ของหน้าบอร์ด ESP32 (56 ข้อ)
+cd tools/mobile_app && ./gradlew :composeApp:testDebugUnitTest   # test ของ Jarvis (บางชุดต่อเน็ตจริง)
 ```
-- ต้องมี JDK 17+ และ Android SDK (ลง Android Studio ได้ครบ) — หา SDK จาก `ANDROID_HOME` / `local.properties` / `%LOCALAPPDATA%\Android\Sdk`
+- ต้องมี JDK 17–24 (Gradle 8.14 ดาวน์โหลด JDK 21 ที่ใช้ build เอง) และ Android SDK (ลง Android Studio ได้ครบ) — หา SDK จาก `ANDROID_HOME` / `local.properties` / `%LOCALAPPDATA%\Android\Sdk`
 - **ไม่ต้องมี keystore (v4.3.1, T084):** ไม่มี keystore ของตัวเอง → APK release เซ็นด้วย debug key ของ Android SDK (`~/.android/debug.keystore`
   SDK สร้างให้เอง) · `publish_release.py` build APK ให้ทุก release เมื่อเครื่องมี Android SDK · APK รุ่นใหม่ลงทับได้เฉพาะเมื่อเซ็นด้วยกุญแจเดิม
   → build บน PC เครื่องเดิมก็อัปเดตทับได้ตลอด; ย้ายไป PC เครื่องอื่น = ถอนแอปบนมือถือครั้งเดียวแล้วลงใหม่
 - keystore ของตัวเอง (ถ้าสร้าง) อยู่**นอก repo** (สร้างเมื่อผู้ใช้สั่งเท่านั้น)
-- **unit tests 41 ข้อ (JVM)** — console (T081): แยก TAG/สี/แชท, ซ่อน `set key`/`set pass`/`key=`, บรรทัดถูกตัดกลางตัวอักษรไทย, ข้ามภาพ/เสียงไบนารี
+- **unit tests 58 ข้อ (JVM)** — console (T081): แยก TAG/สี/แชท, ซ่อน `set key`/`set pass`/`key=`, บรรทัดถูกตัดกลางตัวอักษรไทย, ข้ามภาพ/เสียงไบนารี
   และ resync เมื่อมีข้อความแทรก, ค่าตั้งที่ต้องส่ง (เปลี่ยนเฉพาะที่แก้, โปรไฟล์ก่อน, ค่าเป็นบรรทัดเดียว), การ์ดสถานะ/ผลทดสอบ key ภาษาไทย,
   `BoardLink` อ่าน/เขียนจริงผ่าน thread และ**ไม่แตะ DTR/RTS** · แฟลช (T080): `FakeRom` จำลองบอร์ดทั้งตัว — แอปเดิมที่ไม่สนใจโปรโตคอลจนกว่าจะได้ลำดับ DTR/RTS, ROM loader ที่ตรวจ checksum/ลำดับบล็อก/ขนาด
   พารามิเตอร์, แตก zlib ลง flash เสมือน 16 MB, ตอบ MD5 จากเนื้อจริง → ทดสอบว่าไฟล์ลงครบทุกไบต์, อัปเดตไม่แตะ NVS/LittleFS, บล็อกถูกปฏิเสธแล้วส่งซ้ำ,

@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Package Visibility permission: allow querying and launching all apps on Android 11+ -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesCondition" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+    </queries>
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- specialUse FGS = no time limit; required for long-running market monitoring -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- ตื่น AutomationService อีกครั้งหลังรีบูทเครื่อง -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- Floating Widget overlay permission -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- จำเป็นสำหรับขอปิด Battery Optimization (ไม่ประกาศ = intent ถูกเมินเงียบๆ) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Bluetooth permissions for Voice headset communication -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Device Control permissions (JARVIS full device control) -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission android:name="android.permission.SET_ALARM" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <!-- Wake Lock for Always Live background listening -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Location permissions (GPS / Location context for Driving & Navigation) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="@null"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:largeHeap="true"
+        android:requestLegacyExternalStorage="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <!-- Background voice/camera service -->
+        <service
+            android:name=".service.JarvisService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone|camera" />
+
+        <!-- Floating Widget overlay service -->
+        <service
+            android:name=".service.FloatingWidgetService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="floating_robot_avatar" />
+        </service>
+
+        <!-- Background automation/monitoring service.
+             foregroundServiceType MUST be `specialUse` (NOT `dataSync`).
+             dataSync FGS has a 6h time limit on Android 14+ (API 34); when the
+             system kills it, START_STICKY tries to restart and hits
+             ForegroundServiceStartNotAllowedException → app crash.
+             specialUse has no time limit but requires this property tag. -->
+        <service
+            android:name=".service.JarvisAutomationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="market_monitoring_alerts" />
+        </service>
+
+        <!-- AccessibilityService — ควบคุมแอปอื่นแทนผู้ใช้ (JARVIS Device Control)
+             ผู้ใช้ต้องเปิดใน Settings > Accessibility > JARVIS เอง (ครั้งเดียว) -->
+        <service
+            android:name=".service.JarvisAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- NotificationListenerService — ดักอ่านแจ้งเตือน LINE/SMS และอ่านสถานะ MediaSession ตอนขับขี่
+             ผู้ใช้ต้องเปิดใน Settings > Notification Access > JARVIS -->
+        <service
+            android:name=".service.JarvisNotificationListener"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Alert action buttons — ปุ่ม หยุด/แจ้งซ้ำ บน notification
+             manifest-declared เพื่อให้ทำงานได้แม้ service/แอปถูกฆ่า -->
+        <receiver
+            android:name=".service.AlertActionReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.skyliner2008.jarvis.action.ALERT_STOP" />
+                <action android:name="com.skyliner2008.jarvis.action.ALERT_REPEAT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Boot receiver — ตื่น automation service หลังรีบูท และหลังอัปเดตแอป (MY_PACKAGE_REPLACED:
+             การติดตั้งทับฆ่า service — เดิมงานเฝ้าตลาดหยุดเงียบจนกว่าผู้ใช้จะเปิดแอป) -->
+        <receiver
+            android:name=".service.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Avatar mode: the Godot robot's engine runs in its own process (Godot 4.7 remote engine) and
+             draws into MainActivity through RemoteGodotFragment; closing Avatar mode ends the process -->
+        <service
+            android:name="org.godotengine.godot.service.GodotService"
+            android:process=":avatar"
+            android:exported="false" />
+
+        <!-- the app's end of the robot link: the engine's plugin binds here from the :avatar process -->
+        <service
+            android:name=".avatar.AvatarLinkService"
+            android:exported="false" />
+
+        <!-- the app's Godot plugin (pet_godot/scripts/app_bridge.gd talks to it as "JarvisAvatar") -->
+        <meta-data
+            android:name="org.godotengine.plugin.v2.JarvisAvatar"
+            android:value="com.skyliner2008.jarvis.avatar.AvatarGodotPlugin" />
+
+        <activity
+            android:exported="true"
+            android:name=".MainActivity"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|uiMode|density|fontScale|layoutDirection|locale">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

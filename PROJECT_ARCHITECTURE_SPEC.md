@@ -246,8 +246,9 @@ ESP32-AI/
 ├── host_tests/     test_main.cpp, run_tests.bat
 ├── tools/          gen_thai_font.py, gen_root_ca.py
 │   ├── pc_app/     esp32_ai_studio.py (ESP32-AI Studio), run_studio.bat, requirements.txt
-│   ├── android_flasher/  แอป Android "ESP32-AI Flasher": แฟลชผ่าน USB OTG (T080) + สถานะ/log/ตั้งค่า/แชท (T081) — UsbCdcPort, EspLoader, FlashPlan, BoardLink, Console
-│   └── build_flasher_apk.py  → dist/ESP32-AI-Flasher.apk (publish_release.py แนบให้ release)
+│   ├── mobile_app/   แอปมือถือ "Personal AI Bot" (T088): composeApp = Jarvis จากโปรเจค PersonalAIBot (ไม่มี MT5, T089) + esp32 = หน้าบอร์ด ESP32 (ธีม Jarvis)
+│   │                 (แฟลชผ่าน USB OTG T080, สถานะ/log/ตั้งค่า/แชท T081, นำทาง T083 — UsbCdcPort, EspLoader, FlashPlan, BoardLink, Console)
+│   └── build_mobile_apk.py  → dist/PersonalAIBot-Mobile.apk (publish_release.py แนบให้ release)
 ├── _backup/        โค้ดและเอกสารก่อนอัปเกรด v2 / v3
 └── wiki/           Obsidian vault 00–10 + สำเนาเอกสารนี้
 ```
@@ -299,7 +300,7 @@ host_tests\run_tests.bat                  # unit tests บน PC (MSVC)
 
 ## 12. แอปมือถือ (Android): แฟลช + คอนโซล
 
-`tools/android_flasher/` (Kotlin, Android 8+, ไม่มีไลบรารีภายนอก) แฟลชบอร์ดผ่านสาย USB-C จากมือถือ (USB OTG) — ไม่มี server
+`tools/mobile_app/esp32/` (Kotlin, Android 8+, ไม่มีไลบรารีภายนอก — โมดูลหน้าบอร์ดในแอป Personal AI Bot, T088) แฟลชบอร์ดผ่านสาย USB-C จากมือถือ (USB OTG) — ไม่มี server
 - USB: พอร์ตของ S3 (USB-Serial-JTAG 303A:1001) เป็น CDC-ACM → Android USB host API ตรงๆ (bulk + `SET_CONTROL_LINE_STATE`)
 - ROM bootloader ของ ESP32-S3: รีเซ็ตด้วย DTR/RTS แบบ esptool → `SYNC` → `GET_SECURITY_INFO` (chip 9) → `SPI_ATTACH` / `SPI_SET_PARAMS` 16 MB →
   `FLASH_DEFL_*` บล็อก 1 KB (zlib) → `SPI_FLASH_MD5` → hard reset
@@ -310,7 +311,7 @@ host_tests\run_tests.bat                  # unit tests บน PC (MSVC)
   · พอร์ตเดียว: console ปิดตัวก่อนแฟลช แล้วต่อใหม่เมื่อบอร์ดรีสตาร์ต
 
 - **นำทาง (T083):** แอปส่ง GPS 1 Hz + จุดเลี้ยวจากการแจ้งเตือนของ Google Maps ให้บอร์ด (`phone {...}`) ทาง USB หรือ Wi-Fi
-  (บอร์ดต่อ TCP 47800 ไปที่ gateway = hotspot มือถือ / IP ที่แอปประกาศทาง UDP 47801; ทั้งสองฝั่งพิสูจน์ token ที่จับคู่ทาง USB ด้วย HMAC-SHA256 + nonce)
+  (บอร์ดต่อ TCP 47800 ไปที่ gateway = hotspot มือถือ / IP ที่แอปประกาศทาง UDP 47801; ทั้งสองฝั่งพิสูจน์ token ที่จับคู่ทาง USB ด้วย HMAC-SHA256 + nonce — v2: บอร์ดพิสูจน์ก่อน แล้วทุกบรรทัดมีตราประทับ HMAC ของ session, T090)
   · บอร์ด: แหล่งหน้าปัด "GPS มือถือ", `NavScreen` + แถบบนหน้าปัด, tool `navigate` (go/stop/status/where → `PHONE {...}` → แอปเปิด/ปิด Google Maps),
   AI พูดเตือนก่อนเลี้ยว (`TurnAnnouncer`: ~20 วิล่วงหน้า, ครั้งเดียวต่อจุด) · แผนและข้อจำกัด: `wiki/18-Phone-Link-Navigation-Plan.md`
 

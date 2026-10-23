@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pageFlash"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/flash_subtitle"
+            android:textColor="@color/muted"
+            android:textSize="14sp" />
+
+        <TextView
+            style="@style/Section"
+            android:text="@string/section_board" />
+
+        <TextView
+            android:id="@+id/boardStatus"
+            style="@style/Card"
+            android:text="@string/board_none" />
+
+        <TextView
+            style="@style/Section"
+            android:text="@string/section_firmware" />
+
+        <TextView
+            android:id="@+id/releaseInfo"
+            style="@style/Card"
+            android:text="@string/release_checking" />
+
+        <RadioGroup
+            android:id="@+id/mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:checkedButton="@+id/modeUpdate">
+
+            <RadioButton
+                android:id="@+id/modeUpdate"
+                style="@style/Choice"
+                android:text="@string/mode_update" />
+
+            <RadioButton
+                android:id="@+id/modeFactory"
+                style="@style/Choice"
+                android:text="@string/mode_factory" />
+
+            <RadioButton
+                android:id="@+id/modeFile"
+                style="@style/Choice"
+                android:text="@string/mode_file" />
+        </RadioGroup>
+
+        <TextView
+            android:id="@+id/fileInfo"
+            style="@style/Card"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/flashButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="20dp"
+            android:backgroundTint="@color/accent"
+            android:text="@string/flash"
+            android:textColor="@color/on_accent"
+            android:textStyle="bold"
+            android:textSize="18sp" />
+
+        <ProgressBar
+            android:id="@+id/progress"
+            style="@android:style/Widget.Material.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:max="1000"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/log"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="monospace"
+            android:textColor="@color/muted"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+
+        <TextView
+            style="@style/Section"
+            android:text="@string/section_help" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:lineSpacingExtra="4dp"
+            android:text="@string/help"
+            android:textSize="13sp" />
+    </LinearLayout>
+</ScrollView>

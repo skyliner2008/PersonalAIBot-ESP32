@@ -232,7 +232,8 @@ void PhoneLink::describe(JsonObject out) {
 
 void PhoneLink::startTask() {
     if (_task) return;
-    if (!startPsramTask(taskEntry, "phone", 4096, this, 2, &_task, 0)) {
+    // 6 KB (PSRAM): the line, the sealed copy and two parsed messages (handshake + onLine) are on this stack
+    if (!startPsramTask(taskEntry, "phone", 6144, this, 2, &_task, 0)) {
         _task = nullptr;
         Serial.println("[Phone] no task");
     }
@@ -244,18 +245,26 @@ void PhoneLink::loop() {
     WiFiClient client;
     WiFiUDP udp;
     bool udpOn = false, proven = false;
+    bool helloSeen = false;  // handshake: the phone's hello came, we sent our proof, its proof is next
+    bool skipping = false;   // an overlong line: dropped up to its end
     IPAddress announced, probedGw;
     uint32_t announcedAt = 0, nextTry = 0, lastRx = 0;
     uint8_t gwFails = 0;
-    char nonce[33] = "", token[sizeof(_token)];
+    char nonce[33] = "", phoneNonce[41] = "", token[sizeof(_token)];
+    uint8_t key[32] = {0};   // this connection's session key (PhoneProtocol.h)
+    uint32_t seqIn = 0, seqOut = 0;
     char line[512];
     size_t len = 0;
     char out[kOutLen];
+    char sealed[kOutLen + 64];
     auto drop = [&](const char* why) {
         if (client.connected()) Serial.printf("[Phone] Wi-Fi: %s\n", why);
         client.stop();
-        proven = false;
+        proven = helloSeen = skipping = false;
         len = 0;
+        memset(key, 0, sizeof(key));
+        // requests queued for that connection are stale now: a "navigate" must not pop up on the phone later
+        if (_out) xQueueReset(_out);
     };
     for (;;) {
         portENTER_CRITICAL(&_mux);
@@ -303,7 +312,8 @@ void PhoneLink::loop() {
                     client.setNoDelay(true);
                     snprintf(nonce, sizeof(nonce), "%08lx%08lx", (unsigned long)esp_random(), (unsigned long)esp_random());
                     char hello[96];
-                    snprintf(hello, sizeof(hello), "hello {\"nonce\":\"%s\",\"fw\":\"%s\"}\n", nonce, FIRMWARE_VERSION);
+                    snprintf(hello, sizeof(hello), "hello {\"nonce\":\"%s\",\"fw\":\"%s\",\"v\":2}\n", nonce,
+                             FIRMWARE_VERSION);
                     client.print(hello);
                     lastRx = now;
                     len = 0;
@@ -317,37 +327,60 @@ void PhoneLink::loop() {
             const int c = client.read();
             if (c < 0) break;
             if (c == '\n') {
+                const bool cut = skipping;
                 line[len] = '\0';
                 len = 0;
+                skipping = false;
+                if (cut) continue;  // the tail of an overlong line: never read as a message of its own
+                if (proven && !openLine(key, 'p', seqIn, line)) {
+                    drop("a line without a valid seal (forged / replayed?) - reconnecting");
+                    nextTry = millis() + 2000;
+                    break;
+                }
+                if (proven) seqIn++;
                 if (strncmp(line, "phone ", 6)) continue;  // only phone messages over the air
                 const char* json = line + 6;
                 lastRx = millis();
                 if (!proven) {
+                    // v2: the phone says hello (its nonce) -> we prove first -> it proves (PhoneProtocol.h)
                     Msg m;
-                    if (!parse(json, m, lastRx) || m.kind != Kind::Hello || !proofOk(token, "phone", nonce, m.proof) ||
-                        !validNonce(m.nonce)) {
-                        drop("the phone did not prove the pairing - pair it again over USB");
-                        nextTry = millis() + 15000;
-                        break;
+                    const bool ok = parse(json, m, lastRx);
+                    if (ok && !helloSeen && m.kind == Kind::Hello && validNonce(m.nonce) && !m.proof[0]) {
+                        snprintf(phoneNonce, sizeof(phoneNonce), "%s", m.nonce);
+                        char mine[65], auth[96];
+                        proof(token, "board", phoneNonce, mine);
+                        snprintf(auth, sizeof(auth), "auth {\"proof\":\"%s\"}\n", mine);
+                        client.print(auth);
+                        helloSeen = true;
+                        continue;
                     }
-                    char mine[65], auth[96];
-                    proof(token, "board", m.nonce, mine);
-                    snprintf(auth, sizeof(auth), "auth {\"proof\":\"%s\"}\n", mine);
-                    client.print(auth);
-                    proven = true;
-                    Serial.printf("[Phone] Wi-Fi: phone app %s paired and connected\n", m.app);
-                    onLine("{\"t\":\"ping\"}", Via::Wifi);
-                    continue;
+                    if (ok && helloSeen && m.kind == Kind::Auth && proofOk(token, "phone", nonce, m.proof)) {
+                        sessionKey(token, nonce, phoneNonce, key);
+                        seqIn = seqOut = 0;
+                        proven = true;
+                        if (_out) xQueueReset(_out);  // nothing from before this connection
+                        Serial.println("[Phone] Wi-Fi: phone app paired and connected");
+                        onLine("{\"t\":\"ping\"}", Via::Wifi);
+                        continue;
+                    }
+                    drop(ok && m.kind == Kind::Hello && m.proof[0]
+                             ? "the phone app is too old for this firmware - update the app"
+                             : "the phone did not prove the pairing - pair it again over USB");
+                    nextTry = millis() + 15000;
+                    break;
                 }
                 onLine(json, Via::Wifi);
-            } else if (c != '\r') {
+            } else if (c != '\r' && !skipping) {
                 if (len + 1 < sizeof(line)) line[len++] = (char)c;
-                else len = 0;  // longer than any phone message: drop it
+                else skipping = true;  // longer than any phone message: drop it up to its end
             }
         }
         while (proven && xQueueReceive(_out, out, 0) == pdTRUE) {
-            client.print("PHONE ");
-            client.print(out);
+            char plain[kOutLen + 8];
+            snprintf(plain, sizeof(plain), "PHONE %s", out);
+            if (!sealLine(key, 'b', seqOut, plain, sealed, sizeof(sealed))) continue;
+            seqOut++;
+            client.print(sealed);
             client.print("\n");
         }
         if ((uint32_t)(millis() - lastRx) > kLinkTimeoutMs) {

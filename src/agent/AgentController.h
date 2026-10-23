@@ -335,7 +335,16 @@ private:
     bool _pairRecActive = false;
 
     // Reminders
-    std::vector<PsString> _announcements;
+    // Text turns for the model (reminders, alerts, devices, typed messages). Bounded and short-lived: offline for
+    // hours (no API key / no internet) they used to pile up and were all read out one by one on reconnect.
+    struct Announcement {
+        PsString text;
+        uint32_t at;
+    };
+    static constexpr size_t kMaxAnnouncements = 8;
+    static constexpr uint32_t kAnnouncementTtlMs = 15 * 60 * 1000;
+    std::vector<Announcement> _announcements;
+    void announce(const PsString& text);
     PsString _navSay;  // the next turn: goes before the other announcements, dropped once it is too late
     uint32_t _navSayAt = 0;
     bool _ringing = false;

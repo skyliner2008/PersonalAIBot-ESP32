@@ -898,13 +898,18 @@ static void handleConsoleLine(String line) {
 
 static void pollConsole() {
     static String buf;
+    static bool tooLong = false;  // a cut line must not run as a command (half a `devices save`, `ask` ...)
     while (Serial.available()) {
         const char c = (char)Serial.read();
         if (c == '\n' || c == '\r') {
-            if (buf.length()) handleConsoleLine(buf);
+            if (tooLong) Serial.println("ERR line too long (max 1500 characters) - not run");
+            else if (buf.length()) handleConsoleLine(buf);
             buf = "";
+            tooLong = false;
         } else if (buf.length() < 1500) {
             buf += c;
+        } else {
+            tooLong = true;
         }
     }
 }

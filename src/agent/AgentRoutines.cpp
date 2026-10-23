@@ -137,7 +137,7 @@ void AgentController::handleScheduler(uint32_t now) {
         }
         msg += r.label;
         msg += late ? " — บอกผู้ใช้สั้นๆ ว่าพลาดไป" : " — บอกผู้ใช้สั้นๆ";
-        _announcements.push_back(msg);
+        announce(msg);
         PsString shown = late ? "แจ้งเตือนที่พลาดไป: " : "แจ้งเตือน: ";
         shown += r.label;
         _face->setSystemText(shown.c_str(), 15000);
@@ -150,17 +150,29 @@ void AgentController::handleScheduler(uint32_t now) {
     if (_sleeping) wake(false);
 }
 
+void AgentController::announce(const PsString& text) {
+    if (_announcements.size() >= kMaxAnnouncements) {
+        Serial.printf("[Agent] announcement queue full - oldest dropped: %.60s\n", _announcements.front().text.c_str());
+        _announcements.erase(_announcements.begin());
+    }
+    _announcements.push_back({text, millis()});
+}
+
 void AgentController::deliverAnnouncements() {
     if (!_navSay.empty() && (uint32_t)(millis() - _navSayAt) > 15000) {
         Serial.println("[Phone] turn not said in time - dropped (the phone's Maps says it too)");
         _navSay.clear();
+    }
+    while (!_announcements.empty() && (uint32_t)(millis() - _announcements.front().at) > kAnnouncementTtlMs) {
+        Serial.printf("[Agent] announcement too old - dropped: %.60s\n", _announcements.front().text.c_str());
+        _announcements.erase(_announcements.begin());
     }
     if ((_announcements.empty() && _navSay.empty()) || !_gemini.isReady() || _audio->isPlaying() || _vadOpen ||
         _awaitingReply) {
         return;
     }
     const bool turn = !_navSay.empty();  // a turn cannot wait behind a reminder
-    const PsString& next = turn ? _navSay : _announcements.front();
+    const PsString& next = turn ? _navSay : _announcements.front().text;
     if (_gemini.sendClientText(next.c_str(), true)) {
         Serial.printf("[Chat] sent text turn (%u bytes)\n", (unsigned)next.size());
         if (turn) _navSay.clear();

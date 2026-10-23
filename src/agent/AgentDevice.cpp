@@ -226,7 +226,7 @@ void AgentController::handleRadio(uint32_t now, bool busy) {
                     PsString a = "[แจ้งเตือนจากระบบ] ";
                     a += msg;
                     a += " — บอกผู้ใช้สั้นๆ";
-                    _announcements.push_back(a);
+                    announce(a);
                 }
             }
         }
@@ -480,7 +480,7 @@ void AgentController::handleDevices(uint32_t now) {
         msg += name;
         msg += active ? "\" ทำงาน (active)" : "\" กลับเป็นปกติ (idle)";
         msg += " — บอกผู้ใช้สั้นๆ";
-        _announcements.push_back(msg);
+        announce(msg);
         noteActivity();
         if (_sleeping) wake(false);
     });
@@ -522,7 +522,7 @@ void AgentController::handleVehicle(uint32_t now) {
     PsString m = "[แจ้งเตือนรถจากระบบ] ";
     m += msg.c_str();
     m += " — บอกผู้ใช้สั้นๆ";
-    _announcements.push_back(m);
+    announce(m);
     _face->setSystemText(msg.c_str(), 15000);
     noteActivity();
     if (_sleeping) wake(false);
@@ -570,7 +570,7 @@ void AgentController::handleNavigation(uint32_t now) {
         _navSay = m;  // replaces a turn not said yet: only the latest one matters
         _navSayAt = now;
     } else {
-        _announcements.push_back(m);
+        announce(m);
     }
     _face->setSystemText(msg.c_str(), 10000);
     noteActivity();

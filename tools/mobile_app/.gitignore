@@ -1,0 +1,18 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+.idea/
+*.iml
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+# Firebase config (API key) - copy your own into composeApp/ (the app builds without it; Vertex AI provider is off)
+composeApp/google-services.json
+# Avatar mode's Godot engine (100+ MB) and the robot exported from pet_godot/ (PersonalAIBot repo:
+# pet_godot/tools/export_to_app.ps1). Without them the app builds (engine from Maven) and shows the robot's faces
+composeApp/libs/godot-lib.*.aar
+composeApp/src/androidMain/godot-assets/
+.serena/

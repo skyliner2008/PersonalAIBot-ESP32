@@ -1,0 +1,6 @@
+-- P20: ล้าง vector ของ Raw Transcript (sleep cycle) ที่การ re-embed ของ P19 ทำไปโดยไม่ตั้งใจ
+--
+-- transcript (~20k ตัวอักษร) เป็นข้อมูลสำรอง ไม่ค้นและไม่ embed (ดู getArchivalNeedingEmbedding) —
+-- vector ที่ทำไปแล้วแทนได้แค่ต้นบทสนทนา (ตัดที่ 2048 token) และใช้เวลา ~9 วิ/แถวบนมือถือ
+UPDATE ArchivalMemory SET embedding_json = NULL, embedding_model = NULL
+WHERE content LIKE 'Raw Transcript (pre-sleep):%';

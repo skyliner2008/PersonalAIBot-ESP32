@@ -1,0 +1,5 @@
+-- P19: บันทึกว่า vector ของความจำมาจากโมเดลไหน
+--
+-- เดิม ArchivalMemory เก็บ vector จาก MiniLM (pad 384→768) ปนกับ Gemini ในคอลัมน์เดียว — cosine ข้ามโมเดลไม่มีความหมาย
+-- ตอนนี้ค้นเฉพาะ vector ที่ embedding_model ตรงกับโมเดลของ query · แถวเก่า (NULL) ถูก re-embed ด้วยโมเดลปัจจุบัน
+ALTER TABLE ArchivalMemory ADD COLUMN embedding_model TEXT;

@@ -739,7 +739,7 @@ void AgentController::handleWebResults() {
             PsString msg = "[แจ้งเตือนราคาจากระบบ] ";
             msg += m;
             msg += " — บอกผู้ใช้สั้นๆ";
-            _announcements.push_back(msg);
+            announce(msg);
             _face->setSystemText(m, 15000);
             _face->setExpression(Emotion::Surprised, 4000);
             _ringing = true;

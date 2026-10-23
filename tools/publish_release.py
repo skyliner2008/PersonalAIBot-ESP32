@@ -9,7 +9,7 @@ Publish the factory firmware as a GitHub Release - manual path (GitHub Actions c
 The repository uses IMMUTABLE releases, so the order matters and is fixed here:
     1. create the release as a DRAFT        (assets can only be attached to drafts)
     2. upload the .bin, .sha256 (+ the -app.bin.sig only if a key was made with tools/ota_keygen.py - optional)
-       + dist/ESP32-AI-Flasher.apk, built here by tools/build_flasher_apk.py when an Android SDK is installed
+       + dist/PersonalAIBot-Mobile.apk, built here by tools/build_mobile_apk.py when an Android SDK is installed
     3. publish (and mark it latest)
     4. download it again and compare the sha256
 A tag that ever belonged to a published release can never be reused (v3.2.0 is burned that way):
@@ -79,9 +79,10 @@ def notes(ver: str) -> str:
 4. Enter your own Wi-Fi + Gemini API key on the device — or put `ai-setup.txt` on the SD card ([template](https://github.com/{REPO}/blob/main/tools/sd_card/ai-setup.txt)).
    ใส่ Wi-Fi + Gemini API key ของคุณบนบอร์ด หรือวาง `ai-setup.txt` ไว้ในการ์ด SD
 
-**📱 From an Android phone / แฟลชจากมือถือ Android:** install **ESP32-AI-Flasher.apk** below (when attached), plug the
-board into the phone with a USB-C cable (OTG) → **แฟลชลงบอร์ด**. "อัปเดต" keeps settings, "ติดตั้งใหม่ทั้งหมด" = this factory image.
-ติดตั้งแอป ESP32-AI-Flasher.apk เสียบสาย USB-C จากมือถือเข้าบอร์ด แล้วกด "แฟลชลงบอร์ด" (iPhone ใช้ไม่ได้)
+**📱 From an Android phone / แฟลชจากมือถือ Android:** install **PersonalAIBot-Mobile.apk** below (when attached), open
+the board screen (chip icon on top), plug the board into the phone with a USB-C cable (OTG) → **แฟลชลงบอร์ด**.
+"อัปเดต" keeps settings, "ติดตั้งใหม่ทั้งหมด" = this factory image.
+ติดตั้งแอป PersonalAIBot-Mobile.apk กดไอคอนชิปด้านบนเพื่อเปิดหน้าบอร์ด ESP32 เสียบสาย USB-C จากมือถือเข้าบอร์ด แล้วกด "แฟลชลงบอร์ด" (iPhone ใช้ไม่ได้)
 
 > The factory image starts at 0x0 and resets saved settings. A board on v3.5.0 or later updates itself and keeps its
 > settings and memory: Settings → อัปเดตเฟิร์มแวร์ (it downloads the `-app.bin` below).
@@ -140,10 +141,10 @@ def main() -> None:
     for f in files:
         if not f.exists():
             sys.exit(f"missing {f}")
-    apk = ROOT / "dist" / "ESP32-AI-Flasher.apk"  # same name every release: .../releases/latest/download/<it>
-    import build_flasher_apk
-    if build_flasher_apk.find_sdk():  # fresh phone app for every release (no keystore needed)
-        apk_cmd = [sys.executable, str(ROOT / "tools" / "build_flasher_apk.py")]
+    apk = ROOT / "dist" / "PersonalAIBot-Mobile.apk"  # same name every release: .../releases/latest/download/<it>
+    import build_mobile_apk
+    if build_mobile_apk.find_sdk():  # fresh phone app for every release (no keystore needed)
+        apk_cmd = [sys.executable, str(ROOT / "tools" / "build_mobile_apk.py")]
         if "--skip-tests" in sys.argv:
             apk_cmd.append("--skip-tests")
         if subprocess.run(apk_cmd, cwd=ROOT).returncode != 0:
@@ -151,7 +152,7 @@ def main() -> None:
     if apk.exists() and (ROOT / "dist" / (apk.name + ".sha256")).exists():
         files += [apk, ROOT / "dist" / (apk.name + ".sha256")]
     else:
-        print("note: no dist/ESP32-AI-Flasher.apk (python tools/build_flasher_apk.py) - the release has no phone app")
+        print("note: no dist/PersonalAIBot-Mobile.apk (python tools/build_mobile_apk.py) - the release has no phone app")
 
     st, rel = gh.call("POST", f"{API}/releases", {"tag_name": tag, "target_commitish": head,
                                                   "name": f"PersonalAIBot-ESP32 {tag}", "body": notes(ver),

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the Jarvis palette (composeApp ui/theme/JarvisTheme): the board screen looks like the rest of the app -->
+<resources>
+    <color name="window_bg">#0A0A14</color>      <!-- JarvisTheme.Dark -->
+    <color name="primary">#141422</color>        <!-- JarvisTheme.Surface: title bar, tab bar -->
+    <color name="primary_dark">#00E5FF</color>   <!-- section headings (JarvisTheme.Cyan) -->
+    <color name="accent">#00E5FF</color>         <!-- JarvisTheme.Cyan -->
+    <color name="on_accent">#0A0A14</color>
+    <color name="text">#FFFFFF</color>
+    <color name="icon_bg">#0B1220</color>
+    <color name="card">#1C1C2E</color>           <!-- JarvisTheme.Card -->
+    <color name="card_ok">#12302A</color>
+    <color name="outline">#303050</color>
+    <color name="button">#24243A</color>
+    <color name="button_pressed">#303050</color>
+    <color name="muted">#8A90A8</color>
+    <color name="tab_selected">#1C1C2E</color>
+    <color name="bubble_user">#123A42</color>    <!-- Cyan 15 % over Dark, like Jarvis' own chat -->
+    <color name="bubble_ai">#1C1C2E</color>
+    <color name="log_bg">#0A0A14</color>
+    <color name="log_err">#FF6B6B</color>
+    <color name="log_warn">#FFB300</color>
+    <color name="log_user">#64B5F6</color>
+    <color name="log_ok">#22C55E</color>
+    <color name="log_gemini">#00E5FF</color>
+    <color name="log_wifi">#B388FF</color>
+    <color name="log_dim">#5F6680</color>
+    <color name="log_mic">#4DD0C8</color>
+    <color name="log_cmd">#FFD54F</color>
+    <color name="log_info">#E0E6F0</color>
+</resources>

@@ -8,8 +8,8 @@ plus a Python/Tkinter PC companion app. Gemini Live for voice, on-device memory,
 - Firmware: `pio run` (upload: `pio run -t upload`)
 - Host unit tests (after one `pio run`, which fetches ArduinoJson): `host_tests\run_tests.bat` (MSVC) or `bash host_tests/run_tests.sh`
 - PC app: `pip install -r tools/pc_app/requirements.txt` then `python tools/pc_app/esp32_ai_studio.py`
-- Android phone app (wiki 17: flasher + Studio-like status/log/settings/chat over the same serial protocol): `python tools/build_flasher_apk.py` (needs JDK 17+ and the Android SDK) → `dist/ESP32-AI-Flasher.apk`;
-  tests `cd tools/android_flasher && ./gradlew testDebugUnitTest`. No keystore is needed (the release APK falls back to the SDK debug key); an optional own keystore lives outside the repo — never create or commit it for the user.
+- Android phone app `tools/mobile_app` (wiki 17: the Jarvis assistant `composeApp` + the ESP32 board screen `esp32` — flasher + Studio-like status/log/settings/chat over the same serial protocol + navigation): `python tools/build_mobile_apk.py` (needs JDK 17-24 and the Android SDK) → `dist/PersonalAIBot-Mobile.apk`;
+  tests `cd tools/mobile_app && ./gradlew :esp32:testDebugUnitTest`. No keystore is needed (the release APK falls back to the SDK debug key); an optional own keystore lives outside the repo — never create or commit it for the user.
 
 ## Layout
 - `src/agent/` AgentController split by concern (`AgentController.cpp` setup/loop, `AgentSession.cpp`, `AgentMic.cpp`,

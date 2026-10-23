@@ -129,6 +129,49 @@ TEST(phone_wifi_handshake_proofs) {
     CHECK_STR(m.proof, "ab");
     CHECK(!validNonce("0123456789ABCDEF"));  // lowercase only
     CHECK(!validNonce("0123456789abcdeg"));
+    // v2: the phone's proof comes in its own "auth" message (T090)
+    CHECK(parse("{\"t\":\"auth\",\"proof\":\"cd\"}", m, 1));
+    CHECK(m.kind == Kind::Auth);
+    CHECK_STR(m.proof, "cd");
+}
+
+TEST(phone_wifi_lines_are_sealed) {
+    const char* token = "0123456789abcdef0123";
+    uint8_t key[32];
+    sessionKey(token, "00112233445566778899aabbccddeeff", "ffeeddccbbaa99887766554433221100", key);
+    char hex[65];
+    sha256::toHex(key, hex);
+    // = Python hmac.new(token, b"session|<board nonce>|<phone nonce>", sha256); PhoneLinkTest checks the same
+    CHECK_STR(hex, "2962748d6e1b37b70a5bf326e5251638e92a7d3888018b38b1c1142cb80116d2");
+
+    char out[256];
+    CHECK(sealLine(key, 'p', 0, "phone {\"t\":\"ping\"}", out, sizeof(out)));
+    CHECK_STR(out, "phone {\"t\":\"ping\"}\t0.a7942863f0ec065a44a29d4b0846c9d9");
+    CHECK(sealLine(key, 'b', 7, "PHONE {\"id\":3,\"do\":\"stop\"}", out, sizeof(out)));
+    CHECK_STR(out, "PHONE {\"id\":3,\"do\":\"stop\"}\t7.2483b741d9fcb11a6d7efe97a8fd88cc");
+
+    char line[256];
+    sealLine(key, 'p', 4, "phone {\"t\":\"gps\",\"lat\":1,\"lon\":2}", line, sizeof(line));
+    char copy[256];
+    strcpy(copy, line);
+    CHECK(openLine(key, 'p', 4, copy));
+    CHECK_STR(copy, "phone {\"t\":\"gps\",\"lat\":1,\"lon\":2}");
+    strcpy(copy, line);
+    CHECK(!openLine(key, 'p', 5, copy));  // replayed / reordered: the count is off
+    strcpy(copy, line);
+    CHECK(!openLine(key, 'b', 4, copy));  // our own line bounced back
+    strcpy(copy, line);
+    copy[20] = copy[20] == '1' ? '9' : '1';  // changed on the way (lat)
+    CHECK(!openLine(key, 'p', 4, copy));
+    uint8_t other[32];
+    sessionKey(token, "00112233445566778899aabbccddeeff", "0000000000000000", other);
+    strcpy(copy, line);
+    CHECK(!openLine(other, 'p', 4, copy));  // another connection's key
+    strcpy(copy, "phone {\"t\":\"ping\"}");
+    CHECK(!openLine(key, 'p', 0, copy));  // not sealed at all
+    strcpy(copy, "phone {\"t\":\"ping\"}\t0.abc");
+    CHECK(!openLine(key, 'p', 0, copy));
+    CHECK(!sealLine(key, 'p', 0, "phone {\"t\":\"ping\"}", out, 30));  // no room: not sent half
 }
 
 TEST(phone_pairing_tokens) {

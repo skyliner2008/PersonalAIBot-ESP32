@@ -136,6 +136,66 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T090: แก้จากรีวิวทั้งโปรเจค — handshake Wi-Fi v2, การนำทางหลังปิดหน้าบอร์ด, คิวแจ้งเตือน
+
+**วันที่:** 2026-10-23 · **ผู้ใช้:** "แก้ทุกข้อที่รีวิวเจอ ทั้งแอปมือถือและเฟิร์มแวร์ รวมถึงลำดับ handshake Wi-Fi"
+
+| # | อาการ / สาเหตุ | แก้ |
+|---|---|---|
+| 1 | ปิดหน้าบอร์ด (✕ / back) ตอนต่อ USB → `onDestroy` ปิดพอร์ตแต่ไม่บอก `PhoneHub` → GPS/จุดเลี้ยวถูกส่งเข้าพอร์ตที่ปิดแล้ว ไม่สลับไป Wi-Fi (บอร์ดไม่ได้ข้อมูลนำทางเลย) | `Hub.get(this).usbGone()` ใน `onDestroy` |
+| 2 | อยู่หน้า Jarvis แล้วบอร์ดสั่ง "นำทางไป…" → แอปตอบว่าไม่มีสิทธิ์แสดงทับแอปอื่น ทั้งที่แอปอยู่บนจอ (`Hub.uiVisible` ตั้งแค่หน้าบอร์ด) | Jarvis `MainActivity.onResume/onPause` ตั้ง `Hub.uiVisible` ด้วย |
+| 3 | handshake v1: แอป (ฝั่งที่ใครก็ต่อเข้ามาได้) ตอบ proof ให้ทุก hello → relay ใน Wi-Fi เดียวกันหลอกบอร์ดได้ แล้วฉีด GPS/การนำทางปลอม (หลัง handshake บรรทัดไม่มีการยืนยัน) | v2: บอร์ดพิสูจน์ก่อน + session key + ตราประทับ `\t<seq>.<mac>` ทุกบรรทัด (wiki 18) — แอปเก่า/บอร์ดเก่าได้ข้อความให้อัปเดต |
+| 4 | `_announcements` ไม่มีเพดาน: ออฟไลน์นานๆ แจ้งเตือน (PIR/ออด/รถ/วิทยุ/ราคา) สะสมใน PSRAM แล้วพอต่อได้ AI ไล่พูดของเก่าทีละอัน | `announce()`: เก็บสูงสุด 8 รายการ (ทิ้งเก่าสุด) + อายุ 15 นาที |
+| 5 | คำขอใน `_out` ค้างตอน Wi-Fi หลุด → ต่อใหม่ (แม้หลายชั่วโมงต่อมา) แอปได้ "navigate" เก่า | `xQueueReset` ตอนหลุดและตอนยืนยันการเชื่อมต่อใหม่ |
+| 6 | บรรทัด Wi-Fi ยาวเกิน 512 ไบต์: ส่วนท้ายถูกอ่านเป็นข้อความใหม่ | ทิ้งจนถึงขึ้นบรรทัด (`skipping`) |
+| 7 | คำสั่ง console เกิน 1,500 ตัวอักษรถูกตัดแล้วยังรัน | ตอบ `ERR line too long` ไม่รัน |
+| — | stack task `phone` 4 KB ตึงขึ้นจากบัฟเฟอร์ตราประทับ | 6 KB (PSRAM) |
+| — | ไฟล์ที่ติดมาจาก PersonalAIBot (`composeApp/log.md`, `docs/`), `installOptions(...)` deprecated, ชื่อเก่า "ESP32-AI-Flasher" ใน User-Agent | ลบ / `installOptions += ...` / `PersonalAIBot-Mobile/` |
+
+**ผล:** `pio run` ผ่าน ไม่มี warning · host tests 2,369 checks ผ่าน (+`phone_wifi_lines_are_sealed`) · esp32 58 ผ่าน (+`sealsMatchTheBoard`,
+`oldBoardFirmwareIsToldToUpdate`, ฉีดบรรทัดไม่มีตรา → ตัดการเชื่อมต่อ) · Jarvis unit tests ผ่าน · ติดตั้งบน SM-S908E: ✕ กลับ Jarvis, ไม่มี crash ·
+**ยังไม่ได้ลองกับบอร์ดจริง** (ต้องแฟลชเฟิร์มแวร์นี้ — แอปใหม่กับบอร์ด v4.3.3 ต่อ Wi-Fi ไม่ได้ ต้องอัปเดตคู่กัน; USB ใช้ได้เหมือนเดิม)
+
+## T089: หน้าบอร์ด ESP32 ให้หน้าตาเหมือน Jarvis + ถอด MT5 ออกจากแอปมือถือ
+
+**วันที่:** 2026-10-23 · **ผู้ใช้:** "เปลี่ยนหน้าตา ui ของหน้าบอร์ด esp32 ให้เป็นรูปแบบเดียวกับ app และนำส่วนของ mt5 ออกทั้งหมด"
+
+**UI:** หน้าบอร์ดเป็น View (ไม่ใช่ Compose) — เปลี่ยนที่ resource ทั้งหมด ไม่แตะ logic: `Esp32Theme` เป็น `Theme.Material.NoActionBar` (มืด)
++ สีจาก `JarvisTheme` (`colors.xml`), ปุ่ม `JarvisButton` (`drawable/btn.xml`, มุม 12dp + เส้นขอบ), การ์ดมีเส้นขอบ, สี log ปรับให้อ่านบนพื้นมืด,
+แถบหัว = ชื่อสีฟ้ากลางจอ + ปุ่ม ✕ (`closeButton` → `onBackPressed()` จึงยังกันออกระหว่างแฟลช), แถบแท็บสี Surface + แท็บที่เลือกสีฟ้า
+
+**MT5:** ลบ `Mt5Controller`, `Mt5TerminalService`, `Mt5ToolHandler`, `Mt5LocalCache`, `Mt5RiskGate`, `BrokerSymbolCache`, `Mt5RiskSnapshotProvider`,
+`auto/*` (Auto Trading ผ่าน mt5-core-server), หน้าจอ `TradingTerminalScreen` + `Terminal*Tab`, `AutoTradingScreen`, `SymbolPickerDialog`, `OfflineBanner`
+· tool declarations `trading_mt5_*` + `mt5_place_order/close_position`, domain MT5 ใน router, `TradingToolPolicy.mt5Mode` / strict MT5 / `isMt5Prompt`,
+การเติม endpoint/token ของ bridge ใน `ToolExecutor` · `TradingSignalMarketDataRouter` = TradingView อย่างเดียว · `trading_deep_analysis_suite` ใช้ engine ในเครื่อง
+(เดิมยิง `127.0.0.1:8090/api/mt5/auto/deep-analysis` ก่อน) · prompt/persona ไม่พูดถึง MT5 · ตาราง `Mt5*`, `TradeSyncSnapshot`, `AutoTradeJournal` ออกจาก schema
+และ `DROP TABLE IF EXISTS` ตอนเปิดแอป · "Show free models only" ย้ายจาก AutoTrading ไป `SettingsController.preferFreeOnly`
+· คงไว้: TradingView/SMC/backtest/Demo broker (เป็นการคำนวณในเครื่อง) และคอมเมนต์ที่บอกว่าอัลกอริทึม SMC port มาจาก mt5-core-server
+
+**ผล:** `:composeApp:testDebugUnitTest` 711 ผ่าน (17 skip) · `:esp32:testDebugUnitTest` 56 ผ่าน · ติดตั้งบน SM-S908E (Android 16): ทุกแท็บของหน้าบอร์ดเป็นธีมมืด,
+แถบบน Jarvis ไม่มีปุ่ม MT5, ไม่มี crash · ยังไม่ได้ลองกับบอร์ดจริง
+
+## T088: ใช้แอป Jarvis (PersonalAIBot composeApp) เป็นแอปมือถือของโปรเจค
+
+**วันที่:** 2026-10-23 · **ผู้ใช้:** ต้องการดึงแอปมือถือจากโปรเจค `AndroidStudioProjects\PersonalAIBot\composeApp` มาใช้แทนแอปมือถือของโปรเจคนี้
+(เลือกแบบ "ย้ายทั้งแอป + เติม ESP32")
+
+**ปัญหา:** composeApp (Kotlin Multiplatform + Compose, ~430 ไฟล์ .kt, Godot, Firebase, ML Kit/MediaPipe/ONNX) ไม่มีส่วนที่คุยกับบอร์ดเลย —
+ถ้าแทนตรงๆ ฟีเจอร์แฟลช / คอนโซลบอร์ด / นำทาง GPS (wiki 17/18) จะหายหมด
+
+**วิธีทำ:** `tools/mobile_app/` = Gradle project ใหม่ (Gradle 8.14.5, AGP 8.8.2, Kotlin 2.1.20 ของ PersonalAIBot)
+- `composeApp/` คัดลอกจากไฟล์ที่ git track ของ PersonalAIBot + ปุ่มไอคอนชิปในแถบบน (`App(onOpenBoard)`) → เปิด `pabflasher.MainActivity`
+- `esp32/` = แอป ESP32-AI Flasher เดิมแปลงเป็น Android library (namespace เดิม → R/BuildConfig/โค้ด/test ไม่ต้องแก้) ·
+  `BuildConfig.VERSION_NAME` ของ library ไม่มีแล้ว → ใส่เป็น buildConfigField จาก `mobileVersionName` ใน `gradle.properties` ·
+  ย้ายของระดับแอปออก (ไอคอน, `app_name` → `esp32_title`, data extraction rules) · `usb.host` เป็น `required="false"` (มือถือไม่มี OTG ก็ติดตั้งได้)
+- applicationId `com.skyliner2008.jarvis` (ทับแอป Jarvis เดิมได้), versionCode 3 / 2.0.0, minSdk 26 (ตาม esp32), release เซ็นด้วย debug key ถ้าไม่มี keystore เหมือนเดิม
+- `google-services.json` / `godot-lib.*.aar` / `godot-assets/` git-ignore — google-services plugin ใช้เฉพาะเมื่อมีไฟล์ (ไม่มีก็ build ได้)
+- `rootProject.name` ต้องเป็น `PersonalAIBot` — เป็นชื่อ package ของ compose resources (`personalaibot.composeapp.generated.resources`); เปลี่ยนแล้ว compile ไม่ผ่าน
+- `tools/build_flasher_apk.py` → `tools/build_mobile_apk.py` → `dist/PersonalAIBot-Mobile.apk` (~224 MB) · `publish_release.py` แนบไฟล์นี้
+
+**ผล:** `:esp32:testDebugUnitTest` 56/56 ผ่าน · `:composeApp:assembleRelease` ผ่าน (manifest รวม: pabflasher.MainActivity + USB_DEVICE_ATTACHED, NavService, MapsListener)
+· **ยังไม่ได้ลองบนมือถือจริง/emulator** (ไม่มีอุปกรณ์ต่อ PC ตอนทำ)
+
 ## T087: หน้าปัดจำลองกระตุก + ข้อความสีเหลือง "กำลังรอข้อมูลจากรถ..." กระพริบขึ้นเป็นระยะ
 
 **วันที่:** 2026-10-22 · **ผู้ใช้:** "เมื่อสั่งเปิดหน้าปัดจำลอง มีข้อความสีเหลืองกระพริบขึ้นมาเป็นระยะ และหน้าปัดกระตุก"

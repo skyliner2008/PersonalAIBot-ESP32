@@ -49,7 +49,7 @@ release-assets.githubusercontent.com → **ISRG Root X1** (+ X2) — ตรว�
 ## ออก release ให้บอร์ดอัปเดตได้
 `python tools/publish_release.py` แนบ 4 ไฟล์: `-factory.bin` (ติดตั้งใหม่ที่ 0x0, ล้างค่า) + `.sha256` และ **`-app.bin` (สำหรับ OTA) + `.sha256`**
 (+ **`-app.bin.sig`** เมื่อมีกุญแจ release — หัวข้อถัดไป)
-(+ **`ESP32-AI-Flasher.apk`** + `.sha256` เมื่อ build แอปมือถือไว้แล้ว — [[17-Mobile-Flasher]]; แอปตรวจ `.sha256` และ `.sig` ชุดเดียวกันนี้ก่อนแฟลชผ่าน USB)
+(+ **`PersonalAIBot-Mobile.apk`** + `.sha256` เมื่อ build แอปมือถือไว้แล้ว — [[17-Mobile-Flasher]]; แอปตรวจ `.sha256` และ `.sig` ชุดเดียวกันนี้ก่อนแฟลชผ่าน USB)
 
 ## ลายเซ็นของ release (T074)
 sha256 มาจาก release เดียวกับไฟล์ จึงจับได้แค่ไฟล์เสียระหว่างโหลด — คนที่ยึดบัญชี GitHub ได้ก็ปล่อยเฟิร์มแวร์ปลอมพร้อม sha256 ที่ตรงได้

@@ -10,11 +10,17 @@
  *                    phone {"t":"nav","end":true} · {"t":"place","name":"..."} · {"t":"result","id":3,"ok":false,"text":"..."}
  *                    phone {"t":"pair","token":"..."} (USB only: plugging the cable in pairs) · {"t":"ping"}
  *   board -> phone   PHONE {"id":3,"do":"navigate","to":"เซ็นทรัลเวิลด์"} · {"id":4,"do":"stop"}
- * Wi-Fi handshake (the token never crosses the air - anyone on the same Wi-Fi could read it):
- *   board  hello {"nonce":"<board nonce>","fw":"4.2.0"}
- *   phone  phone {"t":"hello","app":"1.2","nonce":"<phone nonce>","proof":hmac(token, "phone|<board nonce>")}
+ * Wi-Fi handshake v2 (the token never crosses the air - anyone on the same Wi-Fi could read it, T090):
+ *   board  hello {"nonce":"<board nonce>","fw":"4.3.4","v":2}
+ *   phone  phone {"t":"hello","app":"2.0.0","nonce":"<phone nonce>"}           (no proof yet)
  *   board  auth {"proof":hmac(token, "board|<phone nonce>")}
- * Neither side takes anything else before the other one proved the token.
+ *   phone  phone {"t":"auth","proof":hmac(token, "phone|<board nonce>")}
+ * The phone listens, so anyone on the Wi-Fi can connect to it: it proves nothing before the board did (v1 answered
+ * every hello with a proof - a free oracle for a relay). Neither side takes anything else before the other one proved
+ * the token. After that every line carries "\t<seq>.<mac>": mac = the first 32 hex of
+ * hmac(session, "<dir>|<seq>|<line>"), session = hmac(token, "session|<board nonce>|<phone nonce>"), dir "p" = phone
+ * -> board, "b" = board -> phone, seq counts from 0 each way. A relay in the middle can pass lines on, never forge,
+ * replay or reorder one.
  * Google Maps on the phone works out the route; the app reads its navigation notification.
  */
 
@@ -81,7 +87,7 @@ struct Nav {
     bool fresh(uint32_t now) const { return active && (int32_t)(now - at) <= (int32_t)kNavStaleMs; }
 };
 
-enum class Kind : uint8_t { Unknown, Hello, Pair, Gps, Nav, NavEnd, Place, Result, Ping };
+enum class Kind : uint8_t { Unknown, Hello, Pair, Gps, Nav, NavEnd, Place, Result, Ping, Auth };
 
 struct Msg {
     Kind kind = Kind::Unknown;
@@ -154,8 +160,8 @@ inline bool parse(const char* json, Msg& m, uint32_t now) {
         copyText(m.text, sizeof(m.text), d["text"] | "");
         return true;
     }
-    if (!strcmp(t, "hello") || !strcmp(t, "pair")) {
-        m.kind = !strcmp(t, "hello") ? Kind::Hello : Kind::Pair;
+    if (!strcmp(t, "hello") || !strcmp(t, "pair") || !strcmp(t, "auth")) {
+        m.kind = !strcmp(t, "hello") ? Kind::Hello : !strcmp(t, "pair") ? Kind::Pair : Kind::Auth;
         copyText(m.token, sizeof(m.token), d["token"] | "");
         copyText(m.nonce, sizeof(m.nonce), d["nonce"] | "");
         copyText(m.proof, sizeof(m.proof), d["proof"] | "");
@@ -212,6 +218,73 @@ inline bool proofOk(const char* token, const char* role, const char* nonce, cons
     char want[65];
     proof(token, role, nonce, want);
     return sameToken(want, got);
+}
+
+/** The key of one Wi-Fi connection: hmac(token, "session|<board nonce>|<phone nonce>"). */
+inline void sessionKey(const char* token, const char* boardNonce, const char* phoneNonce, uint8_t out[32]) {
+    char msg[96];
+    snprintf(msg, sizeof(msg), "session|%s|%s", boardNonce, phoneNonce);
+    sha256::hmac(token, strlen(token), msg, strlen(msg), out);
+}
+
+constexpr size_t kMacHex = 32;  // 128 bits of the HMAC per line
+
+/** The first kMacHex hex of hmac(key, "<dir>|<seq>|<line>") into out (kMacHex + 1 bytes). */
+inline void lineMac(const uint8_t key[32], char dir, uint32_t seq, const char* line, size_t len, char* out) {
+    char head[16];
+    const int h = snprintf(head, sizeof(head), "%c|%lu|", dir, (unsigned long)seq);
+    // hmac over head + line without copying the line: inner hash by hand (HMAC = H(k^opad, H(k^ipad, m)))
+    uint8_t k[64] = {0};
+    memcpy(k, key, 32);
+    uint8_t pad[64];
+    for (int i = 0; i < 64; i++) pad[i] = k[i] ^ 0x36;
+    sha256::Hash c;
+    c.update(pad, 64);
+    c.update(head, (size_t)h);
+    c.update(line, len);
+    uint8_t inner[32];
+    c.finish(inner);
+    for (int i = 0; i < 64; i++) pad[i] = k[i] ^ 0x5c;
+    sha256::Hash o;
+    o.update(pad, 64);
+    o.update(inner, 32);
+    uint8_t mac[32];
+    o.finish(mac);
+    char hex[65];
+    sha256::toHex(mac, hex);
+    memcpy(out, hex, kMacHex);
+    out[kMacHex] = '\0';
+}
+
+/** line + "\t<seq>.<mac>" into out. False = no room. */
+inline bool sealLine(const uint8_t key[32], char dir, uint32_t seq, const char* line, char* out, size_t cap) {
+    const size_t len = strlen(line);
+    char mac[kMacHex + 1];
+    lineMac(key, dir, seq, line, len, mac);
+    const int n = snprintf(out, cap, "%s\t%lu.%s", line, (unsigned long)seq, mac);
+    return n > 0 && (size_t)n < cap;
+}
+
+/**
+ * A sealed line from the other side: checks "\t<seq>.<mac>" (seq must be exactly `seq`, the mac right) and cuts it
+ * off, leaving the plain line in place. False = forged, replayed, reordered or not sealed: drop the connection.
+ */
+inline bool openLine(const uint8_t key[32], char dir, uint32_t seq, char* line) {
+    char* tab = strrchr(line, '\t');
+    if (!tab) return false;
+    char* dot = strchr(tab + 1, '.');
+    if (!dot || dot == tab + 1 || strlen(dot + 1) != kMacHex) return false;
+    uint32_t got = 0;
+    for (const char* p = tab + 1; p < dot; p++) {
+        if (*p < '0' || *p > '9' || got > 100000000u) return false;
+        got = got * 10 + (uint32_t)(*p - '0');
+    }
+    if (got != seq) return false;
+    char want[kMacHex + 1];
+    lineMac(key, dir, seq, line, (size_t)(tab - line), want);
+    if (!sameToken(want, dot + 1)) return false;
+    *tab = '\0';
+    return true;
 }
 
 /** Spoken distance: "350 เมตร", "1.2 กิโลเมตร" (short = "350 ม.", "1.2 กม." for the screen). */
