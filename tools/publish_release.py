@@ -83,6 +83,9 @@ def notes(ver: str) -> str:
 the board screen (chip icon on top), plug the board into the phone with a USB-C cable (OTG) → **แฟลชลงบอร์ด**.
 "อัปเดต" keeps settings, "ติดตั้งใหม่ทั้งหมด" = this factory image.
 ติดตั้งแอป PersonalAIBot-Mobile.apk กดไอคอนชิปด้านบนเพื่อเปิดหน้าบอร์ด ESP32 เสียบสาย USB-C จากมือถือเข้าบอร์ด แล้วกด "แฟลชลงบอร์ด" (iPhone ใช้ไม่ได้)
+If Android says the app cannot be installed over the old one ("conflicts with an existing package"), the new APK was
+signed on another PC: uninstall the old app once, then install. / ถ้าติดตั้งทับแอปเดิมไม่ได้ (เซ็นจาก PC เครื่องอื่น)
+ให้ถอนแอปเดิมครั้งเดียวแล้วติดตั้งใหม่ (ข้อมูลในแอปเดิมจะหาย)
 
 > The factory image starts at 0x0 and resets saved settings. A board on v3.5.0 or later updates itself and keeps its
 > settings and memory: Settings → อัปเดตเฟิร์มแวร์ (it downloads the `-app.bin` below).
