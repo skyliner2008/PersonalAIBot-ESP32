@@ -102,6 +102,8 @@ the board screen (chip icon on top), plug the board into the phone with a USB-C 
 If Android says the app cannot be installed over the old one ("conflicts with an existing package"), the new APK was
 signed on another PC: uninstall the old app once, then install. / ถ้าติดตั้งทับแอปเดิมไม่ได้ (เซ็นจาก PC เครื่องอื่น)
 ให้ถอนแอปเดิมครั้งเดียวแล้วติดตั้งใหม่ (ข้อมูลในแอปเดิมจะหาย)
+App 2.1.2 and later update themselves: Settings → อัปเดตแอป (`PersonalAIBot-Mobile.json` below tells them the version).
+แอป 2.1.2 ขึ้นไปอัปเดตตัวเองได้: ตั้งค่า → อัปเดตแอป
 
 > The factory image starts at 0x0 and resets saved settings. A board on v3.5.0 or later updates itself and keeps its
 > settings and memory: Settings → อัปเดตเฟิร์มแวร์ (it downloads the `-app.bin` below).
