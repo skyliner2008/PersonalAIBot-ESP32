@@ -587,3 +587,16 @@ void AgentController::describeAssistant(JsonObject out) {
     out["eye_color"] = persona::kEyeColors[_cfg.eyeColor % persona::kEyeColorCount].id;
     out["model"] = liveModelId(_activeModel);
 }
+
+void AgentController::describeBoard(JsonObject out) {
+    out["firmware"] = FIRMWARE_VERSION;  // changes with every release: about_me needs no "last updated" text
+    out["hardware"] = "ES3C28P desk device: ESP32-S3, 2.8-inch touch screen with your eyes, speaker, microphone, "
+                      "RGB LED, SD card; talks through Gemini Live, memory stays on the device";
+    out["storage"] = _storage->kindName();
+    JsonArray wake = out["wake"].to<JsonArray>();
+    wake.add("your name");
+    if (_cfg.wakeMode != 0) {  // same wake words as the session prompt
+        if (_cfg.wakeWord != 0) wake.add("Hi ESP (offline)");
+        if (_cfg.wakeWord != 1) wake.add("Jarvis (offline)");
+    }
+}

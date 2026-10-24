@@ -130,6 +130,7 @@ public:
     const char* playRadio(const char* station, JsonObject result) override;
     bool applyAssistantChange(const AssistantChange& change, JsonObject result) override;
     void describeAssistant(JsonObject out) override;
+    void describeBoard(JsonObject out) override;
     int deviceCount() override;
     void listDevices(JsonArray out) override;
     const char* deviceAction(const char* action, const char* name, JsonVariantConst value, JsonObject result) override;

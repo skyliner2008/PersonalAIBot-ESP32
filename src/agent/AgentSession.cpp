@@ -136,6 +136,9 @@ void AgentController::buildSystemPrompt(PsString& p) {
          "ห้ามเปิด/เปลี่ยนวิทยุ และห้ามทำคำสั่งเก่า ถ้ามีคำสั่งต่อท้าย ให้ทำตามคำสั่งนั้น";
     p += "\nนิสัย: ";
     p += pers.prompt;
+    // what it can do changes with the firmware and what is connected: read it, never from memory (about_me)
+    p += "\nตัวตน: ถ้าผู้ใช้ถามว่าคุณเป็นใคร ทำอะไรได้บ้าง ขอให้แนะนำ/นำเสนอ/รีวิวตัวเอง หรือถามว่าทำสิ่งใดได้ไหม "
+         "ให้เรียก about_me แล้วตอบจากผลนั้นเท่านั้น (ความสามารถเพิ่มขึ้นเมื่ออัปเดตเฟิร์มแวร์ ห้ามตอบจากความจำ)";
     p += "\nการพูด: ตอบเป็นภาษาเดียวกับที่ผู้ใช้พูด (ปกติภาษาไทย) สั้น เป็นธรรมชาติ ";
     p += persona::politeParticle((persona::Gender)_cfg.gender);
     p += " ไม่อ่านสัญลักษณ์หรือรายการยาว\n"
@@ -257,6 +260,7 @@ void AgentController::buildSetup(JsonObject setup) {
     setup["systemInstruction"]["parts"][0]["text"] = prompt.c_str();
 
     _searchInSetup = searchAvailable();
+    _tools->setSearchOffered(_searchInSetup);
     _tools->addDeclarations(setup["tools"].to<JsonArray>(), behaviorFor(model), _searchInSetup);
 
     setup["inputAudioTranscription"].to<JsonObject>();

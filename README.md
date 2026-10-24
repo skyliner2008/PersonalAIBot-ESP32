@@ -90,6 +90,8 @@ settings and memory; **ติดตั้งใหม่ทั้งหมด** 
 use USB serial. The same app is also a pocket **ESP32-AI Studio** over that cable: live status with quick buttons
 (mic / sleep / wake / reconnect / new conversation / reboot), text chat with the assistant, the live log (filter, share,
 console commands) and the settings (Wi-Fi scan, API key + test, profile, voice, models, volume, brightness …).
+The app **updates itself** from the releases: Settings → **อัปเดตแอป** (checked once a day; the download is sha256-checked
+and Android asks before installing; app data is kept). It needs releases that carry `PersonalAIBot-Mobile.json` (from v4.4.2).
 See [wiki 17](wiki/17-Mobile-Flasher.md).
 
 > The factory image starts at `0x0`, so it also **clears saved settings** on that board (a clean install).
@@ -178,7 +180,7 @@ The model calls these by itself. Data tools run in a background task and draw a 
 |---|---|
 | **Memory** | `save_memory` · `save_relation` · `recall_memory` · `forget_memory` · `recall_conversation` |
 | **Time & tasks** | `set_timer` · `set_reminder` · `list_reminders` · `cancel_reminder` · `add_task` · `list_tasks` · `update_task` |
-| **Assistant & device** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (level or +/- change) · `configure_device` (mic, sleep, clock mode) · `rest_screen` (clock now) · `play_radio` / `stop_radio` (Internet radio) · `mute_microphone` · `control_led` · `go_to_sleep` · `device` (only with `agent/devices.json`) · `vehicle` (only with a dash source chosen) |
+| **Assistant & device** | `about_me` (who it is + everything it can do, built at call time from its real tools) · `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (level or +/- change) · `configure_device` (mic, sleep, clock mode) · `rest_screen` (clock now) · `play_radio` / `stop_radio` (Internet radio) · `mute_microphone` · `control_led` · `go_to_sleep` · `device` (only with `agent/devices.json`) · `vehicle` (only with a dash source chosen) |
 | **Live data** 🖼️ | `get_weather` (Open-Meteo + PM2.5, IP location by default) · `get_oil_price` (Bangchak) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
 | **Utilities** 🖼️ | `calculate` · `convert_units` (incl. Thai ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (DST-aware) · `get_location` · `search_knowledge` (Wikipedia th/en) · `notes` |
 | **Finance pack** 🖼️ | `market_overview` (+ crypto Fear & Greed) · `market_analysis` (RSI, MACD, EMA, ADX, multi-timeframe, P/E, dividend) · `market_scan` (gainers / losers / volume / RSI, TH-US-crypto) · `economic_calendar` (ForexFactory, Thai time) · `position_size` · `price_alert` |

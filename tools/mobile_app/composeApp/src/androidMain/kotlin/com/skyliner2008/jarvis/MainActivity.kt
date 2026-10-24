@@ -292,6 +292,7 @@ class MainActivity : FragmentActivity() {
         com.skyliner2008.jarvis.voice.WakeGate.suppressed = { io.github.skyliner2008.pabflasher.Hub.linkedToBoard }
         com.skyliner2008.jarvis.voice.WakeWordService.load(applicationContext)
         com.skyliner2008.jarvis.voice.WakeWordController.install(applicationContext)  // screen off = listen, with or without Always Live
+        com.skyliner2008.jarvis.update.AppSelfUpdate.autoCheck(applicationContext)  // new app version? once a day (T097)
         val fileToolExecutor = FileToolExecutor(applicationContext)
         val deviceControlExecutor = com.skyliner2008.jarvis.tools.device.DeviceControlExecutor(applicationContext)
         com.skyliner2008.jarvis.tools.ToolExecutor.initDeviceExecutor(deviceControlExecutor)

@@ -87,6 +87,7 @@
 **ติดตั้งใหม่ทั้งหมด** เขียนไฟล์ factory · เลือกไฟล์ `.bin` ในเครื่องก็ได้ · ใช้ได้เฉพาะ Android 8 ขึ้นไป (iOS ไม่ให้แอปใช้ USB serial)
 แอปเดียวกันนี้ใช้เป็น **ESP32-AI Studio ฉบับพกพา** ผ่านสายเส้นเดิมได้ด้วย: ดูสถานะ + ปุ่มด่วน (ไมค์ / พัก / ปลุก / ต่อ AI ใหม่ / บทสนทนาใหม่ / รีบูต),
 พิมพ์แชทกับผู้ช่วย, log สด (กรอง, แชร์, พิมพ์คำสั่ง console) และตั้งค่า (สแกน Wi-Fi, API key + ทดสอบ, โปรไฟล์, เสียง, โมเดล, ความดัง, ความสว่าง ...) — ดู [wiki 17](wiki/17-Mobile-Flasher.md)
+แอป**อัปเดตตัวเองได้**จากหน้า release: ตั้งค่า → **อัปเดตแอป** (ตรวจเองวันละครั้ง ตรวจ sha256 แล้ว Android ถามก่อนติดตั้ง ข้อมูลในแอปอยู่ครบ) — ใช้ได้กับ release ที่มี `PersonalAIBot-Mobile.json` (ตั้งแต่ v4.4.2)
 
 > ไฟล์ factory เริ่มที่ `0x0` จึง**ล้างค่าตั้งค่าเดิมในบอร์ด**ไปด้วย (ติดตั้งใหม่สะอาด)
 >
@@ -176,7 +177,7 @@ AI เลือกเรียกเองตามบทสนทนา tool �
 |---|---|
 | **ความจำ** | `save_memory` · `save_relation` · `recall_memory` · `forget_memory` · `recall_conversation` |
 | **เวลา & งาน** | `set_timer` · `set_reminder` · `list_reminders` · `cancel_reminder` · `add_task` · `list_tasks` · `update_task` |
-| **ผู้ช่วย & เครื่อง** | `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (ระบุค่าหรือปรับ +/-) · `configure_device` (ไมค์, เวลาพัก, โหมดนาฬิกา) · `rest_screen` (พักหน้าจอทันที) · `play_radio` / `stop_radio` (วิทยุออนไลน์) · `mute_microphone` · `control_led` · `go_to_sleep` · `device` (เมื่อมี `agent/devices.json`) · `vehicle` (เมื่อเลือกแหล่งข้อมูลหน้าปัดแล้ว) |
+| **ผู้ช่วย & เครื่อง** | `about_me` (ตัวตน + ทุกความสามารถ สร้างตอนถูกเรียกจาก tool ที่มีจริง) · `get_device_status` · `set_expression` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (ระบุค่าหรือปรับ +/-) · `configure_device` (ไมค์, เวลาพัก, โหมดนาฬิกา) · `rest_screen` (พักหน้าจอทันที) · `play_radio` / `stop_radio` (วิทยุออนไลน์) · `mute_microphone` · `control_led` · `go_to_sleep` · `device` (เมื่อมี `agent/devices.json`) · `vehicle` (เมื่อเลือกแหล่งข้อมูลหน้าปัดแล้ว) |
 | **ข้อมูลสด** 🖼️ | `get_weather` (Open-Meteo + PM2.5, ไม่ระบุที่ = ใช้ตำแหน่งจาก IP) · `get_oil_price` (บางจาก) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
 | **เครื่องมือทั่วไป** 🖼️ | `calculate` · `convert_units` (รวม ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (รองรับ DST) · `get_location` · `search_knowledge` (Wikipedia ไทย/อังกฤษ) · `notes` |
 | **ชุดการเงิน** 🖼️ | `market_overview` (+ ดัชนีกลัว/โลภคริปโต) · `market_analysis` (RSI, MACD, EMA, ADX, หลายกรอบเวลา, P/E, ปันผล) · `market_scan` (ขึ้นแรง/ลงแรง/วอลุ่ม/RSI — ไทย/สหรัฐ/คริปโต) · `economic_calendar` (ForexFactory เวลาไทย) · `position_size` · `price_alert` |

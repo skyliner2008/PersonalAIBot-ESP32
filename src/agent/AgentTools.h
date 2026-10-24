@@ -73,6 +73,8 @@ public:
     virtual const char* playRadio(const char* station, JsonObject result) = 0;
     virtual bool applyAssistantChange(const AssistantChange& change, JsonObject result) = 0;
     virtual void describeAssistant(JsonObject out) = 0;
+    /** The device itself for about_me: firmware version, hardware (no secrets). */
+    virtual void describeBoard(JsonObject out) { (void)out; }
     // ---- devices the user wired to the free ports (agent/devices.json, wiki 15) ----
     virtual int deviceCount() { return 0; }  // 0 = the `device` tool is not declared at all
     virtual void listDevices(JsonArray out) { (void)out; }
@@ -107,6 +109,8 @@ public:
 
     /** Optional tool pack: finance (TradingView analysis / scan / calendar / alerts). */
     void setFinancePack(bool finance) { _finance = finance; }
+    /** The live session's setup offered googleSearch (set with every setup; about_me reports it). */
+    void setSearchOffered(bool offered) { _searchOffered = offered; }
 
     /**
      * Run one function call. Fills `response` with {"result": {...}} or {"error": "..."}.
@@ -138,6 +142,7 @@ private:
     DeviceOps& _device;
     int32_t _utcOffset;
     bool _finance = true;
+    bool _searchOffered = false;  // the session's setup offered googleSearch (about_me reports it)
     uint32_t _memoryWrites = 0;
 
     using Handler = bool (AgentTools::*)(JsonObjectConst, JsonObject, const char*&);
@@ -175,4 +180,5 @@ private:
     bool vehicle(JsonObjectConst a, JsonObject r, const char*& e);
     bool navigate(JsonObjectConst a, JsonObject r, const char*& e);
     bool playRadio(JsonObjectConst a, JsonObject r, const char*& e);
+    bool aboutMe(JsonObjectConst a, JsonObject r, const char*& e);
 };

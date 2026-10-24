@@ -5,6 +5,8 @@
 
 #include <ArduinoJson.h>
 
+#include <set>
+
 #include "agent/AgentTools.h"
 #include "agent/Personas.h"
 #include "agent/Scheduler.h"
@@ -279,7 +281,7 @@ TEST(tool_declarations_per_model) {
     size_t count;
     bool search;
     const size_t bytes = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)42);  // 25 core (incl. configure_device, rest_screen, mute_microphone, play_radio, stop_radio) + 5 live data + 6 utilities + 6 finance
+    CHECK_EQ(count, (size_t)43);  // about_me + 25 core (incl. configure_device, rest_screen, mute_microphone, play_radio, stop_radio) + 5 live data + 6 utilities + 6 finance
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
@@ -294,15 +296,15 @@ TEST(tool_declarations_per_model) {
     }
     CHECK(search);
     CHECK(recall == "BLOCKING" && expr == "NON_BLOCKING");
-    CHECK(bytes < 15000);  // billed every turn: keep the declarations compact
+    CHECK(bytes < 15200);  // billed every turn: keep the declarations compact (+200 for about_me, T096)
     printf("    tool declarations: %u bytes JSON\n", (unsigned)bytes);
 
     // the vehicle dash: the board always declares it, so "เปิดหน้าปัด" works before a source is set (T079)
     rig.dev.vehicleOn = true;
     const size_t withVehicle = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)43);
+    CHECK_EQ(count, (size_t)44);
     CHECK(withVehicle - bytes < 400);  // one small tool
-    CHECK(withVehicle < 15400);        // what the board really sends every session
+    CHECK(withVehicle < 15600);        // what the board really sends every session
     printf("    + vehicle dash tool: %u bytes JSON\n", (unsigned)(withVehicle - bytes));
     {
         // default build (VEHICLE_BLE = 0): the model is not offered the Bluetooth source it cannot pick (T078)
@@ -327,7 +329,7 @@ TEST(tool_declarations_per_model) {
     // the phone app (wiki 18): `navigate` only once a phone was paired, small like the dash tool
     rig.dev.phoneOn = true;
     const size_t withPhone = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)43);
+    CHECK_EQ(count, (size_t)44);
     CHECK(withPhone - bytes < 450);
     printf("    + navigate tool: %u bytes JSON\n", (unsigned)(withPhone - bytes));
     JsonDocument nr;
@@ -339,13 +341,13 @@ TEST(tool_declarations_per_model) {
     CHECK(!callTool(rig.tools, "navigate", "{\"action\":\"fly\"}", nr));
     rig.dev.phoneOn = false;
 
-    // optional finance pack off -> 36 (no trading tools exist at all)
+    // optional finance pack off -> 37 (no trading tools exist at all)
     rig.tools.setFinancePack(false);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)36);
+    CHECK_EQ(count, (size_t)37);
     rig.tools.setFinancePack(true);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)42);
+    CHECK_EQ(count, (size_t)43);
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
@@ -362,6 +364,67 @@ TEST(tool_declarations_per_model) {
 
 // T071: a NON_BLOCKING call answered without "scheduling" (or with it inside "response") defaults to
 // WHEN_IDLE - gemini-3.8-live then spoke its whole answer twice
+// about_me is built from the declarations at call time: every declared tool is in it, nothing kept by hand
+TEST(about_me_lists_what_is_declared) {
+    ToolRig rig(tempDir("aboutme"));
+    auto declaredNames = [&]() {
+        JsonDocument doc;
+        rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
+        std::set<std::string> names;
+        for (JsonObjectConst d : doc[0]["functionDeclarations"].as<JsonArrayConst>()) names.insert(d["name"] | "");
+        names.erase("about_me");
+        return names;
+    };
+    auto listedNames = [](JsonDocument& resp, std::set<std::string>& groups) {
+        std::set<std::string> names;
+        groups.clear();
+        for (JsonObjectConst g : resp["result"]["abilities"].as<JsonArrayConst>()) {
+            groups.insert(g["group"] | "");
+            CHECK(g["tools"].size() > 0);  // empty sections are dropped
+            for (JsonObjectConst t : g["tools"].as<JsonArrayConst>()) {
+                names.insert(t["name"] | "");
+                CHECK(strlen(t["does"] | "") > 5);
+            }
+        }
+        return names;
+    };
+
+    JsonDocument r;
+    std::set<std::string> groups;
+    CHECK(callTool(rig.tools, "about_me", "{}", r));
+    CHECK(r["result"]["assistant"]["name"] == "ไข่มุก");
+    CHECK(!r["result"]["how_to_present"].isNull());
+    std::set<std::string> listed = listedNames(r, groups);
+    CHECK(listed == declaredNames());
+    CHECK_EQ(r["result"]["tool_count"].as<size_t>(), listed.size());
+    CHECK(listed.count("about_me") == 0);
+    CHECK(groups.count("finance (TradingView, not investment advice)") == 1);
+    CHECK(groups.count("connected hardware, car and phone") == 0);  // nothing connected in the rig
+    CHECK(r["result"]["connected"]["google_search"] == false);
+    const size_t bytes = measureJson(r);
+    CHECK(bytes < 8000);  // one function response, not billed every turn
+    printf("    about_me: %u tools, %u bytes JSON\n", (unsigned)listed.size(), (unsigned)bytes);
+
+    // what changes at run time changes the answer: finance pack off, a paired phone, Search offered
+    rig.tools.setFinancePack(false);
+    rig.dev.phoneOn = true;
+    rig.tools.setSearchOffered(true);
+    CHECK(callTool(rig.tools, "about_me", "{}", r));
+    listed = listedNames(r, groups);
+    CHECK(listed == declaredNames());
+    CHECK(listed.count("market_analysis") == 0 && listed.count("navigate") == 1);
+    CHECK(groups.count("connected hardware, car and phone") == 1);
+    CHECK(r["result"]["connected"]["phone_app_paired"] == true && r["result"]["connected"]["google_search"] == true);
+    rig.tools.setFinancePack(true);
+    rig.dev.phoneOn = false;
+    rig.tools.setSearchOffered(false);
+
+    // the collector is off again: a later setup is not affected
+    JsonDocument doc;
+    rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
+    CHECK(doc[0]["functionDeclarations"].size() == declaredNames().size() + 1);
+}
+
 TEST(tool_response_scheduling) {
     auto sched = [](const char* name, ToolBehavior b) {
         const char* s = AgentTools::responseScheduling(name, b);

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
@@ -767,6 +768,9 @@ fun SettingsDialog(
 
         // ─── Backup / Restore section ───────────────────────────────────────
         BackupSection()
+
+        // ─── App update from GitHub (T097) ──────────────────────────────────
+        AppUpdateSection()
 
         // ─── Setup Checklist section ────────────────────────────────────────
         SectionCard(
@@ -1531,6 +1535,71 @@ private fun BackupSection() {
                 TextButton(onClick = { confirmRestore = false }) { Text("ยกเลิก") }
             },
         )
+    }
+}
+
+/**
+ * อัปเดตแอปจาก GitHub Releases (T097): ตรวจเวอร์ชัน → ดาวน์โหลด (ตรวจ sha256) → Android ถามยืนยันการติดตั้ง
+ * ข้อมูลในแอปอยู่ครบเมื่ออัปเดตทับ · เซ็นจาก PC คนละเครื่อง = ต้องถอนก่อน (บอกก่อนดาวน์โหลด)
+ */
+@Composable
+private fun AppUpdateSection() {
+    val updater = com.skyliner2008.jarvis.ui.rememberAppUpdater()
+    if (!updater.supported) return
+    var expanded by remember { mutableStateOf(false) }
+    val state by updater.state.collectAsStateWithLifecycle()
+    val available = state as? com.skyliner2008.jarvis.ui.AppUpdateState.Available
+    LaunchedEffect(available) { if (available != null) expanded = true }  // found by the daily check
+
+    SectionCard(
+        title = if (available != null) "อัปเดตแอป • มีเวอร์ชันใหม่" else "อัปเดตแอป",
+        icon = Icons.Default.SystemUpdate,
+        expanded = expanded,
+        onToggle = { expanded = !expanded },
+    ) {
+        Text(
+            "เวอร์ชันนี้ ${updater.currentVersion} · ดาวน์โหลดจาก GitHub Releases ของโปรเจค ตรวจ sha256 แล้ว Android ถามยืนยัน " +
+                "ก่อนติดตั้ง ข้อมูลในแอปอยู่ครบ · ตรวจเองวันละครั้งตอนเปิดแอป",
+            color = Color.White.copy(alpha = 0.6f), fontSize = HelperSize,
+        )
+        fun mb(bytes: Long) = if (bytes > 0) "%.0f MB".format(bytes / 1_048_576.0) else "?"
+        when (val st = state) {
+            com.skyliner2008.jarvis.ui.AppUpdateState.Idle -> BackupButton("ตรวจหาอัปเดต", Modifier.fillMaxWidth(), updater.check)
+            com.skyliner2008.jarvis.ui.AppUpdateState.Checking ->
+                Text("⏳ กำลังตรวจ...", color = JarvisTheme.Cyan, fontSize = BodySize)
+            is com.skyliner2008.jarvis.ui.AppUpdateState.UpToDate -> {
+                Text("✓ เป็นเวอร์ชันล่าสุดแล้ว (ล่าสุดบน GitHub: ${st.latest})", color = JarvisTheme.Green, fontSize = BodySize)
+                BackupButton("ตรวจอีกครั้ง", Modifier.fillMaxWidth(), updater.check)
+            }
+            is com.skyliner2008.jarvis.ui.AppUpdateState.Available -> {
+                Text("มีเวอร์ชันใหม่ ${st.version} (${mb(st.sizeBytes)})", color = JarvisTheme.Cyan, fontSize = BodySize)
+                if (!st.sameSigner) {
+                    Text(
+                        "เวอร์ชันใหม่เซ็นจาก PC คนละเครื่องกับแอปนี้ — ติดตั้งทับไม่ได้ ต้องถอนแอปเดิมก่อน (สำรองข้อมูลด้านบนก่อน)",
+                        color = JarvisTheme.Amber, fontSize = HelperSize,
+                    )
+                } else {
+                    Text("ไฟล์ใหญ่ ควรใช้ Wi-Fi", color = Color.White.copy(alpha = 0.6f), fontSize = HelperSize)
+                    BackupButton("ดาวน์โหลดและติดตั้ง", Modifier.fillMaxWidth(), updater.update)
+                }
+            }
+            is com.skyliner2008.jarvis.ui.AppUpdateState.Downloading -> {
+                val pct = if (st.total > 0) (st.done * 100 / st.total).toInt() else 0
+                Text("⬇ กำลังดาวน์โหลด ${mb(st.done)} / ${mb(st.total)} ($pct%)", color = JarvisTheme.Cyan, fontSize = BodySize)
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { if (st.total > 0) st.done.toFloat() / st.total else 0f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = JarvisTheme.Cyan,
+                )
+                BackupButton("ยกเลิก", Modifier.fillMaxWidth(), updater.cancel)
+            }
+            com.skyliner2008.jarvis.ui.AppUpdateState.Installing ->
+                Text("📦 ส่งให้ Android ติดตั้ง — กด \"อัปเดต\" ในหน้าต่างที่ขึ้นมา", color = JarvisTheme.Cyan, fontSize = BodySize)
+            is com.skyliner2008.jarvis.ui.AppUpdateState.Failed -> {
+                Text("✗ ${st.message}", color = JarvisTheme.Red, fontSize = BodySize)
+                BackupButton("ลองอีกครั้ง", Modifier.fillMaxWidth(), updater.check)
+            }
+        }
     }
 }
 

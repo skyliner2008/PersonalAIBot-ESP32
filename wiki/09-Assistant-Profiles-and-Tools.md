@@ -70,7 +70,7 @@ status: implemented
 
 ---
 
-## 3. Tools ของผู้ช่วยส่วนตัว (42 ฟังก์ชัน + Google Search ถ้าเปิด)
+## 3. Tools ของผู้ช่วยส่วนตัว (43 ฟังก์ชัน + Google Search ถ้าเปิด)
 
 > v3.1: +5 tools ข้อมูลสดพร้อมการ์ดกราฟิก — `get_weather`, `get_oil_price`, `get_market_quote`, `convert_currency`, `get_news` → [[11-Data-Tools-and-Cards]]
 > v3.2: +14 tools พอร์ตจาก PersonalAIBot — `calculate`, `convert_units`, `get_world_time`, `get_location`, `search_knowledge`, `notes` + finance pack (`market_overview`, `market_analysis`, `market_scan`, `economic_calendar`, `position_size`, `price_alert`) (MT5 `mt5_account`/`mt5_trade` เคยมีใน v3.2–v3.3 — ถอดออกใน v3.4) → [[11-Data-Tools-and-Cards#2) Tools ที่พอร์ตจาก PersonalAIBot (`composeApp`)]]
@@ -80,10 +80,16 @@ status: implemented
 | ความจำ | `save_memory`, `save_relation`, `recall_memory`, `forget_memory`, `recall_conversation` |
 | เวลา | `set_timer` (นาที/วินาที), `set_reminder` (`YYYY-MM-DD HH:MM` / `HH:MM` / `tomorrow HH:MM`, repeat none/daily/weekdays/weekly), `list_reminders`, `cancel_reminder` |
 | งาน (to-do) | `add_task` (priority 1-3, due), `list_tasks`, `update_task` (done/undone/delete/rename) |
-| ผู้ช่วย | `get_device_status`, `set_expression` (14 อารมณ์ของดวงตา), `configure_assistant`, `list_assistant_options` |
+| ผู้ช่วย | `about_me` (ตัวตน + ความสามารถทั้งหมด สร้างตอนเรียกจาก tools ที่ประกาศจริง — T096), `get_device_status`, `set_expression` (14 อารมณ์ของดวงตา), `configure_assistant`, `list_assistant_options` |
 | อุปกรณ์ | `set_volume` / `set_brightness` (`level` หรือ `change` +/- เช่น "ลดเสียงลงหน่อย" = -10), `configure_device` (ความไวไมค์ / mic_change, sleep_minutes, clock_minutes, dim_brightness), `rest_screen` ("พักหน้าจอ" = นาฬิกาหรี่แสงทันทีหลังตอบ), `play_radio` / `stop_radio` (วิทยุออนไลน์ → [[12-Internet-Radio]]), `mute_microphone` (ปิดได้อย่างเดียว — เปิดต้องกดปุ่ม 🎤 บนจอ; สถานะปิดไมค์จำข้ามการรีบูต `cfg/muted`), `control_led`, `go_to_sleep` · `vehicle` (หน้าปัดรถ — ประกาศเฉพาะเมื่อเลือกแหล่งข้อมูล: status / open / close / set_source → [[16-Vehicle-Dash]]) · `navigate` (Google Maps บนมือถือ — ประกาศเฉพาะเมื่อจับคู่แอปมือถือแล้ว: go / stop / status / where; ระหว่างนำทาง AI พูดเตือนก่อนเลี้ยวเอง → [[18-Phone-Link-Navigation-Plan]]) |
 | ในตัว | **Google Search** — ปิดเป็นค่าเริ่มต้น (ต้องมี key ที่มีสิทธิ์ Search); ถ้าปิด เรื่องล่าสุดใช้ `get_news(topic)` |
 
+- **`about_me` — รู้จักตัวเองแบบไม่ต้องแก้มือ (T096):** ถูกเรียกเมื่อผู้ใช้ถาม "เป็นใคร / ทำอะไรได้บ้าง / แนะนำ-รีวิวตัวเอง / ทำ X ได้ไหม"
+  (กติกาใน system prompt) · ผลสร้าง**ตอนเรียก**: รัน `addDeclarations()` อีกรอบพร้อมตัวเก็บ (`group()` เปิดหมวด, `declare()` ใส่ tool
+  + ประโยคแรกของคำอธิบาย) → tool ใหม่ที่ประกาศในหมวดไหนก็โผล่ในหมวดนั้นเอง, หมวดที่ไม่มี tool (ไม่มีอุปกรณ์/มือถือ) ตัดทิ้ง ·
+  `assistant` (ชื่อ/เสียง/นิสัย), `device` (เวอร์ชันเฟิร์มแวร์ — แทน "อัปเดตล่าสุด" ที่ต้องแก้มือแบบ `self_review.md` ของแอปมือถือ, ฮาร์ดแวร์, คำปลุก),
+  `connected` (Google Search ที่ setup เสนอจริง, ชุดการเงิน, มือถือ, หน้าปัด, อุปกรณ์ที่ต่อ), `how_to_present` (พูดเป็นภาษาธรรมชาติ ไม่อ่านชื่อ tool)
+  · ผล ~5 KB (ส่งเฉพาะตอนเรียก) · คำประกาศ +~200 ไบต์/เทิร์น · **เพิ่ม tool ใหม่:** ประกาศใต้ `group(...)` ที่เหมาะสมใน `AgentTools::addDeclarations` แค่นั้น
 - คำอธิบาย tools เป็นภาษาอังกฤษแบบสั้น (≈6 KB JSON ≈ 1.6k tokens) เพราะถูกนับทุก turn
 - **behavior ตามโมเดล:** 3.8 Live = `BLOCKING` (ยกเว้น `set_expression` = `NON_BLOCKING` + `scheduling: SILENT` — field ของ FunctionResponse ข้าง `response`, ใส่ใน `response` แล้วโมเดลพูดซ้ำ 2 รอบ T071), 3.8 Extended Thinking = `NON_BLOCKING` ทั้งหมด (BLOCKING = hard error), 3.1 Flash Live = ไม่ใส่ field
 - **การแจ้งเตือน:** ถึงเวลา → เสียงกริ๊ง 2 โน้ตทุก 2.5 วิ (สูงสุด 30 วิ หรือจนแตะจอ), ตาตกใจ, ข้อความบนจอ และส่ง `clientContent` "[แจ้งเตือนจากระบบ] ..." ให้ผู้ช่วยพูดบอก; ถ้ากำลังพักจะตื่นเอง

@@ -29,8 +29,41 @@ const char* const kTaskActions[] = {"done", "undone", "delete", "rename", nullpt
 const char* const kOptionKinds[] = {"profiles", "voices", "personalities", "eye_colors", nullptr};
 const char* const kGenders[] = {"female", "male", "neutral", nullptr};
 
+/**
+ * about_me reads the abilities from the declarations themselves (no list kept by hand): while it runs,
+ * addDeclarations() fills this collector too - group() opens a section, declare() adds each tool to it.
+ * A tool added to addDeclarations() is in about_me with nothing else to update.
+ */
+struct AbilityCollector {
+    JsonArray groups;
+    JsonArray current;
+};
+AbilityCollector* gAbilities = nullptr;
+
+void group(const char* label) {
+    if (!gAbilities) return;
+    JsonObject g = gAbilities->groups.add<JsonObject>();
+    g["group"] = label;
+    gAbilities->current = g["tools"].to<JsonArray>();
+}
+
+/** The first sentence of a description ("Start a countdown timer (rings on the device)." -> whole). */
+void addAbility(const char* name, const char* description) {
+    if (!gAbilities || gAbilities->current.isNull() || strcmp(name, "about_me") == 0) return;
+    char what[200];
+    const char* end = strstr(description, ". ");
+    size_t n = end ? (size_t)(end - description) : strlen(description);
+    if (n >= sizeof(what)) n = sizeof(what) - 1;
+    memcpy(what, description, n);
+    what[n] = '\0';
+    JsonObject t = gAbilities->current.add<JsonObject>();
+    t["name"] = name;
+    t["does"] = (const char*)what;  // const char*: ArduinoJson copies it (a char array would be kept by pointer)
+}
+
 void declare(JsonArray decls, ToolBehavior behavior, const char* name, const char* description,
              const Param* params = nullptr, size_t count = 0) {
+    addAbility(name, description);
     JsonObject f = decls.add<JsonObject>();
     f["name"] = name;
     f["description"] = description;
@@ -115,6 +148,7 @@ const AgentTools::Entry AgentTools::kHandlers[] = {
     {"device", &AgentTools::device},
     {"vehicle", &AgentTools::vehicle},
     {"navigate", &AgentTools::navigate},
+    {"about_me", &AgentTools::aboutMe},
     {nullptr, nullptr},
 };
 
@@ -138,7 +172,13 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     if (googleSearch) tools.add<JsonObject>()["googleSearch"].to<JsonObject>();
     JsonArray d = tools.add<JsonObject>()["functionDeclarations"].to<JsonArray>();
 
+    // group(): the sections about_me presents (a new tool joins the section it is declared in)
+    declare(d, b, "about_me",
+            "Your identity and everything you can do now, read from your real tools. Call before introducing "
+            "yourself or saying whether you can do something.");
+
     // ---- Long-term memory ----
+    group("long-term memory");
     static const Param save[] = {
         {"content", "STRING", "One self-contained sentence, third person, user's language (e.g. 'ผู้ใช้แพ้กุ้ง').", true, nullptr},
         {"category", "STRING", nullptr, false, kCategories},
@@ -169,6 +209,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     declare(d, b, "recall_conversation", "Search the log of earlier conversations.", conv, 2);
 
     // ---- Time ----
+    group("timers and reminders");
     static const Param timer[] = {
         {"minutes", "INTEGER", nullptr, false, nullptr},
         {"seconds", "INTEGER", nullptr, false, nullptr},
@@ -189,6 +230,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     declare(d, b, "cancel_reminder", "Cancel a timer/reminder.", cancel, 2);
 
     // ---- Tasks ----
+    group("to-do list");
     static const Param addt[] = {
         {"title", "STRING", nullptr, true, nullptr},
         {"priority", "INTEGER", "1 high, 2 normal, 3 low.", false, nullptr},
@@ -205,6 +247,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     declare(d, b, "update_task", "Complete, reopen, delete or rename a to-do item.", upd, 3);
 
     // ---- Assistant & device ----
+    group("yourself, the screen, sound and radio");
     declare(d, b, "get_device_status",
             "Current date/time, battery, Wi-Fi, volume, assistant settings, memory/reminder/task counts.");
     static const Param expr[] = {{"emotion", "STRING", nullptr, true, emotionNames()}};
@@ -255,6 +298,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     declare(d, b, "stop_radio", "Turn the radio off (and close its screen).");
     declare(d, b, "mute_microphone",
             "Mic OFF after this reply. Only the screen mic button turns it back on: tell the user.");
+    group("connected hardware, car and phone");  // left out of about_me when none of them is declared
     if (_device.deviceCount() > 0) {  // only with devices wired up (agent/devices.json): no cost otherwise
         static const char* const kDeviceActions[] = {"list", "read", "set", nullptr};
         static const Param devp[] = {
@@ -290,6 +334,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     }
 
     // ---- Live data with on-screen graphics (run by webtools::WebTools, answered asynchronously) ----
+    group("live data shown as cards on the screen");
     static const Param weather[] = {
         {"location", "STRING", "Thai province / city / district in Thai, e.g. 'เชียงใหม่', 'หาดใหญ่'. Empty = Bangkok.", false, nullptr},
         {"location_en", "STRING", "The same place in English (fallback for the geocoder), e.g. 'Ubon Ratchathani'.", false, nullptr},
@@ -325,6 +370,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
             news, 1);
 
     // ---- Utilities (ported from the PersonalAIBot app; computed on the device or fetched, shown as a card) ----
+    group("utilities");
     static const Param calc[] = {
         {"expression", "STRING", "Math, e.g. '(1500*12)*7%', 'sqrt(2)', 'sin(30)' (degrees), '2^10'.", true, nullptr},
     };
@@ -356,6 +402,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
 
     // ---- Finance pack ----
     if (_finance) {
+        group("finance (TradingView, not investment advice)");
         declare(d, b, "market_overview",
                 "Snapshot of key markets: SET index, S&P 500, Nasdaq, gold, WTI oil, bitcoin, USD/THB + crypto Fear&Greed. "
                 "Shows a card. Use for 'ตลาดวันนี้เป็นยังไง'.");
@@ -831,5 +878,45 @@ bool AgentTools::muteMicrophone(JsonObjectConst, JsonObject r, const char*&) {
 bool AgentTools::goToSleep(JsonObjectConst, JsonObject r, const char*&) {
     _device.requestSleep();
     r["status"] = "will sleep after this reply; tap the screen or speak to wake";
+    return true;
+}
+
+/**
+ * Self-knowledge built at call time, never written by hand: the abilities come from addDeclarations() (what the
+ * model is offered right now: finance pack, devices, dash, phone included or not), the identity from the
+ * settings, the version from the firmware. A new tool or a new firmware shows up here by itself.
+ */
+bool AgentTools::aboutMe(JsonObjectConst, JsonObject r, const char*&) {
+    _device.describeAssistant(r["assistant"].to<JsonObject>());
+    _device.describeBoard(r["device"].to<JsonObject>());
+
+    AbilityCollector collect;
+    collect.groups = r["abilities"].to<JsonArray>();
+    {
+        JsonDocument scratch;  // the declarations themselves are not needed, only what declare() collected
+        gAbilities = &collect;
+        addDeclarations(scratch.to<JsonArray>(), ToolBehavior::Unspecified, _searchOffered);
+        gAbilities = nullptr;
+    }
+    size_t count = 0;
+    for (size_t i = collect.groups.size(); i-- > 0;) {  // sections with nothing declared (no devices / phone)
+        const size_t n = collect.groups[i]["tools"].size();
+        if (n == 0) collect.groups.remove(i);
+        count += n;
+    }
+    r["tool_count"] = count;
+
+    JsonObject c = r["connected"].to<JsonObject>();
+    c["google_search"] = _searchOffered;
+    c["finance_tools"] = _finance;
+    c["phone_app_paired"] = _device.phonePaired();
+    c["vehicle_dash"] = _device.vehicleEnabled();
+    if (_device.deviceCount() > 0) _device.listDevices(c["wired_devices"].to<JsonArray>());
+
+    r["how_to_present"] =
+        "Speak naturally in the user's language: who you are (name, personality, this device), then each ability "
+        "group in a sentence with a real example of what the user can ask. Never read tool names, ids or symbols. "
+        "Keep it about a minute unless the user wants every detail; offer to explain any part. To answer "
+        "'can you ...?' use only this list.";
     return true;
 }

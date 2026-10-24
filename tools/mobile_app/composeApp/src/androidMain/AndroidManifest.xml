@@ -57,6 +57,8 @@
     <!-- Location permissions (GPS / Location context for Driving & Navigation) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Settings -> อัปเดตแอป: the app installs its own update from GitHub (PackageInstaller, T097) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="false"
@@ -140,6 +142,11 @@
                 <action android:name="com.skyliner2008.jarvis.action.ALERT_REPEAT" />
             </intent-filter>
         </receiver>
+
+        <!-- Android's installer answers the app's own update here (confirm screen / failure, T097) -->
+        <receiver
+            android:name=".update.AppUpdateReceiver"
+            android:exported="false" />
 
         <!-- Boot receiver — ตื่น automation service หลังรีบูท และหลังอัปเดตแอป (MY_PACKAGE_REPLACED:
              การติดตั้งทับฆ่า service — เดิมงานเฝ้าตลาดหยุดเงียบจนกว่าผู้ใช้จะเปิดแอป) -->

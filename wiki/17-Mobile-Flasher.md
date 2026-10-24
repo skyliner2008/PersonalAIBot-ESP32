@@ -105,6 +105,18 @@ status: active
 ถ้าบอร์ดไม่เข้าโหมดแฟลช (เช่นเฟิร์มแวร์เก่าปิด USB): กด **BOOT** ค้าง แตะ **RESET** ปล่อย BOOT แล้วกดแฟลชอีกครั้ง ·
 สายหลุดกลางทาง: เสียบใหม่แล้วแฟลชซ้ำ (ROM bootloader อยู่ในชิป ไม่มีทางเสีย)
 
+### แอปอัปเดตตัวเอง (T097)
+
+Jarvis → ตั้งค่า → **อัปเดตแอป** (การ์ดเปิดเองเมื่อพบเวอร์ชันใหม่) · ตรวจเองวันละครั้งตอนเปิดแอป → แจ้งเตือน "มีแอปเวอร์ชันใหม่"
+1. `releases/latest` ของ GitHub → ไฟล์ `PersonalAIBot-Mobile.json` ที่ `build_mobile_apk.py` สร้าง + `publish_release.py` แนบ
+   (`versionName`, `versionCode`, `sha256`, `size`, `signerSha256` = SHA-256 ของใบรับรองที่เซ็น จาก `apksigner`) — tag ของ release เป็นเลขเฟิร์มแวร์ จึงอ่านเวอร์ชันแอปจากไฟล์นี้
+2. เทียบ `versionCode` กับที่ติดตั้ง และ**กุญแจเซ็นก่อนดาวน์โหลด**: เซ็นจาก PC คนละเครื่อง = บอกให้ถอนแอปก่อน (ไม่โหลด ~215 MB เปล่าๆ)
+3. ขอสิทธิ์ "ติดตั้งแอปที่ไม่รู้จัก" ก่อนดาวน์โหลด → สตรีมลง `cache/app-update/` พร้อมคำนวณ sha256 + เทียบขนาด (ยกเลิกได้)
+4. `PackageInstaller` session → Android ถามยืนยัน (`AppUpdateReceiver` เปิดหน้ายืนยัน / รายงานผล) · ไฟล์ในแคชลบหลังติดตั้งและตอนเปิดแอป
+- release ก่อน v4.4.2 ไม่มีไฟล์ json → การ์ดบอก "ยังไม่มีข้อมูลเวอร์ชันแอป" · โค้ด: `ui/AppUpdate.kt` (ตัดสินใจ, test `AppUpdateLogicTest`),
+  `update/AppSelfUpdate.kt` (ดาวน์โหลด/ติดตั้ง), `AppUpdateSection` ใน `SettingsDialog.kt` · log tag `AppUpdate`
+- ตรวจบนมือถือแล้ว (SM-S908E): ตรวจอัตโนมัติเรียก GitHub ได้ (`latest v4.4.1: no PersonalAIBot-Mobile.json`) · **ดาวน์โหลด + ติดตั้งจริงยังไม่ได้ลอง** (รอ release ที่มีไฟล์ json)
+
 ## ความปลอดภัยของไฟล์
 - ดาวน์โหลดผ่าน HTTPS จาก GitHub API (`/releases/latest`) → ตรวจ **sha256** กับไฟล์ `.sha256` ของ release ก่อนเขียนทุกครั้ง (ไฟล์ที่ผ่านแล้วเก็บใน cache ของแอป)
 - ถ้า `src/app/OtaPublicKey.h` มีกุญแจ (wiki 13) ตอน build แอป → แอปฝังกุญแจสาธารณะเดียวกัน (`BuildConfig.OTA_PUBKEY_PEM`) และ**ตรวจลายเซ็น `-app.bin.sig`**

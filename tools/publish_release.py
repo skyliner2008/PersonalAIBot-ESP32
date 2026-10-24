@@ -170,6 +170,13 @@ def main() -> None:
             sys.exit("Phone app build failed: nothing was published.")
     if apk.exists() and (ROOT / "dist" / (apk.name + ".sha256")).exists():
         files += [apk, ROOT / "dist" / (apk.name + ".sha256")]
+        # the app's update check reads its version + signer here (T097); only when it describes this very APK
+        manifest = ROOT / "dist" / "PersonalAIBot-Mobile.json"
+        if manifest.exists() and json.loads(manifest.read_text(encoding="ascii")).get("sha256") == \
+                hashlib.sha256(apk.read_bytes()).hexdigest():
+            files.append(manifest)
+        else:
+            print("note: no update manifest for this APK - phones will not see this release in อัปเดตแอป")
     else:
         print("note: no dist/PersonalAIBot-Mobile.apk (python tools/build_mobile_apk.py) - the release has no phone app")
 
@@ -188,7 +195,8 @@ def main() -> None:
     print("1/3 draft created")
     upload = rel["upload_url"].split("{")[0]
     for f in files:
-        ctype = {".bin": "application/octet-stream", ".apk": "application/vnd.android.package-archive"}
+        ctype = {".bin": "application/octet-stream", ".apk": "application/vnd.android.package-archive",
+                 ".json": "application/json"}
         st, a = gh.call("POST", f"{upload}?name={f.name}", raw=f.read_bytes(),
                         ctype=ctype.get(f.suffix, "text/plain"))  # .sha256 / .sig
         if st != 201:
