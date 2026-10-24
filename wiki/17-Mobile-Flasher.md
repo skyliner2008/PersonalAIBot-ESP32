@@ -115,7 +115,9 @@ Jarvis → ตั้งค่า → **อัปเดตแอป** (การ�
 4. `PackageInstaller` session → Android ถามยืนยัน (`AppUpdateReceiver` เปิดหน้ายืนยัน / รายงานผล) · ไฟล์ในแคชลบหลังติดตั้งและตอนเปิดแอป
 - release ก่อน v4.4.2 ไม่มีไฟล์ json → การ์ดบอก "ยังไม่มีข้อมูลเวอร์ชันแอป" · โค้ด: `ui/AppUpdate.kt` (ตัดสินใจ, test `AppUpdateLogicTest`),
   `update/AppSelfUpdate.kt` (ดาวน์โหลด/ติดตั้ง), `AppUpdateSection` ใน `SettingsDialog.kt` · log tag `AppUpdate`
-- ตรวจบนมือถือแล้ว (SM-S908E): ตรวจอัตโนมัติเรียก GitHub ได้ (`latest v4.4.1: no PersonalAIBot-Mobile.json`) · **ดาวน์โหลด + ติดตั้งจริงยังไม่ได้ลอง** (รอ release ที่มีไฟล์ json)
+- ตรวจบนมือถือแล้ว (SM-S908E): ก่อน v4.4.2 → `latest v4.4.1: no PersonalAIBot-Mobile.json` · หลังออก v4.4.2 →
+  `latest v4.4.2: app 2.1.2 (6), installed 2.1.1 (5) -> Available(…, sameSigner=true)` + แจ้งเตือนช่อง `app_update` ขึ้น
+  (กุญแจที่แอปคำนวณ = `signerSha256` จาก apksigner) · **ขั้นดาวน์โหลด + ติดตั้งยังไม่ได้ลอง** (ต้องกดยืนยันบนมือถือ)
 
 ## ความปลอดภัยของไฟล์
 - ดาวน์โหลดผ่าน HTTPS จาก GitHub API (`/releases/latest`) → ตรวจ **sha256** กับไฟล์ `.sha256` ของ release ก่อนเขียนทุกครั้ง (ไฟล์ที่ผ่านแล้วเก็บใน cache ของแอป)
