@@ -35,7 +35,9 @@ status: reference
 | Tool | Version | Purpose |
 |------|---------|--------|
 | VS Code / Antigravity IDE | Latest | Code editor with PlatformIO extension |
-| Python | 3.9+ | PlatformIO CLI dependency |
+| Python | 3.10–3.14 | PlatformIO CLI dependency (pioarduino ไม่รับ 3.15 — T092) · Studio/สคริปต์ใช้ 3.9+ |
+| VS 2022 Build Tools (C++) | 2022 | host unit tests (`host_tests\run_tests.bat`) |
+| Android Studio | Latest | แอปมือถือ: JDK (`jbr`) + Android SDK · ตั้ง `JAVA_HOME` / `ANDROID_HOME` |
 | Git | 2.30+ | Version control |
 | PlatformIO CLI | 6.x | Build system for ESP32 |
 | USB Driver | CH340 or ESP32-S3 Native USB | Board communication |

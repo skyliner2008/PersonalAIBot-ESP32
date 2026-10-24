@@ -1,5 +1,6 @@
 package com.skyliner2008.jarvis.db
 
+import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 
 expect class DatabaseDriverFactory {
@@ -138,8 +139,6 @@ private fun ensureNewTablesExist(driver: SqlDriver) {
         )""",
         "CREATE INDEX IF NOT EXISTS idx_signal_tracking_symbol_status ON SignalTrackingRecord(symbol, status)",
         "CREATE INDEX IF NOT EXISTS idx_signal_tracking_strategy ON SignalTrackingRecord(strategy, status)",
-        // Migration: add features_json to SignalTrackingRecord for existing databases
-        "ALTER TABLE SignalTrackingRecord ADD COLUMN features_json TEXT"
     )
 
     statements.forEach { sql ->
@@ -148,5 +147,21 @@ private fun ensureNewTablesExist(driver: SqlDriver) {
         } catch (_: Exception) {
             // ถ้า table มีอยู่แล้ว ข้ามไป
         }
+    }
+
+    // Migration: features_json ใน DB รุ่นเก่า — เช็คก่อน (ALTER ซ้ำทุกครั้งที่เปิดแอป = SQLiteLog E "duplicate column", T093)
+    addColumnIfMissing(driver, "SignalTrackingRecord", "features_json", "TEXT")
+}
+
+private fun addColumnIfMissing(driver: SqlDriver, table: String, column: String, type: String) {
+    try {
+        val exists = driver.executeQuery(null, "PRAGMA table_info($table)", { cursor ->
+            var found = false
+            while (cursor.next().value) if (cursor.getString(1) == column) found = true
+            QueryResult.Value(found)
+        }, 0).value
+        if (!exists) driver.execute(null, "ALTER TABLE $table ADD COLUMN $column $type", 0)
+    } catch (_: Exception) {
+        // migration ไม่ได้ก็ไม่ทำให้แอปเปิดไม่ขึ้น
     }
 }

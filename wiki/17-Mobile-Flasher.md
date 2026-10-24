@@ -35,8 +35,13 @@ status: active
 >   → รัน 2 ตัวห่างกัน 40 ms แล้วเฉลี่ยคะแนนล่าสุดของทั้งคู่ (เกณฑ์ = ความไว × 0.8) → 0.47…0.99 บนเสียงเดียวกัน · เฉลี่ย 3 ค่าต่ำไป (0.32)
 > - มือถือเชื่อมบอร์ด ESP32 อยู่ (USB / Wi-Fi) = มือถือไม่ตอบคำปลุก (บอร์ดตอบ "Jarvis" เอง)
 > - ตั้งค่า: Settings → **คำปลุก (Hey Jarvis)** — เปิด/ปิด, แบบคำปลุก + ฝึกเสียง, ปิด Live เมื่อไม่มีการคุย, ความไว (0.35 / 0.5 / 0.65) · ปิดคำปลุก = Always Live ใช้แบบเดิม (เสียงดัง + ถอดเสียง)
-> - **ดู log:** Logcat กรอง tag `WakeWord` — `no Live session - listening`, `listening (mode …) - best in the last 5 s: average score … (need …), voice distance … (match <= …)`, `near miss`,
->   `wake word heard (mode …, average score …, voice distance …)`, `… takes the mic - wake word stops listening`, `no conversation for … min - closing the Live session`
+> - **พูดคำไทย (เช่น "จาวิส") → ใช้ "คำของฉัน"** ไม่ใช่ "+ เสียงฉัน": โหมด 1 ยังฟังโมเดล "hey jarvis" อยู่ (คนอื่นพูด "Hey Jarvis" ก็ปลุก)
+>   · หน้าฝึกโหมด 1 เตือนเมื่ออัด ≥ 3 ครั้งแล้วโมเดลเดิมได้ < 0.05 ทุกครั้ง (T093)
+> - **ดู log:** Logcat กรอง tag `WakeWord` — `no Live session - listening`, `heard (mode …) in the last 5 s: average score … (need …), voice distance … (match <= …)`
+>   (เฉพาะช่วงที่ได้ยินเสียงพูด — ห้องเงียบไม่ log, โหมด 2 ไม่แสดงคะแนนโมเดลเดิม; T093), `near miss`,
+>   `wake word heard by the stock model / own recordings (mode …, average score …, voice distance …)`, `… takes the mic - wake word stops listening`, `no conversation for … min - closing the Live session`
+> - **Logcat ทั้งแอปแบบไม่รก:** `package:com.skyliner2008.jarvis -tag~:^VRI\[|BLASTBufferQueue|SurfaceComposerClient|HWUI|ViewRootImpl|Insets|Ime|InputMethodManager|InputTransport|DecorView|SurfaceView|OpenGLRenderer|Choreographer|WindowOnBackDispatcher|NativeCustomFrequencyManager|ScrollIdentify|ProfileInstaller|nativeloader|CompatChangeReporter|^libc$|BufferQueueProducer|BBA2|Kumiho|^Dialog$|RemoteInpu|InteractionJankMonitor|ActivityThread|PhoneWindow|iner2008\.jarvis`
+>   (หน้าบอร์ด ESP32 ไม่เขียน Logcat — ดูแท็บ Log ในแอป)
 > - ยังไม่ได้ทำ: คำสั่งที่พูดต่อท้าย "Hey Jarvis" ทันที (ก่อน Live พร้อม ~1–2 วิ) ยังไม่ถูกส่ง — รอเสียงชิป/AI ทักก่อนแล้วค่อยพูด
 > - โมเดล `assets/models/openwakeword/` (~3.7 MB, **CC BY-NC-SA 4.0** — ใช้แบบไม่ใช่เชิงพาณิชย์) · ตัว port Kotlin `OpenWakeWord.kt` ตรวจกับ
 >   package Python ทางการบนเสียงเดียวกัน (`OpenWakeWordTest`: ทุก chunk ต่างไม่เกิน 0.05, "Hey Jarvis" ≈ 0.998, ประโยคอื่น < 0.002)
@@ -144,6 +149,8 @@ cd tools/mobile_app && ./gradlew :composeApp:testDebugUnitTest   # test ขอ�
   SDK สร้างให้เอง) · `publish_release.py` build APK ให้ทุก release เมื่อเครื่องมี Android SDK · APK รุ่นใหม่ลงทับได้เฉพาะเมื่อเซ็นด้วยกุญแจเดิม
   → build บน PC เครื่องเดิมก็อัปเดตทับได้ตลอด; ย้ายไป PC เครื่องอื่น**หรือลง Windows ใหม่** = ถอนแอปบนมือถือครั้งเดียวแล้วลงใหม่
   (หรือคัดลอก `~/.android/debug.keystore` เดิมกลับมา — T092)
+- "OpenJDK Platform binary" ใน Task Manager = Gradle daemon (~2.8 GB) + Kotlin daemon — `gradle.properties` ตั้ง
+  `org.gradle.daemon.idletimeout=900000` ให้ปิดเองหลังว่าง 15 นาที (ค่าเดิม 3 ชม.) · ปิดทันที: `cd tools/mobile_app && gradlew --stop` (T092)
 - build ไม่มี warning Kotlin (T092): API ที่ deprecated ใช้ตัว compat ตามรุ่น Android (`recycleCompat`, `LocationManagerCompat`, `GeocodeListener`)
 - keystore ของตัวเอง (ถ้าสร้าง) อยู่**นอก repo** (สร้างเมื่อผู้ใช้สั่งเท่านั้น)
 - **unit tests 58 ข้อ (JVM)** — console (T081): แยก TAG/สี/แชท, ซ่อน `set key`/`set pass`/`key=`, บรรทัดถูกตัดกลางตัวอักษรไทย, ข้ามภาพ/เสียงไบนารี

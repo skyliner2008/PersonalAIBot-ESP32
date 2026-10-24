@@ -54,9 +54,8 @@ internal class LiveVoiceAlertEngine(
     private val liveModelAudioCooldownUntil = ConcurrentHashMap<String, Long>()
     private val liveAudioFailureCooldownMs = 60_000L
 
-    init {
-        initTts()
-    }
+    // TTS starts on the first alert spoken (speak), not when the service starts: the service runs at every app start
+    // and stops after ~4 min without alerts - a second TextToSpeech next to VoiceManager's for nothing (T093)
 
     private fun setting(key: String): String = runCatching {
         database.jarvisDatabaseQueries.getSetting(key).executeAsOneOrNull() ?: ""
@@ -117,11 +116,13 @@ internal class LiveVoiceAlertEngine(
 
 
     private suspend fun speak(text: String) {
-        if (tts == null) {
+        val starting = tts == null
+        if (starting) {
             initTts()
         }
         if (!ttsReady) {
-            val deadline = System.currentTimeMillis() + 1500L
+            // a fresh TextToSpeech has to bind to the engine first
+            val deadline = System.currentTimeMillis() + if (starting) 4000L else 1500L
             while (!ttsReady && System.currentTimeMillis() < deadline) {
                 delay(100L)
             }

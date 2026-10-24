@@ -83,6 +83,16 @@ class LiveSessionReviewFixesTest {
     }
 
     @Test
+    fun `model transcript joins Thai chunks without the chunk spaces`() {
+        // the model's Thai chunks each start with a space (T093); spaces next to non-Thai words stay
+        fun join(vararg c: String) = c.fold(null as String?) { a, s -> LiveProtocol.mergeTranscript(a, s, joinThai = true) }
+        assertEquals("สวัสดีค่ะบอสพร้อมคุย", join("สวัสดีค่ะบอส", " พร้อม", " คุย"))
+        assertEquals("ราคา BTC", join("ราคา", " BTC"))
+        assertEquals("BTC ราคา", join("BTC", " ราคา"))
+        assertEquals("hello world", join("hello", " world"))
+    }
+
+    @Test
     fun `reconnect history keeps newest content within limit`() {
         val turns = (1..50).map { "user" to "คำถามที่ $it" }
         val history = LiveProtocol.buildReconnectHistory("เก่า", turns, maxChars = 200)

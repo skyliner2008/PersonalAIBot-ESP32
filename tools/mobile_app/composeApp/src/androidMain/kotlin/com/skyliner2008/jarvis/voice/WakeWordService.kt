@@ -76,10 +76,16 @@ object WakeWordService {
         val need = cfg.threshold * WakeScorer.AVERAGE_SCALE
         if (cfg.mode != WakeMode.CUSTOM && score >= 0.2f && score < need) Log.d(TAG, "near miss: average score %.2f (need %.2f)".format(score, need))
         if (now - windowStart >= 5_000) {
-            val d = if (windowBestDistance == Float.MAX_VALUE || profile == null) "-" else
-                "%.3f (match <= %.3f)".format(windowBestDistance, profile.threshold * (1.5f - cfg.threshold))
-            Log.d(TAG, "listening (mode ${cfg.mode}) - best in the last 5 s: average score %.3f (need %.2f), voice distance %s"
-                .format(windowBest, need, d))
+            // only windows where something was heard (speech compared to the profile, or the stock model stirred):
+            // a quiet room no longer logs a line every 5 s (T093)
+            val heard = windowBestDistance != Float.MAX_VALUE || (cfg.mode != WakeMode.CUSTOM && windowBest >= 0.05f)
+            if (heard) {
+                val d = if (windowBestDistance == Float.MAX_VALUE || profile == null) "-" else
+                    "%.3f (match <= %.3f)".format(windowBestDistance, profile.threshold * (1.5f - cfg.threshold))
+                // mode 2 does not use the stock "hey jarvis" model at all
+                val stock = if (cfg.mode == WakeMode.CUSTOM) "" else "average score %.3f (need %.2f), ".format(windowBest, need)
+                Log.d(TAG, "heard (mode ${cfg.mode}) in the last 5 s: ${stock}voice distance $d")
+            }
             windowBest = 0f
             windowBestDistance = Float.MAX_VALUE
             windowStart = now
@@ -88,7 +94,8 @@ object WakeWordService {
             lastHitMs = now
             // no reset here: it re-runs 4 s of start-up audio (~0.2 s) on the mic thread and the words right after
             // "Jarvis" would be lost; the refractory time keeps the same word from firing twice
-            Log.i(TAG, "wake word heard (mode ${cfg.mode}, average score %.2f, voice distance %s)".format(
+            val by = if (cfg.mode != WakeMode.CUSTOM && score >= need) "stock model" else "own recordings"
+            Log.i(TAG, "wake word heard by the $by (mode ${cfg.mode}, average score %.2f, voice distance %s)".format(
                 score, if (dist == Float.MAX_VALUE) "-" else "%.3f".format(dist)))
             true
         } else false

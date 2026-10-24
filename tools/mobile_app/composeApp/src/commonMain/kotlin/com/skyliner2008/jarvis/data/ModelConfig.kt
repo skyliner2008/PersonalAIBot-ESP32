@@ -126,12 +126,15 @@ object ModelConfig {
                     .thenBy { it.lowercase().contains("native-audio") }
             )
 
-        synchronized(dynamicLock) {
+        val changed = synchronized(dynamicLock) {
+            val same = _dynamicGeminiModels == sortedChatModels && _dynamicLiveModels == liveCandidates
             _dynamicGeminiModels = sortedChatModels
             _dynamicLiveModels = liveCandidates
+            !same
         }
 
-        com.skyliner2008.jarvis.logDebug(
+        // the list is fetched from several places (settings, chat, the model pickers): log only what changed (T093)
+        if (changed) com.skyliner2008.jarvis.logDebug(
             "ModelConfig",
             "Updated dynamic models from API (${sortedChatModels.size} chat, ${liveCandidates.size} live) | chat=${sortedChatModels.take(5)} | live=$liveCandidates"
         )

@@ -151,6 +151,11 @@ class JarvisOrchestrator(
         embeddingRegistry.updateGeminiKey(newApiKey)
     }
 
+    /** เปลี่ยนเสียง Live อย่างเดียว — ใช้ key/โมเดลที่ทำงานอยู่ (ไม่เอา key จากหน้า Settings ที่อาจยังไม่ได้บันทึกมาทับ) */
+    fun updateVoice(newVoiceName: String) {
+        liveService.updateConfig(apiKey, liveModelName, newVoiceName)
+    }
+
     fun setAiVisionToggle(onToggle: (Boolean) -> Unit) {
         this.visionToggleCallback = onToggle
         toolBridge.onAiVisionToggle = onToggle

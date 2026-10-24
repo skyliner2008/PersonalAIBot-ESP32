@@ -849,7 +849,7 @@ class JarvisViewModel(
             viewModelScope.launch {
                 logDebug("JarvisVM", "🔔 Voice change requested: $newVoice")
                 
-                updateSettings(apiKey.value, selectedModel.value, liveModelName.value, newVoice)
+                settings.updateVoice(newVoice)
                 // ผูกเสียงเข้ากับ identity (เพศ/น้ำเสียง/คำลงท้าย) + persist ลง Core Memory
                 orchestrator.applyVoiceIdentity(newVoice)
 
@@ -977,7 +977,7 @@ class JarvisViewModel(
 
     // ─── Settings function forwarders → SettingsController ───
     fun selectVoiceProfile(voice: String) = settings.selectVoiceProfile(voice)
-    fun updateSettings(key: String, model: String, liveModel: String = settings.liveModelName.value, voice: String = settings.voiceName.value, preferFree: Boolean = false) = settings.updateSettings(key, model, liveModel, voice, preferFree)
+    fun updateSettings(key: String, model: String, liveModel: String = settings.liveModelName.value, voice: String = settings.voiceName.value, preferFree: Boolean = settings.preferFreeOnly.value) = settings.updateSettings(key, model, liveModel, voice, preferFree)
     fun setFloatingWidgetEnabled(enabled: Boolean) = settings.setFloatingWidgetEnabled(enabled)
     suspend fun getModelsForProvider(providerId: String, freeOnly: Boolean = false, apiKeyOverride: String? = null): List<com.skyliner2008.jarvis.data.providers.LlmModelInfo> = settings.getModelsForProvider(providerId, freeOnly, apiKeyOverride)
     suspend fun getLiveCapableModels(providerId: String = "gemini", apiKeyOverride: String? = null): List<com.skyliner2008.jarvis.data.providers.LlmModelInfo> = settings.getLiveCapableModels(providerId, apiKeyOverride)

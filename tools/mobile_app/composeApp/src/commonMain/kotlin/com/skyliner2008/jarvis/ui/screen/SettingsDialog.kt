@@ -1036,6 +1036,16 @@ private fun WakeEnrolDialog(mode: Int, onDone: (com.skyliner2008.jarvis.voice.Pe
                         color = Color.White.copy(alpha = 0.6f), fontSize = HelperSize,
                     )
                 }
+                // mode 1 learns "Hey Jarvis" said the user's way: when the stock model hears nothing in any take, the
+                // user is most likely saying another word (e.g. Thai "จาวิส") - mode 2 is made for that (T093)
+                if (!custom && takes.size >= 3 && takes.all { it.stockScore < 0.05f }) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "โมเดล \"Hey Jarvis\" แทบไม่ได้ยินคำที่คุณพูด — ถ้าใช้คำอื่น เช่น \"จาวิส\" ให้ยกเลิกแล้วเลือก \"คำของฉัน\" " +
+                            "แทน (ฟังแค่เสียงที่ฝึก ไม่ปลุกเมื่อคนอื่นพูด \"Hey Jarvis\")",
+                        color = JarvisTheme.Amber, fontSize = HelperSize,
+                    )
+                }
                 if (status.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
                     Text(status, color = if (busy) JarvisTheme.Cyan else JarvisTheme.Amber, fontSize = BodySize)

@@ -136,6 +136,27 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T093: แก้จาก logcat แอปมือถือ — เลือกเสียงแล้ว key หาย, SQLite error, โหลดซ้ำ, log คำปลุก, ช่องว่างคำไทย
+
+**วันที่:** 2026-10-24 · **ที่มา:** logcat ตอนตั้งค่าแอปครั้งแรก (SM-S908E) — ผู้ใช้ใช้คำปลุก "จาวิส"
+
+| อาการใน log | สาเหตุ | แก้ |
+|---|---|---|
+| `Voice identity applied` แล้ว `key=BLANK` 4 วิ | `selectVoiceProfile()` เรียก `updateSettings(_apiKey.value, ...)` → บันทึก `api_key` จากหน้า Settings (key ที่ทดสอบแล้วแต่ยังไม่กดบันทึก = ว่าง) + `prefer_free_only` = false ทุกครั้ง | `SettingsController.updateVoice()` บันทึกแค่ `voice_name` + `JarvisOrchestrator.updateVoice()` (ใช้ key ที่ทำงานอยู่) — ใช้ทั้งหน้า Settings และตอน AI เปลี่ยนเสียงเอง · `updateSettings` ค่าเริ่ม `preferFree` = ค่าปัจจุบัน |
+| `SQLiteLog E duplicate column name: features_json` ทุกครั้งที่เปิดแอป | `ALTER TABLE ... ADD COLUMN` รันทุกครั้ง | `addColumnIfMissing()` เช็ค `PRAGMA table_info` ก่อน |
+| `PetVisionBridge installed` ×2 | `installBridge()` เรียกจาก MainActivity และ AlwaysLiveManager | ติดตั้งครั้งเดียว |
+| `Create TextToSpeech` ×2 ตอนเปิดแอป | `LiveVoiceAlertEngine` (บริการแจ้งเตือน เริ่มทุกครั้งที่เปิดแอป ปิดเองหลัง ~4 นาที) สร้าง TTS ตอนเริ่ม | สร้างตอนพูดแจ้งเตือนครั้งแรก (รอ bind สูงสุด 4 วิ) |
+| `Initializing AudioTrack (Speaker)` ×2 | `SpecialistSessionController` สร้าง `PcmAudioEngine` ตอนเปิดแอป | `lazy` — สร้างเมื่อเริ่มโหมดประชุม/แปลภาษา |
+| `Updated dynamic models from API` 2–5 ครั้งติดกัน | `fetchModels()` ส่งรายชื่อที่กรองเหลือ generateContent ไปทับรายชื่อเต็มที่ `GeminiService.listModels()` ตั้งไว้แล้ว (ทับโมเดล Live ที่มีแค่ bidi) | ลบการเรียกซ้ำ + `ModelConfig` log เฉพาะเมื่อรายชื่อเปลี่ยน |
+| `WakeWord listening ...` ทุก 5 วิ แม้ห้องเงียบ · `need 0.40` ในโหมดที่ไม่ใช้โมเดลเดิม | log ทุกช่วง 5 วิ | log เฉพาะช่วงที่ได้ยินเสียงพูด/โมเดลขยับ, โหมด 2 ไม่แสดงคะแนนโมเดลเดิม · `wake word heard by the stock model / own recordings` |
+| `jarvis="สวัสดีค่ะบอส พร้อม คุย ตลอด..."` (แชทเว้นวรรคทุกคำ) | ชิ้นคำพูดของโมเดลจาก Live API ขึ้นต้นด้วยช่องว่างทุกชิ้น | `LiveProtocol.mergeTranscript(joinThai = true)` เฉพาะคำพูดโมเดล: ไทยต่อไทยตัดช่องว่างที่รอยต่อ (ข้อความผู้ใช้คงเดิม — guard อ่านอยู่) |
+
+**คำปลุก "จาวิส":** ผู้ใช้ฝึกในโหมด 1 ("+ เสียงฉัน" = ฝึก "Hey Jarvis") ทั้งที่พูด "จาวิส" → โมเดลเดิมให้คะแนน 0.00 ทุกครั้ง ติดเพราะเทียบเสียงที่ฝึกอย่างเดียว
+แต่โหมด 1 ยังฟังโมเดล "hey jarvis" ด้วย (คนอื่น/ทีวีพูด "Hey Jarvis" ก็ปลุก) → **ควรใช้โหมด 2 "คำของฉัน"** (ค่าเริ่มของคำ = "จาวิส") ·
+หน้าฝึกโหมด 1 เตือนเมื่ออัด ≥ 3 ครั้งแล้วโมเดลเดิมได้ < 0.05 ทุกครั้ง
+
+**ผล:** build ผ่าน, tests Jarvis 725 (ข้าม 17 ที่ต่อเน็ต) ผ่าน, esp32 ผ่าน · ยังไม่ได้ลองบนมือถือ
+
 ## T092: build แอปมือถือหลังลง Windows ใหม่ — เก็บ warning deprecated ให้ build สะอาด
 
 **วันที่:** 2026-10-24 · **ผู้ใช้:** ลง Windows ใหม่ แล้ว `:composeApp:assembleDebug` ขึ้น warning เยอะ (build ผ่าน)
@@ -156,6 +177,19 @@ PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ใ�
 `gradlew` นอก Android Studio (ใช้ `C:\Program Files\Android\Android Studio\jbr` ได้) · `git config --global --add safe.directory E:/APP-JARVIS/ESP32-AI`
 (SID ผู้ใช้ Windows เปลี่ยน → git ขึ้น "dubious ownership") · `include/secrets.h` จาก backup · **debug keystore ใหม่** (`~/.android/debug.keystore`
 สร้างใหม่) → APK ที่ build หลังจากนี้ลงทับแอปเดิมบนมือถือไม่ได้ ต้องถอนแอปครั้งเดียว (ข้อมูลในแอปหาย) หรือคัดลอก `debug.keystore` เดิมจาก backup
+
+**ตั้งเครื่องใหม่แล้ว (2026-10-24):**
+- **PlatformIO ต้องใช้ Python 3.10–3.14** — pioarduino 55.03.312 ขึ้น `ERROR: Python version must be 3.10 ... 3.14` บน 3.15 → ติดตั้ง 3.14 คู่กัน
+  (`py install 3.14`) แล้ว `py -V:3.14 -m pip install platformio pyserial cryptography` · PATH ผู้ใช้ชี้ `pythoncore-3.14-64\Scripts` (`pio`)
+  · `python` ยังเป็น 3.15 (Studio/สคริปต์ใช้ได้) · ระวัง Python install manager สร้าง shortcut `pio.exe` ใน `%LOCALAPPDATA%\Python\bin` ชี้ไป 3.15 → ลบทิ้ง
+- MSVC: `winget install Microsoft.VisualStudio.2022.BuildTools` (workload VCTools) สำหรับ `host_tests\run_tests.bat`
+- `JAVA_HOME` = `C:\Program Files\Android\Android Studio\jbr`, `ANDROID_HOME` = `%LOCALAPPDATA%\Android\Sdk`, PATH เพิ่ม `jbr\bin` (keytool) + `platform-tools` (adb)
+- `gh` (ไม่บังคับ — `publish_release.py` ใช้ `git credential`) และ Obsidian ผ่าน winget
+- ผล: `pio run` ผ่าน (ครั้งแรก ~13 นาที), host tests 2,369 checks 0 failures, `build_mobile_apk.py` ผ่าน
+- **"OpenJDK Platform binary" ค้างใน Task Manager** (2.8 GB + 350 MB): Gradle daemon + Kotlin daemon ที่รอ build ครั้งต่อไป (Gradle ค่าเริ่ม
+  อยู่ต่อ 3 ชม.) → `tools/mobile_app/gradle.properties`: `org.gradle.daemon.idletimeout=900000` (15 นาที) · ปิดทันที `gradlew --stop`
+  (Kotlin daemon ปิดตามเอง — ตรวจแล้ว java เหลือ 0) · ยังไม่ได้รอดูว่าปิดเองครบ 15 นาที
+- `tools/publish_release.py` / `build_mobile_apk.py` ไม่มี `--help` (อาร์กิวเมนต์ที่ไม่รู้จักถูกข้าม → รันจริง) — ห้ามใช้ `--help` ทดสอบ
 
 ## T091: คำปลุก "Hey Jarvis" ในแอปมือถือ — openWakeWord, กั้นเสียง (A) และพักเซสชัน (B)
 

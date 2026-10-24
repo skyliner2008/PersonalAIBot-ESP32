@@ -322,8 +322,18 @@ class SettingsController(
     fun selectVoiceProfile(voice: String) {
         scope.launch {
             orchestrator.applyVoiceIdentity(voice)
-            updateSettings(_apiKey.value, _selectedModel.value, _liveModelName.value, voice)
+            updateVoice(voice)
         }
+    }
+
+    /**
+     * บันทึกเสียงอย่างเดียว (T093): เดิมเรียก updateSettings(_apiKey.value, ...) ซึ่งเขียน api_key / prefer_free_only ทับด้วย
+     * ค่าในหน้า Settings — key ที่ทดสอบแล้วแต่ยังไม่กดบันทึก = key ว่างถูกบันทึกลง DB และ "โมเดลฟรีเท่านั้น" ถูกปิด
+     */
+    suspend fun updateVoice(voice: String) {
+        _voiceName.value = voice
+        withContext(Dispatchers.IO) { database.jarvisDatabaseQueries.insertSetting("voice_name", voice) }
+        orchestrator.updateVoice(voice)
     }
 
     /** อัปเดตและบันทึกโมเดล Live ที่ได้รับการ promote เมื่อเชื่อมต่อสำเร็จ โดยไม่กระทบ state อื่น */
@@ -341,7 +351,7 @@ class SettingsController(
         }
     }
 
-    fun updateSettings(key: String, model: String, liveModel: String = _liveModelName.value, voice: String = _voiceName.value, preferFree: Boolean = false) {
+    fun updateSettings(key: String, model: String, liveModel: String = _liveModelName.value, voice: String = _voiceName.value, preferFree: Boolean = _preferFreeOnly.value) {
         scope.launch {
             _apiKey.value = key
             _selectedModel.value = model
@@ -427,8 +437,8 @@ class SettingsController(
                 val models = orchestrator.listAvailableModels()
                 if (models.isNotEmpty()) {
                     _availableModels.value = models
-                    // อัปเดต ModelConfig แบบ dynamic เพื่อให้ระบบมีคลังโมเดลที่ใช้งานได้จริงจาก Google API เสมอ
-                    com.skyliner2008.jarvis.data.ModelConfig.updateAvailableModels(models)
+                    // ModelConfig ได้รายชื่อเต็ม (รวมโมเดล Live ที่มีแค่ bidiGenerateContent) จาก GeminiService.listModels() แล้ว —
+                    // ส่ง `models` (กรองเหลือ generateContent) ซ้ำตรงนี้จะทับรายชื่อ Live จาก API และ log ซ้ำ (T093)
 
                     // แคชรายชื่อโมเดลลงฐานข้อมูล เพื่อให้บูตเครื่องครั้งถัดไปตรวจสอบได้ทันทีก่อนต่อเน็ต (Cold-start)
                     val modelNames = models.map { it.name.removePrefix("models/").trim() }.distinct()

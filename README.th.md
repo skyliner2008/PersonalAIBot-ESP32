@@ -101,7 +101,8 @@ pio run -t upload
 pio device monitor
 ```
 
-ต้องมี [PlatformIO](https://platformio.org/install) (extension ของ VS Code หรือ `pip install platformio`) ไลบรารีดาวน์โหลดให้อัตโนมัติ
+ต้องมี [PlatformIO](https://platformio.org/install) (extension ของ VS Code หรือ `pip install platformio` บน **Python 3.10–3.14** เพราะ platform ESP32 ไม่รับ 3.15) ไลบรารีดาวน์โหลดให้อัตโนมัติ ·
+host tests ต้องมี Visual Studio 2022 C++ Build Tools (หรือ g++/clang++)
 อัปเดตด้วยวิธีนี้ Wi-Fi / API key ที่บันทึกไว้ยังอยู่
 
 > **ไม่บังคับ:** ใส่ Wi-Fi และ API key ไว้ล่วงหน้าตอน build ได้ โดยคัดลอก `include/secrets.example.h` เป็น `include/secrets.h`
@@ -248,6 +249,7 @@ Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ หรือ clang++)
 แอปมือถือมี unit tests ของตัวเอง 58 ข้อ (console/การตั้งค่า, เชื่อมบอร์ดรวม handshake Wi-Fi จริง, อ่าน Google Maps + ตัวแฟลชที่ทดสอบกับ ROM bootloader ของ ESP32-S3 จำลอง + flash เสมือน 16 MB):
 `cd tools/mobile_app && ./gradlew :esp32:testDebugUnitTest` · แอป build ได้โดยไม่มี warning Kotlin · PC เครื่องใหม่หรือลง Windows ใหม่จะได้กุญแจเซ็น
 debug ใหม่ → ถอนแอปเดิมบนมือถือครั้งเดียว หรือคัดลอก `~/.android/debug.keystore` เดิมกลับมา ([wiki 17](wiki/17-Mobile-Flasher.md))
+· Gradle daemon ("OpenJDK Platform binary" ใน Task Manager) ปิดเองหลังว่าง 15 นาที หรือสั่ง `gradlew --stop` ให้ปิดทันที
 
 ## 📁 โครงสร้างโปรเจกต์
 
@@ -264,7 +266,7 @@ src/system     บัส I2C, ที่เก็บข้อมูล (SD / Litt
 src/phone      เชื่อมแอปมือถือ: GPS, นำทาง Google Maps, AI พูดเตือนก่อนเลี้ยว (USB / Wi-Fi, จับคู่ทาง USB) + src/ui/NavScreen
 src/vehicle    หน้าปัดรถ: ค่าจากรถ, โมเดลหน้าปัด, ตัวจำลอง, ELM327, Honda K-Line, UART / BLE (+ src/ui/DashScreen)
 tools/pc_app   ESP32-AI Studio (Python + Tkinter + pyserial)
-tools/mobile_app  แอปมือถือ "Personal AI Bot": ผู้ช่วย Jarvis (composeApp จากโปรเจค PersonalAIBot; TradingView อย่างเดียว ไม่มี MT5; คำปลุก "Hey Jarvis" ในเครื่อง) + หน้าบอร์ด ESP32
+tools/mobile_app  แอปมือถือ "Personal AI Bot": ผู้ช่วย Jarvis (composeApp จากโปรเจค PersonalAIBot; TradingView อย่างเดียว ไม่มี MT5; คำปลุก "Hey Jarvis" หรือคำของตัวเอง เช่น "จาวิส" ฝึกด้วยเสียงตัวเอง ในเครื่อง) + หน้าบอร์ด ESP32
                (โมดูล esp32: แฟลชผ่าน USB OTG, สถานะ / log / ตั้งค่า / แชท แบบ Studio, นำทาง GPS ให้บอร์ด)
 tools/         gen_thai_font.py, gen_root_ca.py
 host_tests/    unit tests บน PC

@@ -72,7 +72,12 @@ class PetVisionDetector(
         /**
          * เรียกครั้งเดียวตอนเริ่มต้นแอปเพื่อลงทะเบียน processorFactory กับ PetVisionBridge
          */
+        @Volatile private var bridgeInstalled = false
+
         fun installBridge() {
+            // MainActivity and AlwaysLiveManager both call this - once is enough (T093)
+            if (bridgeInstalled) return
+            bridgeInstalled = true
             PetVisionBridge.faceEmbeddingAvailable = { FaceEmbedder.isAvailable }
             PetVisionBridge.processorFactory = { onGaze, onIntruder, onCopycat, getTarget, isSentry ->
                 PetVisionDetector(onGaze, onIntruder, onCopycat, getTarget, isSentry)

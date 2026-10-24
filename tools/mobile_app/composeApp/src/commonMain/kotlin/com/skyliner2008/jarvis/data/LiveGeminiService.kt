@@ -1740,7 +1740,7 @@ class LiveGeminiService(
                         lastConversationActivityAtMs = System.currentTimeMillis()
                         lastModelOutputAtMs = lastConversationActivityAtMs
                         val isFirst = pendingModelTurnText == null
-                        val text = mergeTranscript(pendingModelTurnText, chunk)
+                        val text = LiveProtocol.mergeTranscript(pendingModelTurnText, chunk, joinThai = true)
                         pendingModelTurnText = text
                         logDebug("LiveGemini", "🤖 JARVIS +\"${chunk.trim()}\"")
                         // คำไหนได้ยินเมื่อไร = เวลาเริ่มของเสียง + เวลาที่ใช้พูดคำก่อนหน้า (เสียงที่มาถึงแล้วล่วงหน้าข้อความไม่เท่ากัน)

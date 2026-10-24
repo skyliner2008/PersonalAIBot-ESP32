@@ -40,11 +40,18 @@ object LiveProtocol {
      * Live API ส่ง transcription มาเป็น "ชิ้น" หรือบางครั้งเป็นแบบสะสม —
      * ถ้าข้อความใหม่ขึ้นต้นด้วยของเดิม ถือว่าเป็นแบบสะสม
      */
-    fun mergeTranscript(previous: String?, chunk: String): String = when {
+    fun mergeTranscript(previous: String?, chunk: String, joinThai: Boolean = false): String = when {
         previous.isNullOrEmpty() -> chunk
         chunk.startsWith(previous) -> chunk
+        // ภาษาไทยไม่เว้นวรรคระหว่างคำ แต่ชิ้นคำพูดของโมเดลขึ้นต้นด้วยช่องว่างทุกชิ้น ("สวัสดีค่ะบอส" + " พร้อม" + " คุย")
+        // → แชทเป็น "สวัสดีค่ะบอส พร้อม คุย ตลอด" (T093) — [joinThai] (คำพูดของโมเดลเท่านั้น): ไทยต่อไทยตัดช่องว่างที่รอยต่อ
+        // · ข้อความผู้ใช้คงเดิม: guard/ตัวจับคำสั่งหลายตัวอ่านข้อความนั้น
+        joinThai && isThai(previous.last()) && chunk.isNotBlank() && chunk[0] == ' ' && isThai(chunk.trimStart()[0]) ->
+            previous + chunk.trimStart()
         else -> previous + chunk
     }
+
+    private fun isThai(c: Char): Boolean = c in '฀'..'๿'
 
     /** คำตอบทันทีของ tool ที่ส่งต่อให้ลูกน้อง — ไม่ใช่ผลจริง (LiveGeminiService ไม่นับเป็นคำตอบของเทิร์น) */
     const val DELEGATED_PREFIX = "DELEGATED:"

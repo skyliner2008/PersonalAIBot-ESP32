@@ -108,7 +108,10 @@ class SpecialistSessionController(
     private val _echoTargetLanguage = MutableStateFlow(false)
     val echoTargetLanguage: StateFlow<Boolean> = _echoTargetLanguage.asStateFlow()
 
-    private val pcmAudioEngine = PcmAudioEngine()
+    // made on first use (a meeting / translation session), not with the controller at app start: VoiceController
+    // already holds the app's AudioTrack (T093)
+    private val pcmAudioEngineLazy = lazy { PcmAudioEngine() }
+    private val pcmAudioEngine by pcmAudioEngineLazy
     private var sessionJob: Job? = null
     private var voiceAskJob: Job? = null
     private var micChannel: Channel<String>? = null
@@ -330,8 +333,10 @@ class SpecialistSessionController(
         val wasRunning = _mode.value != null
         if (_voiceAskActive.value) endVoiceAsk(resumeRecording = false)
         val transcript = transcriptText()
-        pcmAudioEngine.stopRecording()
-        pcmAudioEngine.stopPlaying()
+        if (pcmAudioEngineLazy.isInitialized()) {
+            pcmAudioEngine.stopRecording()
+            pcmAudioEngine.stopPlaying()
+        }
         micChannel?.close()
         micChannel = null
         if (wasRunning) com.skyliner2008.jarvis.voice.WakeGate.liveListener?.liveStopped("specialist")
@@ -499,7 +504,7 @@ class SpecialistSessionController(
     }
 
     fun shutdown() {
-        pcmAudioEngine.release()
+        if (pcmAudioEngineLazy.isInitialized()) pcmAudioEngine.release()
     }
 
     companion object {

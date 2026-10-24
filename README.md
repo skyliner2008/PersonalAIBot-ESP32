@@ -105,7 +105,8 @@ pio run -t upload
 pio device monitor
 ```
 
-Needs [PlatformIO](https://platformio.org/install) (VS Code extension or `pip install platformio`); libraries download automatically.
+Needs [PlatformIO](https://platformio.org/install) (VS Code extension or `pip install platformio` on **Python 3.10–3.14**: the ESP32 platform refuses 3.15); libraries download automatically.
+Host tests need the Visual Studio 2022 C++ Build Tools (or g++/clang++).
 Updating this way keeps your saved Wi-Fi / API key.
 
 > **Optional:** pre-fill Wi-Fi and the API key at build time by copying `include/secrets.example.h` to `include/secrets.h`
@@ -250,6 +251,7 @@ Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
 The phone app has its own JVM tests (58: the console parser and settings, the phone link incl. a real Wi-Fi handshake, Google Maps parsing, and the flasher against a simulated ESP32-S3 ROM bootloader with a virtual 16 MB flash):
 `cd tools/mobile_app && ./gradlew :esp32:testDebugUnitTest`. The app builds without Kotlin warnings. A new PC or a fresh Windows install gets a new
 debug signing key, so uninstall the old app from the phone once, or copy back the old `~/.android/debug.keystore` ([wiki 17](wiki/17-Mobile-Flasher.md)).
+The Gradle daemon ("OpenJDK Platform binary" in Task Manager) exits after 15 idle minutes; `gradlew --stop` ends it at once.
 
 ## 📁 Project layout
 
@@ -266,7 +268,7 @@ src/system     I2C bus, storage (SD / LittleFS) · src/util  UTF-8, calculator, 
 src/phone      phone app link: GPS, Google Maps turn-by-turn, spoken turns (USB / Wi-Fi, paired over USB) + src/ui/NavScreen
 src/vehicle    vehicle dash: readings, dash model, simulator, ELM327, Honda K-Line, UART / BLE links (+ src/ui/DashScreen)
 tools/pc_app   ESP32-AI Studio (Python + Tkinter + pyserial)
-tools/mobile_app  Phone app "Personal AI Bot": the Jarvis assistant (composeApp, from the PersonalAIBot project; TradingView only, no MT5; on-device wake word "Hey Jarvis") + the ESP32 board screen
+tools/mobile_app  Phone app "Personal AI Bot": the Jarvis assistant (composeApp, from the PersonalAIBot project; TradingView only, no MT5; on-device wake word "Hey Jarvis" or your own word, e.g. Thai "จาวิส", trained with your voice) + the ESP32 board screen
                (esp32 module: USB OTG flasher, Studio-like status, log, settings, chat, GPS navigation for the board)
 tools/         gen_thai_font.py, gen_root_ca.py
 host_tests/    PC unit tests
