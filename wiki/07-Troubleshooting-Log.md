@@ -136,6 +136,17 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T095: ออก release บน Windows ใหม่ — อัปโหลดไฟล์ไม่ผ่าน SSL
+
+**วันที่:** 2026-10-24 · **อาการ:** `publish_release.py` สร้างร่าง v4.4.1 ได้ แต่อัปโหลดไฟล์แรกล้ม
+`URLError: [SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate` (traceback, ร่างว่างค้างบน GitHub)
+
+**สาเหตุ:** `api.github.com` ผ่าน แต่ `uploads.github.com` ไม่ผ่าน — Windows ที่ลงใหม่ยังไม่มี root certificate ของ host นั้น
+(Windows ดึง root มาเมื่อใช้ครั้งแรกผ่าน Schannel/เบราว์เซอร์; Python อ่าน store เฉยๆ ไม่ได้กระตุ้นการดึง) · ใช้ CA bundle ของ certifi = ผ่าน
+
+**แก้ (`tools/publish_release.py`):** ใช้ `certifi` ถ้าติดตั้ง (`pip install certifi` — มากับ PlatformIO/requests อยู่แล้ว) ·
+error เครือข่าย/TLS รายงานพร้อม id ร่างแทน traceback · รันใหม่ลบร่าง tag เดียวกันที่ค้างจากรอบที่ล้มก่อนสร้างใหม่ (ร่างยังไม่มี tag จึงไม่ติดการเช็ค tag)
+
 ## T094: แอปมือถือพูดราคาทองผิด — Live อ่านหลักพันผิด
 
 **วันที่:** 2026-10-24 · **ผู้ใช้:** ถาม "ราคาทองคำปัจจุบันเท่าไหร่" — ได้ยินราคาผิด

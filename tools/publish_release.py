@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import ssl
 import subprocess
 import sys
 import urllib.error
@@ -52,6 +53,19 @@ def token() -> str:
     return m.group(1).strip()
 
 
+def _tls() -> ssl.SSLContext:
+    """certifi's CA bundle when installed: a fresh Windows fetches root certificates on first use, which Python does not
+    trigger - uploads.github.com failed with CERTIFICATE_VERIFY_FAILED while api.github.com worked (T095)."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+TLS = _tls()
+
+
 class GitHub:
     def __init__(self, tok: str):
         self.h = {"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json",
@@ -64,10 +78,12 @@ class GitHub:
             headers["Content-Type"] = ctype
         req = urllib.request.Request(url, data=body, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=300) as r:
+            with urllib.request.urlopen(req, timeout=300, context=TLS) as r:
                 return r.status, json.loads(r.read() or b"{}")
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"{}")
+        except urllib.error.URLError as e:  # network / TLS: report it with the draft id instead of a traceback
+            return 0, {"message": str(e.reason)}
 
 
 def notes(ver: str) -> str:
@@ -157,6 +173,13 @@ def main() -> None:
     else:
         print("note: no dist/PersonalAIBot-Mobile.apk (python tools/build_mobile_apk.py) - the release has no phone app")
 
+    # a draft left by a failed run (drafts have no tag yet, so the checks above do not see it): start clean
+    st, existing = gh.call("GET", f"{API}/releases?per_page=30")
+    for r in existing if st == 200 else []:
+        if r.get("draft") and r.get("tag_name") == tag:
+            gh.call("DELETE", f"{API}/releases/{r['id']}")
+            print(f"removed the unpublished draft {tag} left by an earlier run ({len(r.get('assets', []))} files)")
+
     st, rel = gh.call("POST", f"{API}/releases", {"tag_name": tag, "target_commitish": head,
                                                   "name": f"PersonalAIBot-ESP32 {tag}", "body": notes(ver),
                                                   "draft": True, "generate_release_notes": True})
@@ -177,7 +200,7 @@ def main() -> None:
     print(f"3/3 published: {pub['html_url']}")
 
     url = next(a["browser_download_url"] for a in pub["assets"] if a["name"].endswith("-factory.bin"))
-    with urllib.request.urlopen(url, timeout=300) as r:
+    with urllib.request.urlopen(url, timeout=300, context=TLS) as r:
         remote = hashlib.sha256(r.read()).hexdigest()
     local = hashlib.sha256(files[0].read_bytes()).hexdigest()
     print(f"download check: {'OK' if remote == local else 'MISMATCH'}  sha256 {remote}")
