@@ -1606,7 +1606,7 @@ class LiveGeminiService(
                     )
                     logDebug("LiveGemini", "🔧 Native tool call: ${call.name}(${event.args})")
                     val askedFor = currentQuestion
-                    if (call.id != null && askedFor.isNotBlank()) {
+                    if (askedFor.isNotBlank()) {
                         if (toolCallQuestions.size > 32) toolCallQuestions.clear()
                         toolCallQuestions[call.id] = askedFor
                     }

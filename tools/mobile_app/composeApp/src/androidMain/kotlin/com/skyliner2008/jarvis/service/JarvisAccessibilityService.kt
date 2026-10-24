@@ -205,7 +205,7 @@ class JarvisAccessibilityService : AccessibilityService() {
         // วิดเจ็ตลอยของ JARVIS เองไม่ใช่เนื้อหาที่ผู้ใช้สนใจ — ตัดออกถ้ายังมีหน้าต่างแอปอื่นให้อ่าน
         val others = result.filter { it.second.packageName?.toString() != packageName }
         if (others.isNotEmpty() && others.size < result.size) {
-            result.filterNot { it in others }.forEach { it.second.recycle() }
+            result.filterNot { it in others }.forEach { it.second.recycleCompat() }
             return others
         }
 
@@ -227,7 +227,7 @@ class JarvisAccessibilityService : AccessibilityService() {
                 isActive = window?.isActive ?: true,
                 elements = elements
             )
-            root.recycle()
+            root.recycleCompat()
             snapshot
         }
 
@@ -276,7 +276,7 @@ class JarvisAccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             traverseNode(child, result, depth + 1, maxDepth, coverChildren)
-            child.recycle()
+            child.recycleCompat()
         }
     }
 
@@ -291,7 +291,7 @@ class JarvisAccessibilityService : AccessibilityService() {
                 val text = listOfNotNull(child.text?.toString(), child.contentDescription?.toString())
                     .firstOrNull { it.isNotBlank() }
                 if (text != null) parts += text.trim() else collect(child, depth + 1)
-                child.recycle()
+                child.recycleCompat()
             }
         }
         collect(node, 1)
@@ -329,7 +329,7 @@ class JarvisAccessibilityService : AccessibilityService() {
                 }
             }
         } finally {
-            roots.forEach { it.second.recycle() }
+            roots.forEach { it.second.recycleCompat() }
         }
         Log.w(TAG, "CLICK by $what — ไม่พบ node ที่คลิกได้")
         return false
@@ -433,14 +433,14 @@ class JarvisAccessibilityService : AccessibilityService() {
                 // สั่งแล้ว performAction คืน true แต่หน้าจอหลักไม่ขยับ — พบจากทดสอบจริง 2026-09-20
                 val target = findMainScrollable(root) ?: continue
                 val ok = target.performAction(action)
-                target.recycle()
+                target.recycleCompat()
                 if (ok) {
                     Log.d(TAG, "SCROLL node ${if (forward) "forward" else "backward"} — OK")
                     return true
                 }
             }
         } finally {
-            roots.forEach { it.second.recycle() }
+            roots.forEach { it.second.recycleCompat() }
         }
         return false
     }
@@ -459,15 +459,15 @@ class JarvisAccessibilityService : AccessibilityService() {
                 val bounds = Rect().also { node.getBoundsInScreen(it) }
                 val area = bounds.width() * bounds.height()
                 if (bounds.height() >= bounds.width() / 2 && area > bestArea) {
-                    best?.recycle()
-                    best = AccessibilityNodeInfo.obtain(node)
+                    best?.recycleCompat()
+                    best = node.copyCompat()
                     bestArea = area
                 }
             }
             for (i in 0 until node.childCount) {
                 val child = node.getChild(i) ?: continue
                 visit(child, depth + 1)
-                child.recycle()
+                child.recycleCompat()
             }
         }
 
@@ -489,7 +489,7 @@ class JarvisAccessibilityService : AccessibilityService() {
             return false
         }
         val result = node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
-        node.recycle()
+        node.recycleCompat()
         Log.d(TAG, "IME ENTER — ${if (result) "OK" else "FAIL"}")
         return result
     }
@@ -529,8 +529,8 @@ class JarvisAccessibilityService : AccessibilityService() {
             }
             val result = focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
             Log.d(TAG, "TYPE text: '${text.take(50)}...' — ${if (result) "OK" else "FAIL"}")
-            focusedNode.recycle()
-            root.recycle()
+            focusedNode.recycleCompat()
+            root.recycleCompat()
             return result
         }
 
@@ -543,12 +543,12 @@ class JarvisAccessibilityService : AccessibilityService() {
             }
             val result = editableNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
             Log.d(TAG, "TYPE text (fallback): '${text.take(50)}...' — ${if (result) "OK" else "FAIL"}")
-            editableNode.recycle()
-            root.recycle()
+            editableNode.recycleCompat()
+            root.recycleCompat()
             return result
         }
 
-        root.recycle()
+        root.recycleCompat()
         Log.w(TAG, "TYPE text: ไม่พบช่อง input ที่แก้ไขได้")
         return false
     }
@@ -560,12 +560,12 @@ class JarvisAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return false
         // service-level findFocus: ค้นทุกหน้าต่าง (ช่องพิมพ์ใน dialog)
         val focusedNode = findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: run {
-            root.recycle()
+            root.recycleCompat()
             return false
         }
         if (!focusedNode.isEditable) {
-            focusedNode.recycle()
-            root.recycle()
+            focusedNode.recycleCompat()
+            root.recycleCompat()
             return false
         }
         // ล้างก่อน
@@ -578,8 +578,8 @@ class JarvisAccessibilityService : AccessibilityService() {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
         val result = focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, typeArgs)
-        focusedNode.recycle()
-        root.recycle()
+        focusedNode.recycleCompat()
+        root.recycleCompat()
         return result
     }
 
@@ -598,24 +598,24 @@ class JarvisAccessibilityService : AccessibilityService() {
         while (parent != null && depth < 5) {
             if (parent.isClickable) {
                 val result = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                parent.recycle()
+                parent.recycleCompat()
                 return result
             }
             val grandParent = parent.parent
-            parent.recycle()
+            parent.recycleCompat()
             parent = grandParent
             depth++
         }
-        parent?.recycle()
+        parent?.recycleCompat()
         return false
     }
 
     private fun findFirstEditable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        if (node.isEditable) return AccessibilityNodeInfo.obtain(node)
+        if (node.isEditable) return node.copyCompat()
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             val result = findFirstEditable(child)
-            child.recycle()
+            child.recycleCompat()
             if (result != null) return result
         }
         return null
@@ -629,3 +629,15 @@ class JarvisAccessibilityService : AccessibilityService() {
         appendLine("📄 Activity: ${currentActivity ?: "N/A"}")
     }
 }
+
+/** Android 13+ ไม่ต้อง recycle node แล้ว (เมธอดเป็น no-op + deprecated) — เรียกเฉพาะเครื่องเก่า */
+@Suppress("DEPRECATION")
+private fun AccessibilityNodeInfo.recycleCompat() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) recycle()
+}
+
+/** สำเนา node ที่ผู้เรียกถือต่อได้ — Android 13+ ใช้ constructor แทน obtain() ที่ deprecated */
+@Suppress("DEPRECATION")
+private fun AccessibilityNodeInfo.copyCompat(): AccessibilityNodeInfo =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) AccessibilityNodeInfo(this)
+    else AccessibilityNodeInfo.obtain(this)

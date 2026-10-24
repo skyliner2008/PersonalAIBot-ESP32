@@ -142,7 +142,9 @@ cd tools/mobile_app && ./gradlew :composeApp:testDebugUnitTest   # test ขอ�
 - ต้องมี JDK 17–24 (Gradle 8.14 ดาวน์โหลด JDK 21 ที่ใช้ build เอง) และ Android SDK (ลง Android Studio ได้ครบ) — หา SDK จาก `ANDROID_HOME` / `local.properties` / `%LOCALAPPDATA%\Android\Sdk`
 - **ไม่ต้องมี keystore (v4.3.1, T084):** ไม่มี keystore ของตัวเอง → APK release เซ็นด้วย debug key ของ Android SDK (`~/.android/debug.keystore`
   SDK สร้างให้เอง) · `publish_release.py` build APK ให้ทุก release เมื่อเครื่องมี Android SDK · APK รุ่นใหม่ลงทับได้เฉพาะเมื่อเซ็นด้วยกุญแจเดิม
-  → build บน PC เครื่องเดิมก็อัปเดตทับได้ตลอด; ย้ายไป PC เครื่องอื่น = ถอนแอปบนมือถือครั้งเดียวแล้วลงใหม่
+  → build บน PC เครื่องเดิมก็อัปเดตทับได้ตลอด; ย้ายไป PC เครื่องอื่น**หรือลง Windows ใหม่** = ถอนแอปบนมือถือครั้งเดียวแล้วลงใหม่
+  (หรือคัดลอก `~/.android/debug.keystore` เดิมกลับมา — T092)
+- build ไม่มี warning Kotlin (T092): API ที่ deprecated ใช้ตัว compat ตามรุ่น Android (`recycleCompat`, `LocationManagerCompat`, `GeocodeListener`)
 - keystore ของตัวเอง (ถ้าสร้าง) อยู่**นอก repo** (สร้างเมื่อผู้ใช้สั่งเท่านั้น)
 - **unit tests 58 ข้อ (JVM)** — console (T081): แยก TAG/สี/แชท, ซ่อน `set key`/`set pass`/`key=`, บรรทัดถูกตัดกลางตัวอักษรไทย, ข้ามภาพ/เสียงไบนารี
   และ resync เมื่อมีข้อความแทรก, ค่าตั้งที่ต้องส่ง (เปลี่ยนเฉพาะที่แก้, โปรไฟล์ก่อน, ค่าเป็นบรรทัดเดียว), การ์ดสถานะ/ผลทดสอบ key ภาษาไทย,

@@ -173,7 +173,8 @@ class MainActivity : Activity() {
      */
     private fun fitSystemBars() {
         if (Build.VERSION.SDK_INT < 30) return  // older: the window already stops at the bars and the keyboard
-        window.setDecorFitsSystemWindows(false)
+        // Android 15+ is always edge to edge (the call is deprecated there); 11-14 still have to be asked
+        if (Build.VERSION.SDK_INT < 35) @Suppress("DEPRECATION") window.setDecorFitsSystemWindows(false)
         val title = findViewById<View>(R.id.appTitle)
         val tabBar = findViewById<View>(R.id.tabBar)
         val titlePad = title.paddingTop

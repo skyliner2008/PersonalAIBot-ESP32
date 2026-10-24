@@ -246,7 +246,8 @@ host_tests\run_tests.bat
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ หรือ clang++)
 
 แอปมือถือมี unit tests ของตัวเอง 58 ข้อ (console/การตั้งค่า, เชื่อมบอร์ดรวม handshake Wi-Fi จริง, อ่าน Google Maps + ตัวแฟลชที่ทดสอบกับ ROM bootloader ของ ESP32-S3 จำลอง + flash เสมือน 16 MB):
-`cd tools/mobile_app && ./gradlew :esp32:testDebugUnitTest`
+`cd tools/mobile_app && ./gradlew :esp32:testDebugUnitTest` · แอป build ได้โดยไม่มี warning Kotlin · PC เครื่องใหม่หรือลง Windows ใหม่จะได้กุญแจเซ็น
+debug ใหม่ → ถอนแอปเดิมบนมือถือครั้งเดียว หรือคัดลอก `~/.android/debug.keystore` เดิมกลับมา ([wiki 17](wiki/17-Mobile-Flasher.md))
 
 ## 📁 โครงสร้างโปรเจกต์
 

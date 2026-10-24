@@ -248,7 +248,8 @@ host_tests\run_tests.bat
 Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
 
 The phone app has its own JVM tests (58: the console parser and settings, the phone link incl. a real Wi-Fi handshake, Google Maps parsing, and the flasher against a simulated ESP32-S3 ROM bootloader with a virtual 16 MB flash):
-`cd tools/mobile_app && ./gradlew :esp32:testDebugUnitTest`.
+`cd tools/mobile_app && ./gradlew :esp32:testDebugUnitTest`. The app builds without Kotlin warnings. A new PC or a fresh Windows install gets a new
+debug signing key, so uninstall the old app from the phone once, or copy back the old `~/.android/debug.keystore` ([wiki 17](wiki/17-Mobile-Flasher.md)).
 
 ## 📁 Project layout
 

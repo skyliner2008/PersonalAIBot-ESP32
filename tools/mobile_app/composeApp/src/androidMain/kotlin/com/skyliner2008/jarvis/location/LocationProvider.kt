@@ -4,14 +4,15 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Address
 import android.location.Geocoder
 import android.location.Location
-import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
-import android.os.Bundle
+import android.os.CancellationSignal
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -114,25 +115,14 @@ class LocationProvider(private val context: Context) {
             }
         }
 
-        val listener = object : LocationListener {
-            override fun onLocationChanged(loc: Location) {
-                try { lm.removeUpdates(this) } catch (_: Exception) {}
-                if (cont.isActive) cont.resume(loc)
-            }
-            @Deprecated("Deprecated in Java")
-            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-            override fun onProviderEnabled(provider: String) {}
-            override fun onProviderDisabled(provider: String) {
-                if (cont.isActive) cont.resume(null)
-            }
-        }
-
-        cont.invokeOnCancellation {
-            try { lm.removeUpdates(listener) } catch (_: Exception) {}
-        }
+        // LocationManagerCompat แทน requestSingleUpdate() ที่ deprecated (Android 11+ ใช้ getCurrentLocation ของระบบ)
+        val cancel = CancellationSignal()
+        cont.invokeOnCancellation { cancel.cancel() }
 
         try {
-            lm.requestSingleUpdate(provider, listener, null)
+            LocationManagerCompat.getCurrentLocation(lm, provider, cancel, ContextCompat.getMainExecutor(context)) { loc ->
+                if (cont.isActive) cont.resume(loc)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to request single update: ${e.message}", e)
             if (cont.isActive) cont.resume(null)
@@ -143,8 +133,7 @@ class LocationProvider(private val context: Context) {
         try {
             if (!Geocoder.isPresent()) return@withContext null
             val geocoder = Geocoder(context, Locale("th", "TH"))
-            val list = geocoder.getFromLocation(latitude, longitude, 1)
-            val addr = list?.firstOrNull() ?: return@withContext null
+            val addr = geocode(geocoder, latitude, longitude) ?: return@withContext null
 
             val parts = mutableListOf<String>()
             addr.subLocality?.let { parts.add(it) }
@@ -156,6 +145,25 @@ class LocationProvider(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "Geocoder failed: ${e.message}")
             null
+        }
+    }
+
+    /** Android 13+ ใช้ GeocodeListener (getFromLocation แบบ blocking ถูก deprecate) — เครื่องเก่าเรียกแบบเดิมบน IO */
+    private suspend fun geocode(geocoder: Geocoder, latitude: Double, longitude: Double): Address? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            @Suppress("DEPRECATION")
+            return geocoder.getFromLocation(latitude, longitude, 1)?.firstOrNull()
+        }
+        return suspendCancellableCoroutine { cont ->
+            geocoder.getFromLocation(latitude, longitude, 1, object : Geocoder.GeocodeListener {
+                override fun onGeocode(addresses: MutableList<Address>) {
+                    if (cont.isActive) cont.resume(addresses.firstOrNull())
+                }
+                override fun onError(errorMessage: String?) {
+                    Log.w(TAG, "Geocoder failed: $errorMessage")
+                    if (cont.isActive) cont.resume(null)
+                }
+            })
         }
     }
 }

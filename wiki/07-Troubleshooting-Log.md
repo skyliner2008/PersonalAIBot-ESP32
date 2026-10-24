@@ -136,6 +136,27 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T092: build แอปมือถือหลังลง Windows ใหม่ — เก็บ warning deprecated ให้ build สะอาด
+
+**วันที่:** 2026-10-24 · **ผู้ใช้:** ลง Windows ใหม่ แล้ว `:composeApp:assembleDebug` ขึ้น warning เยอะ (build ผ่าน)
+
+**สาเหตุ:** ไม่ใช่ error — cache Gradle หายจึงโหลด/คอมไพล์ใหม่ทั้งหมดและเห็น warning ที่มีอยู่เดิม · `Unable to strip ... .so` = ไลบรารีสำเร็จรูป
+(onnxruntime/mediapipe/godot) ไม่มี NDK ไว้ strip — ปกติของ debug build
+
+**แก้ (ทำงานเหมือนเดิมทุกรุ่น Android, minSdk 26):**
+- `JarvisAccessibilityService.kt`: `recycle()` → `recycleCompat()` (เรียกเฉพาะ < Android 13 เพราะ 13+ เป็น no-op), `obtain(node)` → `copyCompat()` (13+ ใช้ constructor)
+- `LocationProvider.kt`: `requestSingleUpdate` → `LocationManagerCompat.getCurrentLocation` (+ `android.os.CancellationSignal` ตอนยกเลิก/timeout) ·
+  `Geocoder.getFromLocation` → Android 13+ ใช้ `GeocodeListener`
+- `MainActivity.kt` (esp32): `setDecorFitsSystemWindows(false)` เรียกเฉพาะ Android 11–14 (15+ edge to edge เสมอ)
+- `MeetingScreen.kt`: `Icons.AutoMirrored.Filled.Send` · `LiveGeminiService.kt`: ลบ `call.id != null` (`LiveFunctionCall.id` ไม่เป็น null)
+
+**ผล:** build ไม่มี warning Kotlin, esp32 unit tests ผ่าน · ยังไม่ได้ลองบนมือถือจริง (ตำแหน่ง GPS / Accessibility)
+
+**สิ่งที่ต้องตั้งเองหลังลง Windows ใหม่:** ติดตั้ง Python 3 (Studio, `build_mobile_apk.py`, `publish_release.py`) · `JAVA_HOME` ถ้าจะรัน
+`gradlew` นอก Android Studio (ใช้ `C:\Program Files\Android\Android Studio\jbr` ได้) · `git config --global --add safe.directory E:/APP-JARVIS/ESP32-AI`
+(SID ผู้ใช้ Windows เปลี่ยน → git ขึ้น "dubious ownership") · `include/secrets.h` จาก backup · **debug keystore ใหม่** (`~/.android/debug.keystore`
+สร้างใหม่) → APK ที่ build หลังจากนี้ลงทับแอปเดิมบนมือถือไม่ได้ ต้องถอนแอปครั้งเดียว (ข้อมูลในแอปหาย) หรือคัดลอก `debug.keystore` เดิมจาก backup
+
 ## T091: คำปลุก "Hey Jarvis" ในแอปมือถือ — openWakeWord, กั้นเสียง (A) และพักเซสชัน (B)
 
 **วันที่:** 2026-10-23 · **ผู้ใช้:** ขอ wake word สำหรับแอปมือถือ (มีแต่บนบอร์ด) — แอปคุยในพื้นหลังตอนพักจอได้อยู่แล้ว → เลือก "ทำทั้งแบบ A และแบบ B ด้วย openWakeWord"

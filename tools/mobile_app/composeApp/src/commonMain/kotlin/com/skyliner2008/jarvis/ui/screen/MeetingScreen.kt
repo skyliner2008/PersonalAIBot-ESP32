@@ -19,7 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -314,7 +314,7 @@ fun MeetingScreen(
                         if (isAsking) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Default.Send, "ส่งคำถาม", tint = Color.White)
+                            Icon(Icons.AutoMirrored.Filled.Send, "ส่งคำถาม", tint = Color.White)
                         }
                     }
                     Spacer(Modifier.size(6.dp))
