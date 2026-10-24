@@ -16,6 +16,15 @@ object JarvisDatabaseHolder {
         _database = db
     }
 
+    /**
+     * One database for the whole process (T093): the activity (JarvisViewModel, made again every time the app is
+     * reopened while its services keep the process alive) and JarvisAutomationService (started at every app start)
+     * each opened their own driver and never closed it - logcat "SQLiteConnection ... was leaked!".
+     * A restore restarts the process (DatabaseBackupManager.restartApp), so a pending restore is still applied first.
+     */
+    fun getOrCreate(create: () -> JarvisDatabase): JarvisDatabase =
+        _database ?: synchronized(this) { _database ?: create().also { _database = it } }
+
     /** Returns a singleton AutomationManager backed by the installed database.
      *  Must call [install] first. */
     fun getAutomationManager(): AutomationManager {

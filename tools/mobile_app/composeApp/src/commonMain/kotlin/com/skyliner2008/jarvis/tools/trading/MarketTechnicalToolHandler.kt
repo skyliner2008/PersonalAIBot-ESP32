@@ -49,14 +49,30 @@ internal class MarketTechnicalToolHandler(
         if (data.containsKey("error")) return "Price fetch failed: ${data["error"]}"
         AvatarToolData.publish("trading_price", mapOf("symbol" to symbol.uppercase()) + data)
 
+        val price = data["price"]?.toDoubleOrNull()
+        val change = data["change"]?.toDoubleOrNull()
+        val pct = data["change_pct"]?.removeSuffix("%")?.toDoubleOrNull()
+        val prev = data["prev_close"]?.toDoubleOrNull()
+        val dec = price?.let { ThaiNumberWords.priceDecimals(it) } ?: 2
+        fun shown(v: Double?, raw: String?) = v?.let { ThaiNumberWords.grouped(it, dec) } ?: raw
         return buildString {
             appendLine("**${symbol.uppercase()}** - Real-time Price")
-            appendLine("Price: ${data["price"]} ${data["currency"]}")
-            appendLine("Change: ${data["direction"]} ${data["change"]} (${data["change_pct"]})")
-            appendLine("Prev Close: ${data["prev_close"]}")
+            appendLine("Price: ${shown(price, data["price"])} ${data["currency"]}")
+            appendLine("Change: ${data["direction"]} ${shown(change, data["change"])} (${data["change_pct"]})")
+            appendLine("Prev Close: ${shown(prev, data["prev_close"])}")
             appendLine("52W High: ${data["high_52w"]} | Low: ${data["low_52w"]}")
             appendLine("Market: ${data["market_state"]}")
             data["source"]?.let { appendLine("Source: $it") }
+            // the Thai words for every number above: Live misread the thousands digit when it converted it itself (T094)
+            if (price != null) {
+                val parts = buildList {
+                    add("ราคา ${ThaiNumberWords.decimal(price, dec)}")
+                    if (change != null) add("เปลี่ยนแปลง ${ThaiNumberWords.decimal(change, dec)}")
+                    if (pct != null) add("${ThaiNumberWords.decimal(pct, 2)} เปอร์เซ็นต์")
+                    if (prev != null) add("ราคาปิดก่อนหน้า ${ThaiNumberWords.decimal(prev, dec)}")
+                }
+                appendLine("คำอ่านตัวเลข (พูดตัวเลขตามคำนี้ทุกตัว ห้ามแปลงเอง): ${parts.joinToString(" · ")}")
+            }
         }
     }
 

@@ -71,7 +71,7 @@ class JarvisViewModel(
     private val fileHandler: (suspend (String, Map<String, String>) -> String)? = null,
     private val onDownloadLocalModel: (suspend (com.skyliner2008.jarvis.data.embedding.LocalOnnxEmbeddingProvider, (Float) -> Unit, Boolean) -> Unit)? = null
 ) : ViewModel() {
-    private val database = createDatabase(driverFactory).also { JarvisDatabaseHolder.install(it) }
+    private val database = JarvisDatabaseHolder.getOrCreate { createDatabase(driverFactory) }
     private val memoryManager = JarvisMemoryManager(database)
     val automationManager = JarvisDatabaseHolder.getAutomationManager()
     private val client = createHttpClient()

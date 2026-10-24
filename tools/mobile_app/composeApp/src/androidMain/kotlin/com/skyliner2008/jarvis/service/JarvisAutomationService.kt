@@ -25,7 +25,6 @@ import com.skyliner2008.jarvis.db.JarvisDatabase
 import com.skyliner2008.jarvis.db.JarvisDatabaseHolder
 import com.skyliner2008.jarvis.db.AlertJob
 import com.skyliner2008.jarvis.db.ScheduledTask
-import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -93,10 +92,10 @@ class JarvisAutomationService : Service() {
         super.onCreate()
         createNotificationChannel()
 
-        com.skyliner2008.jarvis.backup.DatabaseBackupManager.applyPendingRestore(applicationContext)
-        val driver = AndroidSqliteDriver(JarvisDatabase.Schema, applicationContext, "jarvis.db")
-        database = JarvisDatabase(driver)
-        JarvisDatabaseHolder.install(database)
+        // the app's one database (a pending restore is applied inside createDriver) - not a driver of its own (T093)
+        database = JarvisDatabaseHolder.getOrCreate {
+            com.skyliner2008.jarvis.db.createDatabase(com.skyliner2008.jarvis.db.DatabaseDriverFactory(applicationContext))
+        }
         automationManager = JarvisDatabaseHolder.getAutomationManager()
         tradingApi = TradingApiService(client)
         smcApi = SmcApiService(client)
