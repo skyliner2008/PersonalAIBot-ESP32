@@ -33,9 +33,11 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 | core (ความจำ, เวลา, งาน, ผู้ช่วย, เครื่อง, วิทยุ) | 25 | เสมอ |
 | live data (อากาศ, น้ำมัน, ราคา, แลกเงิน, ข่าว) | 5 | เสมอ |
 | utilities ที่พอร์ตจาก PersonalAIBot | 6 | เสมอ |
+| **water** (ThaiWater, T100) | 1 | `set water 1` (ค่าเริ่มต้น เปิด) |
 | **finance pack** | 6 | `set finance 1` (ค่าเริ่มต้น เปิด) |
+| `about_me` (T096) | 1 | เสมอ |
 
-ค่าเริ่มต้น = **42 tools** (~14.98 KB JSON ต่อ setup — ชนเพดาน 15 KB ใน host test แล้ว: tool ใหม่ต้องย่อคำอธิบายเก่า; core 25 รวม `configure_device`, `rest_screen`, `mute_microphone`, `play_radio`, `stop_radio`) + Google Search (ถ้าใช้ได้) — ทดสอบใน host test `tool_declarations_per_model`
+ค่าเริ่มต้น = **44 tools** (~15.6 KB JSON ต่อ setup — งบใน host test 15.7 KB: `about_me` +200 B, `water` +470 B; tool ใหม่ต้องย่อคำอธิบายเก่าหรือทำเป็นชุดเปิดปิดได้; core 25 รวม `configure_device`, `rest_screen`, `mute_microphone`, `play_radio`, `stop_radio`) + Google Search (ถ้าใช้ได้) — ทดสอบใน host test `tool_declarations_per_model`
 
 ## 1) Live data (ชุดแรก)
 
@@ -80,6 +82,34 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 ![[images/card-calendar.png]] ![[images/card-alert.png]]
 ![[images/card-calc.png]] ![[images/card-worldtime.png]]
 ![[images/card-position.png]] ![[images/card-wiki.png]]
+
+### น้ำ: ระดับน้ำ / ฝน / พายุ จาก ThaiWater (T100)
+
+`water(action, province, place?, days?)` — ข้อมูล**วัดจริง**จากคลังข้อมูลน้ำแห่งชาติ (พยากรณ์ยังใช้ `get_weather`) · ปิดได้ `set water 0`
+
+| action | ทำอะไร | API (`api-v3.thaiwater.net/api/v1/thaiwater30/`) | ขนาด | การ์ด |
+|---|---|---|---|---|
+| `level` | ระดับน้ำสถานีโทรมาตรในจังหวัด เรียง % ความจุลำน้ำมาก→น้อย (8 แห่ง) · ระดับ: >100 ล้นตลิ่ง, >70 มาก, >30 ปกติ, >10 น้อย, ≤10 น้อยวิกฤติ (เกณฑ์ของ ThaiWater) | `public/waterlevel?province_code=` | ~80 KB | แท่ง % (เส้นประ = ตลิ่ง) สีตามระดับ |
+| `level` + `place` ตรงสถานีเดียว | + กราฟ 2 วันของสถานีนั้น (ตลิ่ง / เตือนภัย / วิกฤต เป็นเส้นประ) + `change_last_hours_m` (ขึ้น/ลง) | `public/waterlevel_graph?station_type=tele_waterlevel&station_id=&start_date=&end_date=` | ~15 KB/วัน | กราฟเส้น 60 จุด |
+| `rain` | ฝน 24 ชม. (`days` 7 = 7 วัน) ทุกสถานีในจังหวัด: เฉลี่ย, สูงสุด, ตกกี่สถานี + 8 สถานีที่ตกมากสุด | `public/rain_24h?province_code=` / `provinces/rain7d?province_code=` | ~350 KB | แท่ง มม. สีตามระดับฝน (กรมอุตุฯ) |
+| `storm` | พายุที่เข้าใกล้ประเทศไทย | `public/storm_data` | ~1 KB | ข้อความ |
+| `rain` **ไม่ใส่ province** | ฝน 24 ชม. (หรือ 7 วัน) **สูงสุดรายจังหวัด 8 จังหวัด**: สถานีที่ตกมากสุดของแต่ละจังหวัด + จำนวนสถานีที่ฝนตก | `public/rain_24h` ทั้งประเทศ | 614 KB gzip / 4.8 MB JSON | แท่ง มม. ต่อจังหวัด |
+| `level` **ไม่ใส่ province** | **สถานการณ์น้ำสูงสุดรายจังหวัด 8 จังหวัด**: สถานีที่ % ความจุลำน้ำสูงสุดของแต่ละจังหวัด + จำนวนสถานีล้นตลิ่ง / น้ำมาก | `public/waterlevel` ทั้งประเทศ | 224 KB gzip / 1.3 MB JSON | แท่ง % ต่อจังหวัด (เส้นประ = ตลิ่ง) |
+
+- **ไม่มี key** — เป็น API ที่หน้าเว็บ thaiwater.net เรียกเอง (ไม่ใช่ API ที่ประกาศเป็นทางการ; [standard.thaiwater.net/docs](https://standard.thaiwater.net/docs/) คือมาตรฐานแลกเปลี่ยนข้อมูลระหว่างหน่วยงาน) · TLS: DigiCert Global Root G2 (มีใน `WEB_ROOT_CA_PEM` แล้ว)
+- **gzip + อ่านแบบสตรีม** (`agent/GzipHttpStream.h`): ขอ `Accept-Encoding: gzip` → แกะ chunked + inflate ด้วย `tinfl` ใน ROM (หน้าต่าง 32 KB ใน PSRAM)
+  → ArduinoJson อ่านจาก reader ตรงๆ (ไม่ผ่าน `Stream::readBytes` ที่เสีย virtual call + อ่านนาฬิกาทุกไบต์) — ข้อมูลรายจังหวัดเล็กลง ~8 เท่า (ระดับน้ำ 13.5 KB → 2.4 KB)
+- **ทั่วประเทศ parse ทีละสถานี** (`thaiwater::ProvinceRanker`) ลงเอกสารเล็กที่ใช้ซ้ำ: ทั้งก้อน 1.3 MB ทำให้การกันสตริงซ้ำของ ArduinoJson 7 ช้าแบบกำลังสอง
+  (21 วิ → ระดับน้ำทั้งประเทศ 4–6 วิ) · ฝนทั้งประเทศ ~8–21 วิ (parse ~5 วิ ที่เหลือคือเน็ต: Wi-Fi มือถือ 38–70 KB/s) · แคช 10 นาที
+- **ใส่ `province` เมื่อถามถึงจังหวัด** (หรือชื่อจังหวัดใน `place`) · ไม่ใส่ = อันดับ 8 จังหวัด (`place` ยังกรองได้ เช่น `ปิง` = เฉพาะลุ่มน้ำปิง) · `ThaiProvinces` มีรหัสจังหวัด (`code`, TIS 1099) แล้ว
+  · `place`: แม่น้ำ (`ปิง` → ตรงกับ "ลุ่มน้ำปิง"), อำเภอ, ชื่อหรือรหัสสถานี (`P.73`) — ตัดคำนำ "แม่น้ำ/อ./สถานี/จ." ให้เอง
+- อ่านแบบกรองระหว่าง parse (ArduinoJson `Filter`, PSRAM): ฝน 350 KB เหลือ ~10 KB · แคช 10 นาที (`cacheTtlMs`) · timeout 20 วิ
+- โค้ด: `util/ThaiWater.h` (parse, host test `thaiwater_parsing` ด้วยข้อมูลจริงที่ตัดมา) · `agent/WaterTools.cpp` (ดึง + การ์ด) · การ์ดใหม่ `CardData::Graph` / `Bars`
+![[images/card-water-level.png]] ![[images/card-water-graph.png]] ![[images/card-water-rain.png]]
+![[images/card-water-rank-rain.png]] ![[images/card-water-rank-level.png]]
+
+- **ยังไม่ทำ (เฟส 2–3):** เขื่อนใหญ่ (`analyst/dam` ~1 MB กรองไม่ได้ → ต้องแคช), น้ำขึ้นน้ำลง (public มีแค่ระดับวัดจริง 2 สถานีปากแม่น้ำ;
+  ระดับคาดการณ์อยู่ที่ `api.hii.or.th` ซึ่งต้องใช้ key — ต้องขอสิทธิ์จาก สสน.), ความเค็ม/คุณภาพน้ำ (3.6 MB กรองไม่ได้), ประตูระบายน้ำ
 
 ### ไม่มีการเชื่อมต่อ MT5 / โบรกเกอร์ (ถอดออกใน v3.4)
 

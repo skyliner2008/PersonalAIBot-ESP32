@@ -62,7 +62,7 @@ void AgentController::updateInfo() {
              _liveSel.usingFallback(sec) ? " (สำรอง)" : "");
     s += buf;
     if (_wifiUp) {
-        snprintf(buf, sizeof(buf), "Wi-Fi %s • %d dBm • %s\n", _cfg.wifiSsid, WiFi.RSSI(),
+        snprintf(buf, sizeof(buf), "Wi-Fi %s • %d dBm • %s\n", _wifiTarget, WiFi.RSSI(),  // maybe a remembered one
                  WiFi.localIP().toString().c_str());
     } else {
         snprintf(buf, sizeof(buf), "Wi-Fi: %s\n", _cfg.wifiSsid[0] ? "กำลังเชื่อมต่อ..." : "ยังไม่ตั้ง");

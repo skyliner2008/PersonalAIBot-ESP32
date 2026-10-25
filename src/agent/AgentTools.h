@@ -109,6 +109,8 @@ public:
 
     /** Optional tool pack: finance (TradingView analysis / scan / calendar / alerts). */
     void setFinancePack(bool finance) { _finance = finance; }
+    /** Optional tool: water level / rain / storms from ThaiWater (T100). */
+    void setWaterPack(bool water) { _water = water; }
     /** The live session's setup offered googleSearch (set with every setup; about_me reports it). */
     void setSearchOffered(bool offered) { _searchOffered = offered; }
 
@@ -142,6 +144,7 @@ private:
     DeviceOps& _device;
     int32_t _utcOffset;
     bool _finance = true;
+    bool _water = true;
     bool _searchOffered = false;  // the session's setup offered googleSearch (about_me reports it)
     uint32_t _memoryWrites = 0;
 

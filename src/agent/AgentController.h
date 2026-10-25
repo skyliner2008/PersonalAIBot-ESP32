@@ -235,6 +235,13 @@ private:
     uint32_t _wifiBeginAt = 0;
     uint32_t _wifiRetryMs = 3000;
     uint8_t _wifiFailures = 0;
+    // the network being joined: the configured one, or a remembered one in range when that fails (T099)
+    char _wifiTarget[33] = "";
+    char _wifiTargetPass[65] = "";
+    bool _wifiScanning = false;  // looking for remembered networks (async scan)
+    uint32_t _wifiScanAt = 0;
+    void wifiBegin(const char* ssid, const char* pass);
+    void wifiScanDone(int16_t found);
     bool _wifiErrorShown = false;
     bool _timeStarted = false, _timeValidSeen = false;
     uint8_t _activeModel = 0;

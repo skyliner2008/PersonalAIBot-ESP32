@@ -28,6 +28,7 @@ ListScreen gMenu;
 ListScreen gPicker;
 ListScreen gSubPicker;
 ListScreen gWifi;
+ListScreen gWifiKnown;
 ListScreen gMemory;
 ListScreen gUpdate;
 ListScreen gVehicleMenu;
@@ -372,6 +373,32 @@ void askWifiPassword(const String& ssid) {
     });
 }
 
+/**
+ * Networks the board joined before (T099): it switches to the strongest of them in range by itself when the
+ * configured one cannot be reached. Tap = forget (the password goes with it).
+ */
+void openKnownWifi() {
+    gWifiKnown.setup("Wi-Fi ที่จำไว้", [](ListScreen& l) {
+        const wifiknown::List known = gSettings.knownWifi();
+        const SettingsData s = gSettings.get();
+        l.add("ต่อตัวที่แรงที่สุดเองเมื่อ Wi-Fi หลักใช้ไม่ได้", "", nullptr);
+        for (size_t i = 0; i < known.size(); i++) {
+            const String ssid = known.at(i).ssid;
+            const bool current = ssid == s.wifiSsid;
+            ListScreen::Item& it = l.add(ssid, current ? "Wi-Fi หลัก • แตะเพื่อลืม" : "แตะเพื่อลืม", [ssid]() {
+                static String text;
+                text = "ลืม \"" + ssid + "\" และรหัสผ่าน? ต่ออีกครั้งต้องใส่รหัสใหม่";
+                gConfirm.ask("ลืม Wi-Fi", text.c_str(), "ลืม", [ssid]() {
+                    gSettings.forgetWifi(ssid.c_str());
+                    gWifiKnown.rebuild();
+                });
+            });
+            it.checked = current;
+        }
+    });
+    gUi.push(&gWifiKnown);
+}
+
 void openWifi() {
     gWifi.setup("Wi-Fi", [](ListScreen& l) {
         const SettingsData s = gSettings.get();
@@ -383,11 +410,23 @@ void openWifi() {
                 gWifi.rebuild();
             });
         }
+        const wifiknown::List known = gSettings.knownWifi();
         for (const Net& n : gNets) {
             const char* q = n.rssi > -60 ? "แรง" : (n.rssi > -72 ? "ปานกลาง" : "อ่อน");
-            String value = String(q) + (n.open ? " • เปิด" : "");
+            const int k = known.find(n.ssid.c_str());
+            String value = String(q) + (n.open ? " • เปิด" : "") + (k >= 0 ? " • จำไว้" : "");
             ListScreen::Item& it = l.add(n.ssid, value, [n]() {
-                if (n.open) {
+                const wifiknown::List saved = gSettings.knownWifi();
+                const int i = saved.find(n.ssid.c_str());
+                if (i >= 0) {  // joined before (T099): its saved password, no keyboard
+                    gSettings.update([&](SettingsData& d) {
+                        strncpy(d.wifiSsid, saved.at((size_t)i).ssid, sizeof(d.wifiSsid) - 1);
+                        d.wifiSsid[sizeof(d.wifiSsid) - 1] = '\0';
+                        strncpy(d.wifiPass, saved.at((size_t)i).pass, sizeof(d.wifiPass) - 1);
+                        d.wifiPass[sizeof(d.wifiPass) - 1] = '\0';
+                    });
+                    gUi.pop();
+                } else if (n.open) {
                     gSettings.update([&](SettingsData& d) {
                         strncpy(d.wifiSsid, n.ssid.c_str(), sizeof(d.wifiSsid) - 1);
                         d.wifiPass[0] = '\0';
@@ -403,6 +442,7 @@ void openWifi() {
             startScan();
             gWifi.rebuild();
         });
+        if (known.size()) l.addSubmenu("Wi-Fi ที่จำไว้", String((unsigned)known.size()) + " เครือข่าย", openKnownWifi);
         l.add("ป้อนชื่อเครือข่ายเอง", "", []() {
             KeyboardScreen::Options o;
             o.title = "ชื่อ Wi-Fi (SSID)";

@@ -9,10 +9,12 @@
 
 #pragma once
 
+#include <math.h>
+
 #include "UiManager.h"
 
 struct CardData {
-    enum Kind : uint8_t { None, Weather, Oil, Quotes, News, Text, Table, Analysis } kind = None;
+    enum Kind : uint8_t { None, Weather, Oil, Quotes, News, Text, Table, Analysis, Graph, Bars } kind = None;
     char title[72] = "";
     char subtitle[96] = "";
     // ---- text card: optional big line + wrapped paragraph ----
@@ -37,7 +39,18 @@ struct CardData {
         Day day[5];
     } w;
 
-    // ---- rows: oil / quotes / news ----
+    // ---- graph: one line over time (a station's water level) with dashed reference lines (T100) ----
+    struct Series {
+        static constexpr int kMax = 60;
+        uint8_t n = 0;
+        float v[kMax];
+        float ref[3] = {NAN, NAN, NAN};   // bank / warning / critical level (NAN = none)
+        char from[17] = "", to[17] = "";  // "2026-10-24 00:00" .. "2026-10-25 22:30"
+        char unit[16] = "";               // "ม.รทก."
+        uint16_t color = 0;               // line colour (0 = accent)
+    } g;
+
+    // ---- rows: oil / quotes / news / bars (value, extra = value text, color) ----
     struct Row {
         char name[180];   // product / instrument / headline (~60 Thai characters)
         char extra[32];   // symbol, source, currency ...
@@ -86,6 +99,8 @@ private:
     void drawText(LGFX_Sprite& c);
     void drawTable(LGFX_Sprite& c);
     void drawAnalysis(LGFX_Sprite& c);
+    void drawGraph(LGFX_Sprite& c);
+    void drawBars(LGFX_Sprite& c);
     void drawHeader(LGFX_Sprite& c);
     /** Thai-aware wrap (syllables) with the sprite's metrics; returns the y after the last line. */
     int drawWrapped(LGFX_Sprite& c, const char* text, int x, int y, int w, int maxLines, int lineH, uint16_t color);

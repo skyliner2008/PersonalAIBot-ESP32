@@ -36,7 +36,7 @@ const char* const kWebTools[] = {"get_weather",     "get_oil_price",   "get_mark
                                  "get_news",        "calculate",       "convert_units",     "get_world_time",
                                  "get_location",    "search_knowledge", "market_overview",  "market_analysis",
                                  "market_scan",     "economic_calendar", "position_size",   "notes",
-                                 "price_alert"};
+                                 "price_alert",     "water"};
 
 constexpr uint32_t kAlertCheckMs = 120000;
 
@@ -53,6 +53,7 @@ uint32_t cacheTtlMs(const char* name) {
         {"get_weather", 10 * 60000},       {"get_oil_price", 30 * 60000},    {"get_news", 5 * 60000},
         {"economic_calendar", 30 * 60000}, {"search_knowledge", 60 * 60000}, {"get_market_quote", 60000},
         {"convert_currency", 60000},       {"market_overview", 60000},
+        {"water", 10 * 60000},  // ThaiWater telemetry reports every 10-60 min (T100)
     };
     for (const Ttl& t : kTtl) {
         if (!strcmp(name, t.name)) return t.ms;
@@ -792,6 +793,7 @@ void WebTools::loop() {
         else if (!strcmp(j.name, "position_size")) runPositionSize(a, out, card);
         else if (!strcmp(j.name, "notes")) runNotes(env, a, out, card);
         else if (!strcmp(j.name, "price_alert")) runPriceAlert(env, a, out, card);
+        else if (!strcmp(j.name, "water")) runWater(a, out, card);
         else setError(out, "unknown tool");
         if (out.isNull() || out.size() == 0) setError(out, "no data");
         // live data: "now" for the model (its prompt date is from the session start, or missing if

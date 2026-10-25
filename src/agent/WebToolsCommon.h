@@ -194,6 +194,8 @@ void runEconomicCalendar(JsonObjectConst a, JsonDocument& out, CardData& card);
 void runPositionSize(JsonObjectConst a, JsonDocument& out, CardData& card);
 void runNotes(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, CardData& card);
 void runPriceAlert(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, CardData& card);
+// water level / rain / storms from ThaiWater (WaterTools.cpp, T100)
+void runWater(JsonObjectConst a, JsonDocument& out, CardData& card);
 /** Check stored alerts; fills `message` (Thai) and returns true when one fired (it is removed). */
 bool checkPriceAlerts(const ToolEnv& env, String& message);
 bool hasPriceAlerts(const ToolEnv& env);

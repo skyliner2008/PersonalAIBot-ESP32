@@ -187,7 +187,7 @@ void AgentController::applySettings(bool initial) {
                                 n.gender != _cfg.gender || strcmp(n.agentName, _cfg.agentName) ||
                                 strcmp(n.userName, _cfg.userName) || n.model != _cfg.model ||
                                 n.thinking != _cfg.thinking || n.googleSearch != _cfg.googleSearch ||
-                                n.financeTools != _cfg.financeTools;
+                                n.financeTools != _cfg.financeTools || n.waterTools != _cfg.waterTools;
 
     // the voice at aiVolume (codec), the radio on its own (digital, never louder than the voice)
     if (initial || n.aiVolume != _cfg.aiVolume) _audio->setVolume(n.aiVolume);
@@ -202,6 +202,7 @@ void AgentController::applySettings(bool initial) {
     if (initial || n.eyeColor != _cfg.eyeColor) _face->setEyeColor(eyeColor565(n.eyeColor));
     gUi.setTouchTransform(n.touchMap);
     _tools->setFinancePack(n.financeTools);
+    _tools->setWaterPack(n.waterTools);
     _liveSel.setPreferred(n.model);
     _textSel.setPreferred(n.textModel);
 

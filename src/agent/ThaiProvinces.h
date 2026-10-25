@@ -20,6 +20,7 @@ struct Province {
     const char* en;  // "Khon Kaen"
     float lat;
     float lon;
+    int code;        // Thai province code (TIS 1099, "50" = Chiang Mai): ThaiWater's province_code
 };
 
 extern const Province kProvinces[];

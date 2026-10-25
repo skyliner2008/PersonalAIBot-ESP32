@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "../ui/Emotion.h"
+#include "../util/JsonAlloc.h"
 #include "../util/TimeFmt.h"
 #include "../vehicle/VehicleData.h"  // VEHICLE_BLE
 #include "Personas.h"
@@ -399,6 +400,20 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     declare(d, b, "notes",
             "Personal notebook on the device: save longer notes (recipes, lists, ideas) and read them back. "
             "Facts about the user go to save_memory instead.", notes, 5);
+
+    // ---- Water (ThaiWater, T100): optional like the finance pack ----
+    if (_water) {
+        group("water level, rain and storms (ThaiWater)");
+        static const char* const kWaterActions[] = {"level", "rain", "storm", nullptr};
+        static const Param water[] = {
+            {"action", "STRING", nullptr, true, kWaterActions},
+            {"province", "STRING", "Omit = top 8 provinces nationwide.", false, nullptr},
+            {"place", "STRING", "Optional river/district/station.", false, nullptr},
+            {"days", "INTEGER", "rain: 1 or 7.", false, nullptr},
+        };
+        declare(d, b, "water", "Measured river level (graph), rain, storms in Thailand from ThaiWater, shown as a chart.",
+                water, 4);
+    }
 
     // ---- Finance pack ----
     if (_finance) {
@@ -893,7 +908,9 @@ bool AgentTools::aboutMe(JsonObjectConst, JsonObject r, const char*&) {
     AbilityCollector collect;
     collect.groups = r["abilities"].to<JsonArray>();
     {
-        JsonDocument scratch;  // the declarations themselves are not needed, only what declare() collected
+        // the declarations themselves are not needed, only what declare() collected - in PSRAM: about_me runs
+        // during a live session, where the default allocator's small blocks would take internal SRAM from TLS
+        JsonDocument scratch(JsonPsramAllocator::instance());
         gAbilities = &collect;
         addDeclarations(scratch.to<JsonArray>(), ToolBehavior::Unspecified, _searchOffered);
         gAbilities = nullptr;
@@ -913,10 +930,13 @@ bool AgentTools::aboutMe(JsonObjectConst, JsonObject r, const char*&) {
     c["vehicle_dash"] = _device.vehicleEnabled();
     if (_device.deviceCount() > 0) _device.listDevices(c["wired_devices"].to<JsonArray>());
 
+    // narration: the session's "answer briefly" rule made the introduction a few sentences long (T098)
     r["how_to_present"] =
-        "Speak naturally in the user's language: who you are (name, personality, this device), then each ability "
-        "group in a sentence with a real example of what the user can ask. Never read tool names, ids or symbols. "
-        "Keep it about a minute unless the user wants every detail; offer to explain any part. To answer "
-        "'can you ...?' use only this list.";
+        "Introducing / presenting / reviewing yourself is the exception to answering briefly: narrate it fully in the "
+        "user's language, 2-3 minutes. Start with who you are (name, personality, this device and what makes it "
+        "yours, firmware version), then go through EVERY ability group in order, each with 2-3 sentences and a "
+        "concrete example the user could say, then what is connected right now. Speak in natural sentences, never "
+        "read tool names, ids or symbols, do not stop half way. End by asking which part to explain or try. "
+        "For a 'can you ...?' question answer only that, from this list.";
     return true;
 }

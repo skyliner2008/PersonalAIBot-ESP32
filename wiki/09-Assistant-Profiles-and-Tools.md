@@ -42,7 +42,8 @@ status: implemented
 ├── โปรไฟล์ผู้ช่วย        (8 preset)
 ├── ชื่อผู้ช่วย / ชื่อของคุณ  (คีย์บอร์ดไทย-อังกฤษ)
 ├── เสียงพูด (30) • นิสัย (7) • เพศ/คำลงท้าย • สีดวงตา (8)
-├── Wi-Fi               (สแกนเครือข่าย → รหัสผ่าน, หรือป้อนชื่อเอง)
+├── Wi-Fi               (สแกนเครือข่าย → รหัสผ่าน, หรือป้อนชื่อเอง · เครือข่ายที่ "จำไว้" แตะแล้วต่อเลย)
+│   └── Wi-Fi ที่จำไว้   (สูงสุด 6 · แตะ = ลืม, มียืนยัน — T099)
 ├── API Key             (คีย์บอร์ดอังกฤษ, ซ่อน/แสดง)
 ├── โมเดล AI            (3.8 Live / 3.8 Extended Thinking / 3.1 Flash Live) + ระดับการคิด
 ├── ระดับเสียง • ความสว่างจอ • พักเมื่อเงียบ (1/3/5/10/30 นาที/ไม่พัก)
@@ -70,7 +71,7 @@ status: implemented
 
 ---
 
-## 3. Tools ของผู้ช่วยส่วนตัว (43 ฟังก์ชัน + Google Search ถ้าเปิด)
+## 3. Tools ของผู้ช่วยส่วนตัว (44 ฟังก์ชัน + Google Search ถ้าเปิด)
 
 > v3.1: +5 tools ข้อมูลสดพร้อมการ์ดกราฟิก — `get_weather`, `get_oil_price`, `get_market_quote`, `convert_currency`, `get_news` → [[11-Data-Tools-and-Cards]]
 > v3.2: +14 tools พอร์ตจาก PersonalAIBot — `calculate`, `convert_units`, `get_world_time`, `get_location`, `search_knowledge`, `notes` + finance pack (`market_overview`, `market_analysis`, `market_scan`, `economic_calendar`, `position_size`, `price_alert`) (MT5 `mt5_account`/`mt5_trade` เคยมีใน v3.2–v3.3 — ถอดออกใน v3.4) → [[11-Data-Tools-and-Cards#2) Tools ที่พอร์ตจาก PersonalAIBot (`composeApp`)]]
@@ -88,7 +89,8 @@ status: implemented
   (กติกาใน system prompt) · ผลสร้าง**ตอนเรียก**: รัน `addDeclarations()` อีกรอบพร้อมตัวเก็บ (`group()` เปิดหมวด, `declare()` ใส่ tool
   + ประโยคแรกของคำอธิบาย) → tool ใหม่ที่ประกาศในหมวดไหนก็โผล่ในหมวดนั้นเอง, หมวดที่ไม่มี tool (ไม่มีอุปกรณ์/มือถือ) ตัดทิ้ง ·
   `assistant` (ชื่อ/เสียง/นิสัย), `device` (เวอร์ชันเฟิร์มแวร์ — แทน "อัปเดตล่าสุด" ที่ต้องแก้มือแบบ `self_review.md` ของแอปมือถือ, ฮาร์ดแวร์, คำปลุก),
-  `connected` (Google Search ที่ setup เสนอจริง, ชุดการเงิน, มือถือ, หน้าปัด, อุปกรณ์ที่ต่อ), `how_to_present` (พูดเป็นภาษาธรรมชาติ ไม่อ่านชื่อ tool)
+  `connected` (Google Search ที่ setup เสนอจริง, ชุดการเงิน, มือถือ, หน้าปัด, อุปกรณ์ที่ต่อ), `how_to_present` (โหมดเล่า 2–3 นาที ครบทุกหมวด
+  พร้อมตัวอย่าง — ข้อยกเว้นของการตอบสั้น, ไม่อ่านชื่อ tool; T098) · รายการชั่วคราวสร้างใน PSRAM (T098)
   · ผล ~5 KB (ส่งเฉพาะตอนเรียก) · คำประกาศ +~200 ไบต์/เทิร์น · **เพิ่ม tool ใหม่:** ประกาศใต้ `group(...)` ที่เหมาะสมใน `AgentTools::addDeclarations` แค่นั้น
 - คำอธิบาย tools เป็นภาษาอังกฤษแบบสั้น (≈6 KB JSON ≈ 1.6k tokens) เพราะถูกนับทุก turn
 - **behavior ตามโมเดล:** 3.8 Live = `BLOCKING` (ยกเว้น `set_expression` = `NON_BLOCKING` + `scheduling: SILENT` — field ของ FunctionResponse ข้าง `response`, ใส่ใน `response` แล้วโมเดลพูดซ้ำ 2 รอบ T071), 3.8 Extended Thinking = `NON_BLOCKING` ทั้งหมด (BLOCKING = hard error), 3.1 Flash Live = ไม่ใส่ field

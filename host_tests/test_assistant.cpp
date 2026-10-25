@@ -281,7 +281,7 @@ TEST(tool_declarations_per_model) {
     size_t count;
     bool search;
     const size_t bytes = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)43);  // about_me + 25 core (incl. configure_device, rest_screen, mute_microphone, play_radio, stop_radio) + 5 live data + 6 utilities + 6 finance
+    CHECK_EQ(count, (size_t)44);  // about_me + 25 core (incl. configure_device, rest_screen, mute_microphone, play_radio, stop_radio) + 5 live data + 6 utilities + water + 6 finance
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
@@ -296,15 +296,17 @@ TEST(tool_declarations_per_model) {
     }
     CHECK(search);
     CHECK(recall == "BLOCKING" && expr == "NON_BLOCKING");
-    CHECK(bytes < 15200);  // billed every turn: keep the declarations compact (+200 for about_me, T096)
+    // billed every turn: keep the declarations compact (+200 for about_me, T096; +470 for water, T100 -
+    // switched off with "set water 0" like the finance pack)
+    CHECK(bytes < 15700);
     printf("    tool declarations: %u bytes JSON\n", (unsigned)bytes);
 
     // the vehicle dash: the board always declares it, so "เปิดหน้าปัด" works before a source is set (T079)
     rig.dev.vehicleOn = true;
     const size_t withVehicle = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)44);
+    CHECK_EQ(count, (size_t)45);
     CHECK(withVehicle - bytes < 400);  // one small tool
-    CHECK(withVehicle < 15600);        // what the board really sends every session
+    CHECK(withVehicle < 16100);        // what the board really sends every session
     printf("    + vehicle dash tool: %u bytes JSON\n", (unsigned)(withVehicle - bytes));
     {
         // default build (VEHICLE_BLE = 0): the model is not offered the Bluetooth source it cannot pick (T078)
@@ -329,7 +331,7 @@ TEST(tool_declarations_per_model) {
     // the phone app (wiki 18): `navigate` only once a phone was paired, small like the dash tool
     rig.dev.phoneOn = true;
     const size_t withPhone = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)44);
+    CHECK_EQ(count, (size_t)45);
     CHECK(withPhone - bytes < 450);
     printf("    + navigate tool: %u bytes JSON\n", (unsigned)(withPhone - bytes));
     JsonDocument nr;
@@ -341,13 +343,13 @@ TEST(tool_declarations_per_model) {
     CHECK(!callTool(rig.tools, "navigate", "{\"action\":\"fly\"}", nr));
     rig.dev.phoneOn = false;
 
-    // optional finance pack off -> 37 (no trading tools exist at all)
+    // optional finance pack off -> 38 (no trading tools exist at all)
     rig.tools.setFinancePack(false);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)37);
+    CHECK_EQ(count, (size_t)38);
     rig.tools.setFinancePack(true);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)43);
+    CHECK_EQ(count, (size_t)44);
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
@@ -1549,6 +1551,16 @@ TEST(thai_provinces) {
     }
     CHECK_EQ(th.size(), (size_t)77);
     CHECK_EQ(en.size(), (size_t)77);
+    // ThaiWater's province_code (T100): TIS 1099, unique, 10 (Bangkok) .. 96 (Narathiwat)
+    std::set<int> codes;
+    for (size_t i = 0; i < thaiplace::kProvinceCount; i++) {
+        codes.insert(thaiplace::kProvinces[i].code);
+        CHECK(thaiplace::kProvinces[i].code >= 10 && thaiplace::kProvinces[i].code <= 96);
+    }
+    CHECK_EQ(codes.size(), (size_t)77);
+    CHECK_EQ(findProvince("เชียงใหม่")->code, 50);
+    CHECK_EQ(findProvince("กรุงเทพมหานคร")->code, 10);
+    CHECK_EQ(findProvince("บึงกาฬ")->code, 38);
 
     auto is = [&](const char* name, const char* want) {
         const thaiplace::Province* p = findProvince(name);
@@ -1727,4 +1739,195 @@ TEST(radio_redirect_resolve) {
     char tiny[16];
     CHECK(!redirect::resolve("http://a.com/x", "/a-very-long-stream-path", tiny, sizeof(tiny)));  // never overruns
     CHECK(redirect::resolve("http://a.com/x", "/s", tiny, sizeof(tiny)) && !strcmp(tiny, "http://a.com/s"));
+}
+
+// ============================================================
+// Remembered Wi-Fi networks (T099)
+// ============================================================
+
+#include "util/WifiKnown.h"
+
+TEST(wifi_known_networks) {
+    wifiknown::List l;
+    CHECK(l.remember("Home", "pass1"));
+    CHECK(!l.remember("Home", "pass1"));        // already the latest, same password: nothing to write
+    CHECK(l.remember("Office", "pw2"));
+    CHECK(l.remember("Home", "pass1"));         // used again: becomes the latest
+    CHECK(l.remember("Home", "newpass"));
+    CHECK_EQ(l.size(), (size_t)2);
+    CHECK(!strcmp(l.at((size_t)l.find("Home")).pass, "newpass"));
+    CHECK(l.remember("Cafe", ""));              // open network
+    CHECK(!l.remember("", "x"));                // no name
+    CHECK(!l.remember("123456789012345678901234567890123", "x"));  // 33 bytes: too long for an SSID
+
+    // full: the least recently used goes (Office)
+    for (const char* s : {"A", "B", "C"}) CHECK(l.remember(s, "p"));
+    CHECK_EQ(l.size(), wifiknown::kMax);
+    CHECK(l.remember("D", "p"));
+    CHECK_EQ(l.size(), wifiknown::kMax);
+    CHECK(l.find("Office") < 0 && l.find("Home") >= 0 && l.find("D") >= 0);
+    CHECK(l.forget("D") && !l.forget("D"));
+
+    // pick: strongest in range; within 8 dB the more recently used; unknown networks ignored
+    wifiknown::List p;
+    p.remember("Old", "1");
+    p.remember("Recent", "2");
+    const wifiknown::Seen far[] = {{"Neighbour", -40}, {"Old", -50}, {"Recent", -70}};
+    CHECK(!strcmp(p.at((size_t)p.pick(far, 3)).ssid, "Old"));     // 20 dB stronger wins
+    const wifiknown::Seen close[] = {{"Old", -55}, {"Recent", -60}};
+    CHECK(!strcmp(p.at((size_t)p.pick(close, 2)).ssid, "Recent"));  // about the same: the one used last
+    const wifiknown::Seen none[] = {{"Neighbour", -40}, {nullptr, -30}};
+    CHECK_EQ(p.pick(none, 2), -1);
+    CHECK_EQ(p.pick(nullptr, 0), -1);
+
+    // the load path keeps the stored order numbers and refuses duplicates
+    wifiknown::List q;
+    CHECK(q.add("X", "1", 7) && !q.add("X", "2", 9));
+    CHECK(q.remember("Y", "3") && q.at((size_t)q.find("Y")).used == 8);
+}
+
+
+// ============================================================
+// ThaiWater answers (util/ThaiWater.h, T100) - trimmed real records from 2026-10-25
+// ============================================================
+
+#include "util/ThaiWater.h"
+
+TEST(thaiwater_parsing) {
+    using namespace thaiwater;
+    // situation by % of the bank (ThaiWater's own scale)
+    CHECK_EQ(levelFromPercent(NAN), 0);
+    CHECK_EQ(levelFromPercent(-13.67f), 1);
+    CHECK_EQ(levelFromPercent(10), 1);
+    CHECK_EQ(levelFromPercent(27.76f), 2);
+    CHECK_EQ(levelFromPercent(30.01f), 3);
+    CHECK_EQ(levelFromPercent(72.37f), 4);
+    CHECK_EQ(levelFromPercent(124.7f), 5);
+    CHECK(!strcmp(levelTh(5), "น้ำล้นตลิ่ง"));
+
+    // public/waterlevel?province_code=50
+    JsonDocument wl;
+    CHECK(!deserializeJson(wl, R"JSON({"result": "OK", "data": [{"waterlevel_datetime": "2026-10-25 22:20", "waterlevel_msl": "794.36", "storage_percent": "-13.67", "diff_wl_bank": "1.95", "station": {"id": 1121228, "tele_station_name": {"en": "Mae Tom Bridge", "th": "สะพานน้ำแม่ต๋อม"}, "tele_station_oldcode": "MOU298"}, "basin": {"basin_name": {"th": "ลุ่มน้ำปิง", "en": "Ping Basin"}}, "geocode": {"amphoe_name": {"th": "อมก๋อย", "en": "Omkoi District"}, "tumbon_name": {"th": "อมก๋อย", "en": "Omkoi"}}}, {"waterlevel_datetime": "2026-10-25 22:00", "waterlevel_msl": "273.01", "storage_percent": "27.76", "diff_wl_bank": "7.62", "station": {"id": 1422304, "tele_station_name": {"th": "แม่น้ำปิงที่ อ.จอมทอง"}, "tele_station_oldcode": "BBU01"}, "basin": {"basin_name": {"th": "ลุ่มน้ำปิง", "en": "Ping Basin"}}, "geocode": {"amphoe_name": {"th": "ดอยหล่อ", "en": "Doi Lo District"}, "tumbon_name": {"th": "ดอยหล่อ", "en": "Doi Lo"}}}, {"waterlevel_datetime": "2026-10-25 18:00", "waterlevel_msl": "265.06", "storage_percent": "72.37", "diff_wl_bank": "2.99", "station": {"id": 3164, "tele_station_name": {"th": "บ้านสบสอย"}, "tele_station_oldcode": "P.73"}, "basin": {"basin_name": {"th": "ลุ่มน้ำปิง", "en": "Ping Basin"}}, "geocode": {"amphoe_name": {"th": "จอมทอง", "en": "Chom Thong District"}, "tumbon_name": {"th": "แม่สอย", "en": "Mae Soi"}}}]})JSON"));
+    WaterLevel st[8];
+    size_t matched = 0;
+    size_t n = pickWaterLevels(wl["data"], "", st, 8, matched);
+    CHECK_EQ(n, (size_t)3);
+    CHECK_EQ(matched, (size_t)3);
+    CHECK(!strcmp(st[0].name, "บ้านสบสอย") && st[0].id == 3164 && st[0].level == 4);  // most filled first
+    CHECK(!strcmp(st[0].code, "P.73") && !strcmp(st[0].river, "ลุ่มน้ำปิง") && !strcmp(st[0].place, "อ.จอมทอง"));
+    CHECK(fabsf(st[0].msl - 265.06f) < 0.01f && fabsf(st[0].toBank - 2.99f) < 0.01f);
+    CHECK(!strcmp(st[0].time, "2026-10-25 18:00"));
+    CHECK_EQ(st[1].level, 2);
+    CHECK_EQ(st[2].level, 1);  // a negative % = below the gauge's low mark: critically low
+    n = pickWaterLevels(wl["data"], "จอมทอง", st, 8, matched);  // station name or district
+    CHECK_EQ(matched, (size_t)2);
+    n = pickWaterLevels(wl["data"], "ปิง", st, 8, matched);     // the basin
+    CHECK_EQ(matched, (size_t)3);
+    n = pickWaterLevels(wl["data"], "P.73", st, 8, matched);    // the station code
+    CHECK(matched == 1 && st[0].id == 3164);
+    n = pickWaterLevels(wl["data"], "", st, 2, matched);        // only the 2 most filled are kept
+    CHECK(n == 2 && matched == 3 && st[1].level == 2);
+    CHECK_EQ(pickWaterLevels(wl["data"], "ไม่มีสถานีนี้", st, 8, matched), (size_t)0);
+
+    // public/waterlevel_graph: nulls skipped, averaged into buckets
+    JsonDocument gr;
+    CHECK(!deserializeJson(gr, R"JSON({"result": "OK", "data": {"graph_data": [{"datetime": "2026-10-23 00:00", "value": 3.324}, {"datetime": "2026-10-23 00:10", "value": 3.324}, {"datetime": "2026-10-23 00:20", "value": 3.325}, {"datetime": "2026-10-23 00:30", "value": 3.323}, {"datetime": "2026-10-23 00:40", "value": 3.323}, {"datetime": "2026-10-25 22:40", "value": null}], "min_bank": 2.139, "warning_level": null, "critical_level": null}})JSON"));
+    float v[60];
+    char first[17], last[17];
+    CHECK_EQ(downsample(gr["data"]["graph_data"], v, 60, first, last, sizeof(first)), (size_t)5);
+    CHECK(!strcmp(first, "2026-10-23 00:00") && !strcmp(last, "2026-10-23 00:40"));
+    CHECK_EQ(downsample(gr["data"]["graph_data"], v, 2, first, last, sizeof(first)), (size_t)2);
+    CHECK(fabsf(v[0] - 3.3243f) < 0.001f && fabsf(v[1] - 3.323f) < 0.001f);
+    CHECK(fabsf(num(gr["data"]["min_bank"]) - 2.139f) < 0.001f);
+    CHECK(isnan(num(gr["data"]["warning_level"])));
+    char day[12];
+    CHECK(dayBefore("2026-10-01 00:10", 1, day, sizeof(day)) && !strcmp(day, "2026-09-30"));
+    CHECK(dayBefore("2028-03-01 06:00", 1, day, sizeof(day)) && !strcmp(day, "2028-02-29"));
+    CHECK(dayBefore("2026-10-25 22:30", 0, day, sizeof(day)) && !strcmp(day, "2026-10-25"));
+    CHECK(!dayBefore("", 1, day, sizeof(day)));
+
+    // public/rain_24h?province_code=50
+    JsonDocument rn;
+    CHECK(!deserializeJson(rn, R"JSON({"result": "OK", "data": [{"rain_24h": 19.2, "rainfall_datetime": "2026-10-25 22:00", "station": {"tele_station_name": {"en": "Piang Luang", "th": "อบต.เปียงหลวง"}}, "geocode": {"amphoe_name": {"th": "เวียงแหง", "en": "Wiang Haeng District"}, "tumbon_name": {"th": "เปียงหลวง", "en": "Piang Luang"}}}, {"rain_24h": 12, "rainfall_datetime": "2026-10-25 21:00", "station": {"tele_station_name": {"th": "บ้านม่วงเครือ"}}, "geocode": {"amphoe_name": {"th": "เวียงแหง", "en": "Wiang Haeng District"}, "tumbon_name": {"th": "เปียงหลวง", "en": "Piang Luang"}}}, {"rain_24h": 0, "rainfall_datetime": "2026-10-25 22:00", "station": {"tele_station_name": {"en": "Mae Sao bridge", "th": "สะพานห้วยแม่สาว"}}, "geocode": {"amphoe_name": {"th": "แม่อาย", "en": "Mae Ai District"}, "tumbon_name": {"th": "แม่สาว", "en": "Mae Sao"}}}, {"rain_24h": 0, "rainfall_datetime": "2026-10-25 21:00", "station": {"tele_station_name": {"th": "บ้านปางอั้น"}}, "geocode": {"amphoe_name": {"th": "ดอยสะเก็ด", "en": "Doi Saket District"}, "tumbon_name": {"th": "ป่าเมี่ยง", "en": "Pa Miang"}}}]})JSON"));
+    Rain top[8];
+    RainSummary sum;
+    n = pickRain(rn["data"], "rain_24h", "", top, 8, sum);
+    CHECK_EQ(n, (size_t)4);
+    CHECK(!strcmp(top[0].name, "อบต.เปียงหลวง") && fabsf(top[0].mm - 19.2f) < 0.01f && !strcmp(top[0].place, "อ.เวียงแหง"));
+    CHECK(sum.stations == 4 && sum.wet == 2 && fabsf(sum.max - 19.2f) < 0.01f && fabsf(sum.avg - 7.8f) < 0.01f);
+    CHECK(!strcmp(sum.time, "2026-10-25 22:00"));
+    n = pickRain(rn["data"], "rain_24h", "เวียงแหง", top, 8, sum);
+    CHECK(sum.stations == 2 && n == 2);
+    CHECK(!strcmp(rainTh(0), "ไม่มีฝน") && !strcmp(rainTh(19.2f), "ฝนปานกลาง") && !strcmp(rainTh(40), "ฝนหนัก"));
+    // rain_7d comes as a string ("25.90")
+    JsonDocument r7;
+    CHECK(!deserializeJson(r7, R"({"data":[{"rain_7d":"25.90","station":{"tele_station_name":{"th":"A"}},"geocode":{}}]})"));
+    CHECK(pickRain(r7["data"], "rain_7d", "", top, 8, sum) == 1 && fabsf(top[0].mm - 25.9f) < 0.01f);
+    char lbl[64];  // like WaterLevel::place (Thai = 3 bytes a character)
+    districtLabel(lbl, sizeof(lbl), "เขตบางรัก");
+    CHECK(!strcmp(lbl, "เขตบางรัก"));
+    districtLabel(lbl, sizeof(lbl), "บางขุนเทียน", true);  // ThaiWater's Bangkok districts come without "เขต"
+    CHECK(!strcmp(lbl, "เขตบางขุนเทียน"));
+
+    // "P.1" is that station, not also P.13 / P.17 (board test 2026-10-25); a part of a code still finds them all
+    JsonDocument codes;
+    CHECK(!deserializeJson(codes, R"({"data":[
+        {"storage_percent":"51","station":{"id":1,"tele_station_name":{"th":"สะพานนวรัฐ"},"tele_station_oldcode":"P.1"},"geocode":{}},
+        {"storage_percent":"60","station":{"id":13,"tele_station_name":{"th":"บ้านหนึ่ง"},"tele_station_oldcode":"P.13"},"geocode":{}},
+        {"storage_percent":"40","station":{"id":17,"tele_station_name":{"th":"บ้านสอง"},"tele_station_oldcode":"P.17"},"geocode":{}}]})"));
+    n = pickWaterLevels(codes["data"], "P.1", st, 8, matched);
+    CHECK(matched == 1 && st[0].id == 1);
+    n = pickWaterLevels(codes["data"], "สะพานนวรัฐ", st, 8, matched);
+    CHECK(matched == 1 && st[0].id == 1);
+    n = pickWaterLevels(codes["data"], "P.", st, 8, matched);
+    CHECK(matched == 3 && st[0].id == 13);
+}
+
+// whole country: one row per province, the highest station first (T100 province rankings)
+TEST(thaiwater_province_ranking) {
+    using namespace thaiwater;
+    JsonDocument rain;
+    CHECK(!deserializeJson(rain, R"({"data":[
+        {"rain_24h":19.2,"station":{"tele_station_name":{"th":"อบต.เปียงหลวง"}},"geocode":{"province_code":"50","province_name":{"th":"เชียงใหม่"},"amphoe_name":{"th":"เวียงแหง"}}},
+        {"rain_24h":0,"station":{"tele_station_name":{"th":"บ้านปางอั้น"}},"geocode":{"province_code":"50","province_name":{"th":"เชียงใหม่"},"amphoe_name":{"th":"ดอยสะเก็ด"}}},
+        {"rain_24h":74.5,"station":{"tele_station_name":{"th":"ส.คลองสนามชัย"}},"geocode":{"province_code":"10","province_name":{"th":"กรุงเทพมหานคร"},"amphoe_name":{"th":"บางขุนเทียน"}}},
+        {"rain_24h":8,"station":{"tele_station_name":{"th":"ปตร.บึงขวาง"}},"geocode":{"province_code":"10","province_name":{"th":"กรุงเทพมหานคร"},"amphoe_name":{"th":"มีนบุรี"}}},
+        {"rain_24h":30,"station":{"tele_station_name":{"th":"อุ้มผาง"}},"geocode":{"province_code":"63","province_name":{"th":"ตาก"},"amphoe_name":{"th":"อุ้มผาง"}}},
+        {"rain_24h":99,"station":{"tele_station_name":{"th":"เวียงจันทน์"}},"geocode":{"province_code":"","province_name":{"th":"สาธารณรัฐประชาธิปไตยประชาชนลาว"}}},
+        {"rain_24h":null,"station":{"tele_station_name":{"th":"ไม่มีค่า"}},"geocode":{"province_code":"63"}}]})"));
+    static ProvinceRank slots[kProvinceSlots];  // ~25 KB (the board keeps it in PSRAM)
+    ProvinceRank top[8];
+    size_t provinces = 0, stations = 0;
+    // fed one station at a time, as the board parses the nationwide answer
+    auto rank = [&](JsonArrayConst data, const char* key, bool level, const char* query, size_t max) {
+        ProvinceRanker r(slots, key, level, query);
+        for (JsonObjectConst s : data) r.add(s);
+        stations = r.stations();
+        return r.top(top, max, provinces);
+    };
+    size_t n = rank(rain["data"], "rain_24h", false, "", 8);
+    CHECK_EQ(n, (size_t)3);
+    CHECK(provinces == 3 && stations == 5);  // Laos and the missing value left out
+    CHECK(top[0].code == 10 && !strcmp(top[0].name, "กรุงเทพมหานคร") && fabsf(top[0].value - 74.5f) < 0.01f);
+    CHECK(!strcmp(top[0].station, "ส.คลองสนามชัย") && !strcmp(top[0].place, "เขตบางขุนเทียน"));
+    CHECK(top[0].stations == 2 && top[0].count == 2);
+    CHECK(top[1].code == 63 && top[2].code == 50);
+    CHECK(top[2].stations == 2 && top[2].count == 1);  // 0 mm is not "with rain"
+    n = rank(rain["data"], "rain_24h", false, "", 2);
+    CHECK(n == 2 && provinces == 3 && top[1].code == 63);  // only the top 2 kept, all 3 counted
+
+    JsonDocument wl;
+    CHECK(!deserializeJson(wl, R"({"data":[
+        {"storage_percent":"124.7","station":{"tele_station_name":{"th":"วัดท่าเจดีย์"},"tele_station_oldcode":"TTC06"},"basin":{"basin_name":{"th":"ลุ่มน้ำท่าจีน"}},"geocode":{"province_code":"72","province_name":{"th":"สุพรรณบุรี"},"amphoe_name":{"th":"สองพี่น้อง"}}},
+        {"storage_percent":"80","station":{"tele_station_name":{"th":"ข"}},"basin":{"basin_name":{"th":"ลุ่มน้ำท่าจีน"}},"geocode":{"province_code":"72","province_name":{"th":"สุพรรณบุรี"}}},
+        {"storage_percent":"40","station":{"tele_station_name":{"th":"ค"}},"basin":{"basin_name":{"th":"ลุ่มน้ำท่าจีน"}},"geocode":{"province_code":"72","province_name":{"th":"สุพรรณบุรี"}}},
+        {"storage_percent":"72.37","station":{"tele_station_name":{"th":"บ้านสบสอย"},"tele_station_oldcode":"P.73"},"basin":{"basin_name":{"th":"ลุ่มน้ำปิง"}},"geocode":{"province_code":"50","province_name":{"th":"เชียงใหม่"},"amphoe_name":{"th":"จอมทอง"}}},
+        {"storage_percent":"-13.67","station":{"tele_station_name":{"th":"สะพานน้ำแม่ต๋อม"}},"basin":{"basin_name":{"th":"ลุ่มน้ำปิง"}},"geocode":{"province_code":"50","province_name":{"th":"เชียงใหม่"}}}]})"));
+    n = rank(wl["data"], "storage_percent", true, "", 8);
+    CHECK(n == 2 && top[0].code == 72 && fabsf(top[0].value - 124.7f) < 0.1f);
+    CHECK(top[0].over == 1 && top[0].count == 2 && top[0].stations == 3);  // > 100 %: 1, > 70 %: 2
+    CHECK(!strcmp(top[0].river, "ลุ่มน้ำท่าจีน") && !strcmp(top[0].station, "วัดท่าเจดีย์"));
+    CHECK(top[1].code == 50 && top[1].over == 0 && top[1].count == 1);
+    n = rank(wl["data"], "storage_percent", true, "ปิง", 8);  // one basin
+    CHECK(n == 1 && top[0].code == 50 && stations == 2);
 }

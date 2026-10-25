@@ -192,6 +192,8 @@ void CardScreen::draw(LGFX_Sprite& c) {
         case CardData::Text: drawText(c); break;
         case CardData::Table: drawTable(c); break;
         case CardData::Analysis: drawAnalysis(c); break;
+        case CardData::Graph: drawGraph(c); break;
+        case CardData::Bars: drawBars(c); break;
         default: drawHeader(c); break;
     }
     // remaining time: thin bar at the very bottom
@@ -476,6 +478,111 @@ void CardScreen::drawTable(LGFX_Sprite& c) {
         gUi.drawFitted(c, r.name, 6, cy, ui::W - 18 - extraW, gUi.thai20(), ui::TEXT);
         if (r.extra[0]) gUi.drawFitted(c, r.extra, ui::W - 6, cy, 150, gUi.thai20(), r.color ? r.color : ui::ACCENT,
                                        textdatum_t::middle_right);
+    }
+}
+
+namespace {
+// "2026-10-25 22:30" -> "25/10 22:30"
+void shortTime(const char* when, char* out, size_t n) {
+    int y = 0, m = 0, d = 0, hh = 0, mm = 0;
+    if (sscanf(when, "%4d-%2d-%2d %2d:%2d", &y, &m, &d, &hh, &mm) >= 3) snprintf(out, n, "%d/%d %02d:%02d", d, m, hh, mm);
+    else snprintf(out, n, "%s", when);
+}
+
+void dashedHLine(LGFX_Sprite& c, int x0, int x1, int y, uint16_t col) {
+    for (int x = x0; x < x1; x += 8) c.drawFastHLine(x, y, x + 4 < x1 ? 4 : x1 - x, col);
+}
+}  // namespace
+
+// ---- one series over time (water level, T100): line + dashed bank / warning / critical levels ----
+void CardScreen::drawGraph(LGFX_Sprite& c) {
+    drawHeader(c);
+    const CardData::Series& g = _cur.g;
+    const uint16_t col = g.color ? g.color : ui::ACCENT;
+    if (_cur.big[0]) gUi.drawFitted(c, _cur.big, 8, 68, 200, gUi.thai26(), col);
+    char buf[24];
+    if (g.n) {
+        snprintf(buf, sizeof(buf), "%.2f %s", g.v[g.n - 1], g.unit);
+        gUi.drawFitted(c, buf, ui::W - 8, 68, 110, gUi.thai20(), ui::TEXT, textdatum_t::middle_right);
+    }
+    // a note under the big line ("ต่ำกว่าตลิ่ง 2.41 ม."): above the bank = red
+    if (_cur.body[0]) {
+        gUi.drawFitted(c, _cur.body, 8, 90, ui::W - 16, gUi.thai20(),
+                       strncmp(_cur.body, "สูง", strlen("สูง")) ? ui::DIM : 0xF800);
+    }
+    if (g.n < 2) return;
+
+    // y range: the data, plus a reference line when it is near enough to say something (bank first)
+    float lo = g.v[0], hi = g.v[0];
+    for (int i = 1; i < g.n; i++) {
+        lo = g.v[i] < lo ? g.v[i] : lo;
+        hi = g.v[i] > hi ? g.v[i] : hi;
+    }
+    const float span0 = hi - lo < 0.2f ? 0.2f : hi - lo;
+    for (float r : g.ref) {
+        if (isnan(r) || r < lo - span0 * 2 || r > hi + span0 * 2) continue;
+        lo = r < lo ? r : lo;
+        hi = r > hi ? r : hi;
+    }
+    const float pad = (hi - lo < 0.2f ? 0.2f : hi - lo) * 0.12f;
+    lo -= pad;
+    hi += pad;
+    const int x0 = 46, x1 = ui::W - 8, y0 = 104, y1 = 212;
+    auto py = [&](float v) { return y1 - (int)((v - lo) / (hi - lo) * (y1 - y0)); };
+    auto px = [&](int i) { return x0 + (x1 - x0) * i / (g.n - 1); };
+
+    c.drawRect(x0, y0, x1 - x0, y1 - y0 + 1, ui::LINE);
+    c.setFont(&fonts::Font0);
+    c.setTextColor(ui::DIM);
+    c.setTextDatum(textdatum_t::middle_right);
+    for (int k = 0; k <= 2; k++) {  // three level labels on the left
+        const float v = lo + (hi - lo) * k / 2;
+        snprintf(buf, sizeof(buf), "%.2f", v);
+        c.drawString(buf, x0 - 3, py(v));
+    }
+    static const char* const kRefName[3] = {"ตลิ่ง", "เตือนภัย", "วิกฤต"};
+    static const uint16_t kRefCol[3] = {0xF9E7, 0xFE60, 0xF800};
+    for (int k = 0; k < 3; k++) {
+        const float r = g.ref[k];
+        if (isnan(r) || r < lo || r > hi) continue;
+        dashedHLine(c, x0 + 1, x1, py(r), kRefCol[k]);
+        gUi.drawFitted(c, kRefName[k], x0 + 4, py(r) - 9, 70, gUi.thai20(), kRefCol[k]);
+    }
+    for (int i = 1; i < g.n; i++) c.drawWideLine(px(i - 1), py(g.v[i - 1]), px(i), py(g.v[i]), 1.5f, col);
+    c.fillCircle(px(g.n - 1), py(g.v[g.n - 1]), 3, col);
+
+    shortTime(g.from, buf, sizeof(buf));
+    c.setFont(&fonts::Font0);
+    c.setTextColor(ui::DIM);
+    c.setTextDatum(textdatum_t::top_left);
+    c.drawString(buf, x0, y1 + 6);
+    shortTime(g.to, buf, sizeof(buf));
+    c.setTextDatum(textdatum_t::top_right);
+    c.drawString(buf, x1, y1 + 6);
+}
+
+// ---- horizontal bars, one row each (rain per station, % of the bank per station; T100) ----
+void CardScreen::drawBars(LGFX_Sprite& c) {
+    drawHeader(c);
+    if (!_cur.rows) return;
+    const float marker = _cur.g.ref[0];  // e.g. 100 % = the bank (NAN = none)
+    float maxV = isnan(marker) ? 0 : marker;
+    for (int i = 0; i < _cur.rows; i++) maxV = _cur.row[i].value > maxV ? _cur.row[i].value : maxV;
+    if (maxV <= 0) maxV = 1;
+    const int top = 60, rowH = (ui::H - top - 4) / _cur.rows < 22 ? (ui::H - top - 4) / _cur.rows : 22;
+    const int bx0 = 132, bx1 = 270;
+    for (int i = 0; i < _cur.rows; i++) {
+        const CardData::Row& r = _cur.row[i];
+        const int y = top + i * rowH, cy = y + rowH / 2;
+        gUi.drawFitted(c, r.name, 6, cy, bx0 - 10, gUi.thai20(), ui::TEXT);
+        const int len = (int)((bx1 - bx0) * (r.value > 0 ? r.value : 0) / maxV);
+        c.fillRoundRect(bx0, y + 4, len > 2 ? len : 2, rowH - 8, 2, r.color ? r.color : ui::ACCENT);
+        gUi.drawFitted(c, r.extra, ui::W - 6, cy, ui::W - bx1 - 10, gUi.thai20(), r.color ? r.color : ui::TEXT,
+                       textdatum_t::middle_right);
+    }
+    if (!isnan(marker)) {  // dashed vertical line at the marker (the bank)
+        const int x = bx0 + (int)((bx1 - bx0) * marker / maxV);
+        for (int y = top; y < top + _cur.rows * rowH; y += 6) c.drawFastVLine(x, y, 3, 0xF9E7);
     }
 }
 

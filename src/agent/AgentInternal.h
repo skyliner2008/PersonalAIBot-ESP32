@@ -13,6 +13,7 @@
 #include <math.h>
 #include <new>
 #include <time.h>
+#include <vector>
 
 #include "../app/AppConfig.h"
 #include "../audio/RadioPlayer.h"

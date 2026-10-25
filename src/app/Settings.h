@@ -16,6 +16,8 @@
 
 #include <functional>
 
+#include "../util/WifiKnown.h"
+
 enum class LiveModel : uint8_t { Live38 = 0, Live38Thinking = 1, FlashLive31 = 2, Count };
 
 struct SettingsData {
@@ -38,6 +40,7 @@ struct SettingsData {
     uint8_t clockMinutes = 5;      // asleep this long -> power save: clock face + dimmed screen (0 = never)
     uint8_t dimBrightness = 8;     // screen brightness % while in power save
     bool financeTools = true;      // declare the market / finance tools (they cost tokens every turn)
+    bool waterTools = true;        // declare the ThaiWater `water` tool (water level / rain / storms, T100)
     uint8_t micGain = 5;           // ES8311 ADC scale step 0-7 (x6 dB); 5 = 30 dB, chosen by the user (normal voice at ~40 cm)
     bool micMuted = false;         // mic off survives reboots: only the screen button (or Studio) turns it back on
     uint8_t wakeMode = 2;          // asleep, what wakes it by voice: 0 loudness (as before), 1 wake word (ESP-SR), 2 both
@@ -95,6 +98,12 @@ public:
     /** True if this boot moved secrets from NVS to the SD card. */
     bool movedFromNvs() const { return _movedFromNvs; }
 
+    // ---- Wi-Fi networks connected to before (T099): passwords sealed, stored with the other secrets ----
+    /** Connected to it: remember / refresh it (written only when something changed). */
+    bool rememberWifi(const char* ssid, const char* pass);
+    bool forgetWifi(const char* ssid);
+    wifiknown::List knownWifi() const;
+
     /** Apply a persona preset (voice, gender, personality, eye color, agent name). */
     static bool applyProfile(SettingsData& d, const char* profileId);
 
@@ -113,6 +122,11 @@ private:
     bool _migrated = false;
     bool _nvsHasSecrets = false;  // sealed secrets found in NVS by load()
     char _sdSecrets[64] = "";     // "<root>/agent/secrets.json" when secrets live on the SD card
+    char _sdKnown[64] = "";       // "<root>/agent/wifi_known.json" (same place as the secrets)
+    wifiknown::List _known;       // guarded by _lock
+    bool _knownInNvs = false;     // load() found the list in NVS (moved to the card by attachSecretStore)
+    void persistKnown(const wifiknown::List& list);
+    void loadKnownFromSd();
     bool _imported = false;
     bool _movedFromNvs = false;
 

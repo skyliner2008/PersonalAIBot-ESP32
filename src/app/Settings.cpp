@@ -58,20 +58,19 @@ constexpr size_t kBlobCap = 192;  // longest secret (API key, 127 chars) + Secre
 // NVS keys of the MT5 bridge removed in v3.4 (deleted when found)
 constexpr const char* kLegacyKeys[] = {"mt5url", "mt5tok", "mt5tok_e", "mt5trade", "mt5lot"};
 
-// SD-card copy: {"v":1,"pass_e":"<base64 blob>","key_e":"..."}
-bool sealToJson(JsonDocument& doc, const char* name, const char* value) {
-    if (!*value) return true;
+constexpr size_t kSealedB64Cap = (kBlobCap + 2) / 3 * 4 + 1;  // base64 of the largest blob + '\0'
+
+/** `value` sealed under `name`, as base64 text. */
+bool sealB64(const char* name, const char* value, char* text) {
     uint8_t blob[kBlobCap];
     size_t n = 0;
     if (!secretbox::seal(name, value, blob, sizeof(blob), n)) return false;
-    char text[b64::encodedLength(kBlobCap) + 1];
     b64::encode(blob, n, text);
-    doc[name] = text;
     return true;
 }
 
-bool openFromJson(const JsonDocument& doc, const char* name, char* dst, size_t cap) {
-    const char* text = doc[name] | "";
+/** "" opens to "". false = not sealed by this board (or damaged). */
+bool openB64(const char* name, const char* text, char* dst, size_t cap) {
     if (!*text) {
         dst[0] = '\0';
         return true;
@@ -84,6 +83,58 @@ bool openFromJson(const JsonDocument& doc, const char* name, char* dst, size_t c
     strcpy(dst, tmp);
     memset(tmp, 0, sizeof(tmp));
     return true;
+}
+
+// SD-card copy: {"v":1,"pass_e":"<base64 blob>","key_e":"..."}
+bool sealToJson(JsonDocument& doc, const char* name, const char* value) {
+    if (!*value) return true;
+    char text[kSealedB64Cap];
+    if (!sealB64(name, value, text)) return false;
+    doc[name] = (const char*)text;
+    return true;
+}
+
+bool openFromJson(const JsonDocument& doc, const char* name, char* dst, size_t cap) {
+    return openB64(name, doc[name] | "", dst, cap);
+}
+
+// ---- Wi-Fi networks connected to before (T099) ----
+// {"v":1,"nets":[{"s":"<ssid>","p_e":"<sealed password>","u":<order of last use>}]} - in NVS ("wknown") or
+// next to secrets.json on the SD card. The SSIDs are plain, like the current one ("ssid" in NVS).
+constexpr const char* kKnownNvsKey = "wknown";
+constexpr const char* kKnownSeal = "wk_pass";
+
+bool knownToJson(const wifiknown::List& list, JsonDocument& doc) {
+    doc["v"] = 1;
+    JsonArray nets = doc["nets"].to<JsonArray>();
+    for (size_t i = 0; i < list.size(); i++) {
+        const wifiknown::Net& n = list.at(i);
+        JsonObject o = nets.add<JsonObject>();
+        o["s"] = (const char*)n.ssid;  // const char*: copied (a char array would be kept by pointer)
+        if (n.pass[0]) {
+            char text[kSealedB64Cap];
+            if (!sealB64(kKnownSeal, n.pass, text)) return false;
+            o["p_e"] = (const char*)text;
+        }
+        o["u"] = n.used;
+    }
+    return true;
+}
+
+/** Entries sealed by another board (an SD card moved over) are skipped. */
+void knownFromJson(const JsonDocument& doc, wifiknown::List& list) {
+    size_t skipped = 0;
+    for (JsonObjectConst o : doc["nets"].as<JsonArrayConst>()) {
+        char pass[sizeof(wifiknown::Net::pass)];
+        if (!openB64(kKnownSeal, o["p_e"] | "", pass, sizeof(pass))) {
+            skipped++;
+            continue;
+        }
+        list.add(o["s"] | "", pass, o["u"] | 0u);
+        memset(pass, 0, sizeof(pass));
+    }
+    if (skipped) Serial.printf("[Settings] %u remembered Wi-Fi networks were saved by another board - skipped\n",
+                               (unsigned)skipped);
 }
 
 bool readSecret(Preferences& p, const char* plainKey, const char* sealedKey, char* dst, size_t cap,
@@ -151,7 +202,9 @@ bool Settings::begin() {
     _saveLock = xSemaphoreCreateMutex();
     load();
     if (_plainFound || driverKeepsWifiCopy()) {
-        migrate();
+        const wifiknown::List known = _known;
+        migrate();  // erases the whole NVS partition: the remembered networks are written back
+        if (known.size()) persistKnown(known);
     } else if (_legacyFound) {
         save(_data);  // drops the old MT5 keys (secrets are not re-sealed: unchanged)
         Serial.println("[Settings] Removed the old MT5 bridge settings");
@@ -180,6 +233,14 @@ void Settings::load() {
     if (p.isKey("mt5tok")) _plainFound = true;  // a plain-text token: the NVS wipe in migrate() erases it
     readSecret(p, "pass", "pass_e", d.wifiPass, sizeof(d.wifiPass), _plainFound);
     readSecret(p, "key", "key_e", d.apiKey, sizeof(d.apiKey), _plainFound);
+    _knownInNvs = p.isKey(kKnownNvsKey);
+    if (_knownInNvs) {
+        JsonDocument doc;
+        if (!deserializeJson(doc, p.getString(kKnownNvsKey))) {
+            _known = wifiknown::List();
+            knownFromJson(doc, _known);
+        }
+    }
     if (p.isKey("agent")) p.getString("agent", d.agentName, sizeof(d.agentName));
     if (p.isKey("user")) p.getString("user", d.userName, sizeof(d.userName));
     if (p.isKey("voice")) p.getString("voice", d.voice, sizeof(d.voice));
@@ -209,6 +270,7 @@ void Settings::load() {
     if (d.wakeThreshold < 40 || d.wakeThreshold > 99) d.wakeThreshold = 50;
     if (p.isKey("radioname")) p.getString("radioname", d.radioName, sizeof(d.radioName));
     d.financeTools = p.getBool("fintools", d.financeTools);
+    d.waterTools = p.getBool("watertools", d.waterTools);
     if (d.micGain > 7) d.micGain = 7;
     d.rotation = p.getUChar("rot", d.rotation);
     d.lcdInvert = p.getBool("inv", d.lcdInvert);
@@ -345,6 +407,7 @@ void Settings::save(const SettingsData& d) {
     p.putUChar("wakethr", d.wakeThreshold);
     p.putString("radioname", d.radioName);
     p.putBool("fintools", d.financeTools);
+    p.putBool("watertools", d.waterTools);
     p.putUChar("rot", d.rotation);
     p.putBool("inv", d.lcdInvert);
     p.putBool("consol", d.consolidate);
@@ -442,6 +505,8 @@ void Settings::attachSecretStore(const char* sdRoot) {
     }
     // 1. Who holds the newest secrets? NVS only gets them while no card is attached, so NVS wins.
     copyStr(_sdSecrets, sizeof(_sdSecrets), sdPath);
+    snprintf(_sdKnown, sizeof(_sdKnown), "%s/%s/wifi_known.json", sdRoot, MEMORY_DIR_NAME);
+    if (!_knownInNvs) loadKnownFromSd();  // the same rule for the remembered networks
     const bool fromNvs = _nvsHasSecrets;
     bool sdOk = false;
     if (!fromNvs) {
@@ -483,12 +548,14 @@ void Settings::attachSecretStore(const char* sdRoot) {
     }
     if (!saveSdSecrets(d)) {
         _sdSecrets[0] = '\0';  // card not writable: stay on NVS
+        _sdKnown[0] = '\0';
         _sealedValid = false;
         save(d);
         Serial.println("[Settings] SD card not writable - secrets kept in NVS");
         return;
     }
     save(d);  // non-secret fields (SSID, ...) + removes pass_e / key_e from NVS
+    if (_knownInNvs) persistKnown(knownWifi());  // remembered networks follow the secrets onto the card
     _movedFromNvs = fromNvs;
     _nvsHasSecrets = false;
     if (_imported) {
@@ -498,6 +565,76 @@ void Settings::attachSecretStore(const char* sdRoot) {
     Serial.printf("[Settings] Secrets on the SD card (%s)%s\n", sdPath,
                   fromNvs ? " - moved from NVS" : (sdOk || _imported ? "" : " - none yet"));
     memset(&d, 0, sizeof(d));
+}
+
+// ============================================================
+// Wi-Fi networks connected to before (T099)
+// ============================================================
+
+bool Settings::rememberWifi(const char* ssid, const char* pass) {
+    wifiknown::List copy;
+    {
+        Guard g(_lock);
+        if (!_known.remember(ssid, pass)) return false;  // already the latest with this password: no write
+        copy = _known;
+    }
+    persistKnown(copy);
+    return true;
+}
+
+bool Settings::forgetWifi(const char* ssid) {
+    wifiknown::List copy;
+    {
+        Guard g(_lock);
+        if (!_known.forget(ssid)) return false;
+        copy = _known;
+    }
+    persistKnown(copy);
+    return true;
+}
+
+wifiknown::List Settings::knownWifi() const {
+    Guard g(_lock);
+    return _known;
+}
+
+void Settings::persistKnown(const wifiknown::List& list) {
+    Guard s(_saveLock);
+    JsonDocument doc;
+    if (!knownToJson(list, doc)) {
+        Serial.println("[Settings] ERROR: could not encrypt the remembered Wi-Fi networks - not saved");
+        return;
+    }
+    if (_sdKnown[0]) {
+        if (!jsonfile::save(_sdKnown, doc)) {
+            Serial.println("[Settings] ERROR: could not write wifi_known.json");
+            return;
+        }
+        if (_knownInNvs) {  // an older NVS copy would win on the next boot
+            Preferences p;
+            p.begin("cfg", false);
+            p.remove(kKnownNvsKey);
+            p.end();
+            _knownInNvs = false;
+        }
+        return;
+    }
+    String text;
+    serializeJson(doc, text);
+    Preferences p;
+    p.begin("cfg", false);
+    p.putString(kKnownNvsKey, text);
+    p.end();
+    _knownInNvs = true;
+}
+
+void Settings::loadKnownFromSd() {
+    JsonDocument doc;
+    if (!jsonfile::load(_sdKnown, doc)) return;  // none yet
+    wifiknown::List list;
+    knownFromJson(doc, list);
+    Guard g(_lock);
+    _known = list;
 }
 
 bool Settings::hasWifi() const {

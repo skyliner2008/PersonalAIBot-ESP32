@@ -296,6 +296,9 @@ static void printConfig() {
     d["fw"] = FIRMWARE_VERSION;
     d["ssid"] = s.wifiSsid;
     d["passSet"] = s.wifiPass[0] != '\0';  // secrets are never printed
+    const wifiknown::List known = gSettings.knownWifi();  // T099: names only
+    JsonArray kn = d["knownWifi"].to<JsonArray>();
+    for (size_t i = 0; i < known.size(); i++) kn.add((const char*)known.at(i).ssid);
     d["keySet"] = gSettings.hasApiKey();
     // enough to recognise which key is stored without printing it
     const size_t keyLen = strlen(s.apiKey);
@@ -326,6 +329,7 @@ static void printConfig() {
     d["wakeword"] = s.wakeWord;  // 0 Jarvis, 1 Hi ESP, 2 both (at boot)
     d["wakethreshold"] = s.wakeThreshold;  // x100
     d["finance"] = s.financeTools;
+    d["water"] = s.waterTools;
     d["secretsSealed"] = gSettings.secretsSealed();      // AES-GCM on flash (SecretBox)
     d["secretsMigratedAtBoot"] = gSettings.migratedAtBoot();
     d["secretsStore"] = gSettings.secretsStore();         // "sd" (agent/secrets.json) or "nvs"
@@ -443,7 +447,7 @@ static bool handleSet(const String& field, const String& value) {
     static const char* const kFields[] = {"ssid", "pass", "key", "agent", "user", "voice", "profile",
                                           "personality", "gender", "eye", "model", "thinking", "textmodel",
                                           "volume", "aivolume", "brightness", "sleep", "clock", "dimlevel", "rotation", "invert", "consolidate",
-                                          "search", "micgain", "touch", "finance", "wake", "wakeword", "wakethreshold"};
+                                          "search", "micgain", "touch", "finance", "water", "wake", "wakeword", "wakethreshold"};
     bool known = false;
     for (const char* f : kFields) known |= field == f;
     if (!known) return false;
@@ -495,6 +499,7 @@ static bool handleSet(const String& field, const String& value) {
         else if (field == "search") d.googleSearch = on;
         else if (field == "micgain") d.micGain = (uint8_t)constrain(value.toInt(), 0, 7);
         else if (field == "finance") d.financeTools = on;
+        else if (field == "water") d.waterTools = on;
         else if (field == "wakethreshold") d.wakeThreshold = (uint8_t)constrain(value.toFloat() < 1.0f ? value.toFloat() * 100.0f + 0.5f : value.toFloat(), 40, 99);
         else if (field == "wakeword") d.wakeWord = value == "jarvis" || value == "0" ? 0 : value == "both" || value == "2" ? 2 : 1;  // at boot
         else if (field == "wake") d.wakeMode = value == "level" ? 0 : value == "word" ? 1 : value == "both" ? 2 : (uint8_t)constrain(value.toInt(), 0, 2);
@@ -533,8 +538,9 @@ static void handleConsoleLine(String line) {
         Serial.println("ui tap x y | ui long x y | ui drag x0 y0 x1 y1 | ui open <menu|wifi|apikey|agent|user|profile|voice|info>");
         Serial.println("ui type <text> | ui back | ui home");
         Serial.println("set <ssid|pass|key|agent|user|voice|profile|personality|gender|eye|model|thinking|textmodel|");
-        Serial.println("     volume(radio)|aivolume(voice)|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|wake(level|word|both)|wakeword(hiesp|jarvis|both, reboot)|wakethreshold(0.40-0.99)> <value>");
+        Serial.println("     volume(radio)|aivolume(voice)|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|water|wake(level|word|both)|wakeword(hiesp|jarvis|both, reboot)|wakethreshold(0.40-0.99)> <value>");
         Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
+        Serial.println("wifi (remembered networks: WIFIKNOWN <json>) | wifi forget <ssid>");
         Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min|searchonly> | searchretry | trace [on|off]");
         Serial.println("time <unix-epoch> (set clock offline) | devices [reload | save <json>] | device <name> [on|off|0-100] | mem (internal RAM + task stacks) | wakeword [threshold x | test [sec]] | reboot");
         Serial.println("ota (status: OTA <json>) | ota check | ota install | ota rollback | ota fetch <https-url> | ota selftest");
@@ -555,6 +561,22 @@ static void handleConsoleLine(String line) {
         printTagged("DIAG", agent.runTool("_diag", "{}", r) ? r : String("{\"error\":\"busy\"}"));
     } else if (cmd == "wifiscan") {
         printWifiScan();
+    } else if (cmd == "wifi") {  // wifi [forget <ssid>] -> WIFIKNOWN {"connected","known":[...]} (T099, no passwords)
+        if (rest.startsWith("forget ")) {
+            const String ssid = rest.substring(7);
+            Serial.println(gSettings.forgetWifi(ssid.c_str()) ? "OK forgotten" : "ERR not remembered");
+        }
+        const wifiknown::List known = gSettings.knownWifi();
+        JsonDocument d;
+        d["connected"] = WiFi.status() == WL_CONNECTED ? WiFi.SSID() : String("");
+        JsonArray a = d["known"].to<JsonArray>();
+        for (size_t i = 0; i < known.size(); i++) {
+            JsonObject o = a.add<JsonObject>();
+            o["ssid"] = (const char*)known.at(i).ssid;
+            o["open"] = known.at(i).pass[0] == '\0';
+            o["used"] = known.at(i).used;
+        }
+        printTagged("WIFIKNOWN", d);
     } else if (cmd == "wakeword") {  // wakeword [threshold <0.4-0.9999>] -> WAKEWORD <json>
         WakeWord& w = agent.wakeWord();
         if (rest.startsWith("test")) {  // the speaker into the wake word for N s (then: ask it to say "Jarvis")

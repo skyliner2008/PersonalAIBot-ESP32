@@ -13,6 +13,7 @@
  *   fuel     oil-price.bangchak.co.th/ApiOilPrice2/th (today / yesterday / tomorrow)
  *   markets  scanner.tradingview.com/symbol (same endpoint the PersonalAIBot app uses)
  *   news     news.google.com RSS, Thai edition (streamed: only the first headlines are read)
+ *   water    api-v3.thaiwater.net (the public API of thaiwater.net): water level, rain, storms (WaterTools.cpp)
  */
 
 #pragma once

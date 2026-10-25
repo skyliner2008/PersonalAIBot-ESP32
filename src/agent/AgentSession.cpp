@@ -31,16 +31,25 @@ void AgentController::handleConnectivity() {
         WiFi.setAutoReconnect(false);  // retried below with back-off instead of every second
         _wifiRetryMs = kWifiRetryMinMs;
         _wifiFailures = 0;
-        WiFi.begin(_cfg.wifiSsid, _cfg.wifiPass);
+        _wifiScanning = false;
+        wifiBegin(_cfg.wifiSsid, _cfg.wifiPass);
         _wifiStarted = true;
-        _wifiBeginAt = now;
-        Serial.printf("[WiFi] Connecting to %s...\n", _cfg.wifiSsid);
+    }
+    if (_wifiScanning) {  // looking for a remembered network: nothing else until the scan answers
+        const int16_t found = WiFi.scanComplete();
+        if (found == WIFI_SCAN_RUNNING && now - _wifiScanAt < 15000) return;
+        wifiScanDone(found);
     }
     const bool up = WiFi.status() == WL_CONNECTED;
     if (up != _wifiUp) {
         _wifiUp = up;
         if (up) {
-            Serial.printf("[WiFi] Connected, IP %s, RSSI %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
+            Serial.printf("[WiFi] Connected to %s, IP %s, RSSI %d dBm\n", _wifiTarget,
+                          WiFi.localIP().toString().c_str(), WiFi.RSSI());
+            if (gSettings.rememberWifi(_wifiTarget, _wifiTargetPass)) {  // T099: joined before = joined again
+                Serial.printf("[WiFi] Remembered %s (%u networks)\n", _wifiTarget,
+                              (unsigned)gSettings.knownWifi().size());
+            }
             _wifiRetryMs = kWifiRetryMinMs;
             _wifiFailures = 0;
             if (_wifiErrorShown) {
@@ -60,7 +69,7 @@ void AgentController::handleConnectivity() {
         _wifiFailures++;
         if (_wifiFailures >= 3 && !_holdUntil && !_fatalError) {  // tell the user why
             char buf[160];
-            snprintf(buf, sizeof(buf), "ต่อ Wi-Fi \"%s\" ไม่ได้: %s (รหัส %u)", _cfg.wifiSsid,
+            snprintf(buf, sizeof(buf), "ต่อ Wi-Fi \"%s\" ไม่ได้: %s (รหัส %u)", _wifiTarget,
                      wifiReasonTh(gWifiReason.load()), (unsigned)gWifiReason.load());
             _face->setSystemText(buf, 0);
             _wifiErrorShown = true;
@@ -68,9 +77,19 @@ void AgentController::handleConnectivity() {
         Serial.printf("[WiFi] Retry %u in %lu s (last reason %u)\n", (unsigned)_wifiFailures,
                       (unsigned long)(_wifiRetryMs / 1000), (unsigned)gWifiReason.load());
         WiFi.disconnect();
-        WiFi.begin(_cfg.wifiSsid, _cfg.wifiPass);
-        _wifiBeginAt = now;
         _wifiRetryMs = _wifiRetryMs * 2 > kWifiRetryMaxMs ? kWifiRetryMaxMs : _wifiRetryMs * 2;
+        // T099: every 3rd failure, look for a remembered network in range (moved house, phone hotspot, ...)
+        // unless the settings menu is scanning itself
+        if (_wifiFailures % 3 == 2 && gSettings.knownWifi().size() > 0 && WiFi.scanComplete() != WIFI_SCAN_RUNNING) {
+            WiFi.scanDelete();
+            if (WiFi.scanNetworks(true, false) != WIFI_SCAN_FAILED) {
+                _wifiScanning = true;
+                _wifiScanAt = now;
+                Serial.println("[WiFi] Looking for a remembered network...");
+                return;
+            }
+        }
+        wifiBegin(_wifiTarget, _wifiTargetPass);
     }
 
     if (!_timeValidSeen && nowEpoch()) {
@@ -100,6 +119,58 @@ void AgentController::handleConnectivity() {
         _reconnectPending = false;
         _gemini.restart();  // resumes with the handle
     }
+}
+
+void AgentController::wifiBegin(const char* ssid, const char* pass) {
+    if (ssid != _wifiTarget) {  // a retry passes the current target itself
+        strncpy(_wifiTarget, ssid, sizeof(_wifiTarget) - 1);
+        _wifiTarget[sizeof(_wifiTarget) - 1] = '\0';
+        strncpy(_wifiTargetPass, pass, sizeof(_wifiTargetPass) - 1);
+        _wifiTargetPass[sizeof(_wifiTargetPass) - 1] = '\0';
+    }
+    WiFi.begin(_wifiTarget, _wifiTargetPass);
+    _wifiBeginAt = millis();
+    Serial.printf("[WiFi] Connecting to %s...\n", _wifiTarget);
+}
+
+/**
+ * The scan for remembered networks finished (T099). The configured network wins whenever it is in range;
+ * otherwise the best remembered one other than the network that just failed; nothing in range = the
+ * configured one again.
+ */
+void AgentController::wifiScanDone(int16_t found) {
+    _wifiScanning = false;
+    std::vector<String> names;
+    std::vector<wifiknown::Seen> seen;
+    bool primaryInRange = false;
+    for (int i = 0; i < found; i++) names.push_back(WiFi.SSID(i));
+    for (int i = 0; i < found; i++) {
+        if (!names[i].length()) continue;
+        seen.push_back({names[i].c_str(), (int)WiFi.RSSI(i)});
+        primaryInRange |= names[i] == _cfg.wifiSsid;
+    }
+    WiFi.scanDelete();
+    const bool onPrimary = !strcmp(_wifiTarget, _cfg.wifiSsid);
+    if (!onPrimary && primaryInRange) {
+        Serial.printf("[WiFi] %s is in range again\n", _cfg.wifiSsid);
+        wifiBegin(_cfg.wifiSsid, _cfg.wifiPass);
+        return;
+    }
+    wifiknown::List known = gSettings.knownWifi();
+    known.forget(_wifiTarget);  // it just failed
+    const int pick = known.pick(seen.data(), seen.size());
+    if (pick < 0) {
+        Serial.printf("[WiFi] No remembered network in range (%d seen)\n", (int)found);
+        wifiBegin(_cfg.wifiSsid, _cfg.wifiPass);
+        return;
+    }
+    const wifiknown::Net& n = known.at((size_t)pick);
+    Serial.printf("[WiFi] %s not reachable - trying remembered network %s\n", _wifiTarget, n.ssid);
+    char buf[160];
+    snprintf(buf, sizeof(buf), "ต่อ \"%s\" ไม่ได้ — ลองใช้ Wi-Fi ที่เคยต่อ \"%s\"", _wifiTarget, n.ssid);
+    _face->setSystemText(buf, 8000);
+    _wifiRetryMs = kWifiRetryMinMs;
+    wifiBegin(n.ssid, n.pass);
 }
 
 void AgentController::startFreshSession(const char* hint) {
@@ -138,7 +209,8 @@ void AgentController::buildSystemPrompt(PsString& p) {
     p += pers.prompt;
     // what it can do changes with the firmware and what is connected: read it, never from memory (about_me)
     p += "\nตัวตน: ถ้าผู้ใช้ถามว่าคุณเป็นใคร ทำอะไรได้บ้าง ขอให้แนะนำ/นำเสนอ/รีวิวตัวเอง หรือถามว่าทำสิ่งใดได้ไหม "
-         "ให้เรียก about_me แล้วตอบจากผลนั้นเท่านั้น (ความสามารถเพิ่มขึ้นเมื่ออัปเดตเฟิร์มแวร์ ห้ามตอบจากความจำ)";
+         "ให้เรียก about_me แล้วตอบจากผลนั้นเท่านั้น (ความสามารถเพิ่มขึ้นเมื่ออัปเดตเฟิร์มแวร์ ห้ามตอบจากความจำ) "
+         "การแนะนำ/นำเสนอ/รีวิวตัวเองเป็นข้อยกเว้นของการตอบสั้น: เล่าให้ครบทุกหมวดตาม how_to_present";
     p += "\nการพูด: ตอบเป็นภาษาเดียวกับที่ผู้ใช้พูด (ปกติภาษาไทย) สั้น เป็นธรรมชาติ ";
     p += persona::politeParticle((persona::Gender)_cfg.gender);
     p += " ไม่อ่านสัญลักษณ์หรือรายการยาว\n"
@@ -151,6 +223,11 @@ void AgentController::buildSystemPrompt(PsString& p) {
          "ราคาน้ำมันในไทย = get_oil_price, หุ้น/ดัชนี/ทองคำ/คริปโต/ค่าเงิน/น้ำมันดิบ = get_market_quote, "
          "แลกเงิน = convert_currency, ข่าว = get_news, คิดเลข = calculate (ห้ามคิดเลขเอง), แปลงหน่วย = convert_units, "
          "เวลาต่างประเทศ = get_world_time, ความรู้ทั่วไป/ใครคือ/คืออะไร = search_knowledge, จดโน้ตยาว = notes ";
+    if (_cfg.waterTools) {  // T100: measured data, while get_weather is the forecast
+        p += "น้ำ (วัดจริงจากคลังข้อมูลน้ำแห่งชาติ): ระดับน้ำ/น้ำท่วม/น้ำล้นตลิ่ง = water level, ฝนตกไปเท่าไร = water rain, "
+             "พายุ = water storm · ใส่ province เมื่อถามถึงจังหวัด/สถานที่ · ทั่วประเทศ/จังหวัดไหนหนักสุด = ไม่ใส่ province "
+             "(ได้ 8 จังหวัดสูงสุด, ใช้เวลาราว 10 วิ: บอกผู้ใช้ว่ากำลังดึงข้อมูลทั้งประเทศ) ";
+    }
     if (_cfg.financeTools) {
         p += "การเงิน: ภาพรวมตลาด = market_overview, วิเคราะห์เทคนิค = market_analysis, หุ้นเด่น/ร่วง = market_scan, "
              "ข่าวเศรษฐกิจ = economic_calendar, ขนาด lot = position_size, แจ้งเตือนราคา = price_alert "
