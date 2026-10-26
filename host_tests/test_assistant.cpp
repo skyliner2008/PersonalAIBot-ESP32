@@ -1795,6 +1795,18 @@ TEST(wifi_known_networks) {
     wifiknown::List q;
     CHECK(q.add("X", "1", 7) && !q.add("X", "2", 9));
     CHECK(q.remember("Y", "3") && q.at((size_t)q.find("Y")).used == 8);
+
+    // stronger (T103): on a weak router, the remembered hotspot back next to the board wins by >= 10 dB
+    wifiknown::List s;
+    s.remember("HONOR X9d", "a");
+    s.remember("Katebooncho 2", "b");
+    const wifiknown::Seen back[] = {{"Katebooncho 2", -62}, {"HONOR X9d", -30}, {"Neighbour", -20}};
+    CHECK(!strcmp(s.at((size_t)s.stronger(back, 3, "Katebooncho 2", -62, 10)).ssid, "HONOR X9d"));
+    CHECK_EQ(s.stronger(back, 3, "HONOR X9d", -30, 10), -1);  // already on the strongest: the unknown one is ignored
+    const wifiknown::Seen near[] = {{"Katebooncho 2", -60}, {"HONOR X9d", -55}};
+    CHECK_EQ(s.stronger(near, 2, "Katebooncho 2", -60, 10), -1);  // 5 dB better: not worth dropping the link
+    const wifiknown::Seen gone[] = {{"Katebooncho 2", -60}};
+    CHECK_EQ(s.stronger(gone, 1, "Katebooncho 2", -60, 10), -1);
 }
 
 

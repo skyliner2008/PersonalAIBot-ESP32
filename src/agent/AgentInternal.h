@@ -31,6 +31,7 @@
 #include "../vehicle/Vehicle.h"
 #include "Personas.h"
 #include "WebTools.h"
+#include "WifiLink.h"  // gWifiReason, wifiReasonTh (shared with the settings menu)
 
 namespace agentdetail {
 
@@ -40,27 +41,11 @@ inline constexpr size_t kWakeBufferSamples = AUDIO_UPLOAD_RATE * 6;  // 6 s spok
 inline constexpr uint32_t kWifiRetryMinMs = 3000;   // back-off between Wi-Fi attempts: 3 s doubling to 60 s
 inline constexpr uint32_t kWifiRetryMaxMs = 60000;   // (routers block clients that retry every second)
 inline constexpr uint32_t kWifiScanTimeoutMs = 15000;     // a remembered-network scan that has not answered by then is stopped
-inline constexpr uint32_t kWifiPrimaryCheckMs = 300000;   // on a remembered network: look for the configured one every 5 min (asleep only)
+inline constexpr uint32_t kWifiBetterCheckMs = 120000;    // connected, asleep: look for a much stronger remembered network every 2 min (T103)
+inline constexpr int kWifiSwitchMarginDb = 10;            // ... "much stronger" = at least this many dB (no flip-flopping)
 inline constexpr uint32_t kThinkingTimeoutMs = 12000;
 inline constexpr uint32_t kLateReminderSec = 15 * 60;  // fired this late = missed while the board was off
 inline constexpr uint32_t kSearchThinkingTimeoutMs = AGENT_NO_REPLY_SEARCH_MS;  // Google Search answers take longer
-
-inline std::atomic<uint8_t> gWifiReason{0};  // last STA disconnect reason (Wi-Fi event task)
-
-inline const char* wifiReasonTh(uint8_t r) {
-    switch (r) {
-        case WIFI_REASON_AUTH_EXPIRE: return "เราเตอร์ปฏิเสธการเชื่อมต่อ";
-        case WIFI_REASON_AUTH_FAIL:
-        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
-        case WIFI_REASON_HANDSHAKE_TIMEOUT: return "รหัสผ่านอาจไม่ถูกต้อง";
-        case WIFI_REASON_NO_AP_FOUND: return "ไม่พบเครือข่าย";
-        case WIFI_REASON_BEACON_TIMEOUT: return "สัญญาณอ่อน";
-        case WIFI_REASON_ASSOC_TOOMANY: return "เราเตอร์รับเครื่องเพิ่มไม่ได้";
-        case WIFI_REASON_TIMEOUT:
-        case WIFI_REASON_CONNECTION_FAIL: return "เราเตอร์ไม่ตอบ";
-        default: return "เชื่อมต่อไม่สำเร็จ";
-    }
-}
 
 inline ltm::MemoryStore::Options memoryOptions() {
     ltm::MemoryStore::Options o;

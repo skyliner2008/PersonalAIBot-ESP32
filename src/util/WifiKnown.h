@@ -119,6 +119,24 @@ public:
         return best;
     }
 
+    /**
+     * Connected to `current` at `currentRssi` dBm: a known network in `seen` at least `marginDb` stronger, to move
+     * to (T103: the phone hotspot came back next to the board while it sat on a weak router). The margin keeps two
+     * networks of about the same strength from swapping back and forth. -1 = stay.
+     */
+    int stronger(const Seen* seen, size_t count, const char* current, int currentRssi, int marginDb) const {
+        int best = -1, bestRssi = -1000;
+        for (size_t s = 0; s < count; s++) {
+            if (!seen[s].ssid || (current && !strcmp(seen[s].ssid, current))) continue;
+            const int i = find(seen[s].ssid);
+            if (i >= 0 && seen[s].rssi > bestRssi) {
+                best = i;
+                bestRssi = seen[s].rssi;
+            }
+        }
+        return best >= 0 && bestRssi >= currentRssi + marginDb ? best : -1;
+    }
+
 private:
     Net _items[kMax];
     size_t _count = 0;

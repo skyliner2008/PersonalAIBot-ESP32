@@ -37,6 +37,15 @@ void AgentController::handleConnectivity() {
         wifiBegin(_cfg.wifiSsid, _cfg.wifiPass);
         _wifiStarted = true;
     }
+    if (gWifiJoinPrimaryNow.exchange(false)) {  // the menu: the configured network was tapped (T102)
+        Serial.printf("[WiFi] Joining %s now (menu)\n", _cfg.wifiSsid);
+        if (_wifiScanning) esp_wifi_scan_stop();
+        _wifiScanning = false;
+        _wifiFailures = 0;
+        _wifiRetryMs = kWifiRetryMinMs;
+        if (WiFi.status() == WL_CONNECTED) WiFi.disconnect();
+        wifiBegin(_cfg.wifiSsid, _cfg.wifiPass);
+    }
     if (_wifiScanning) {  // looking for a remembered network (or, connected, for the configured one again)
         const int16_t found = WiFi.scanComplete();
         if (found != WIFI_SCAN_RUNNING || now - _wifiScanAt >= kWifiScanTimeoutMs) {
@@ -52,6 +61,7 @@ void AgentController::handleConnectivity() {
         if (up) {
             Serial.printf("[WiFi] Connected to %s, IP %s, RSSI %d dBm\n", _wifiTarget,
                           WiFi.localIP().toString().c_str(), WiFi.RSSI());
+            if (!strcmp(_wifiTarget, _cfg.wifiSsid)) gWifiPrimaryReason = 0;
             if (gSettings.rememberWifi(_wifiTarget, _wifiTargetPass)) {  // T099: joined before = joined again
                 Serial.printf("[WiFi] Remembered %s (%u networks)\n", _wifiTarget,
                               (unsigned)gSettings.knownWifiCount());
@@ -71,8 +81,11 @@ void AgentController::handleConnectivity() {
             _wifiBeginAt = now;
         }
     }
-    if (!up && now - _wifiBeginAt > _wifiRetryMs) {
+    // signed: wifiBegin() stamps millis(), a few ms after `now` - unsigned, that read as "4 billion ms ago" and
+    // retried at once (a 2nd begin right after a network change, board log T102)
+    if (!up && (int32_t)(now - _wifiBeginAt) > (int32_t)_wifiRetryMs) {
         _wifiFailures++;
+        if (!strcmp(_wifiTarget, _cfg.wifiSsid)) gWifiPrimaryReason = gWifiReason.load();  // for the menu (T102)
         if (_wifiFailures >= 3 && !_holdUntil && !_fatalError) {  // tell the user why
             char buf[160];
             snprintf(buf, sizeof(buf), "ต่อ Wi-Fi \"%s\" ไม่ได้: %s (รหัส %u)", _wifiTarget,
@@ -85,8 +98,9 @@ void AgentController::handleConnectivity() {
         WiFi.disconnect();
         _wifiRetryMs = _wifiRetryMs * 2 > kWifiRetryMaxMs ? kWifiRetryMaxMs : _wifiRetryMs * 2;
         // T099: every 3rd failure, look for a remembered network in range (moved house, phone hotspot, ...)
-        // unless the settings menu is scanning itself
-        if (_wifiFailures % 3 == 2 && gSettings.knownWifiCount() > 0 && wifiStartScan(now)) {
+        // unless the settings menu is scanning itself. Not before the 3rd (~21 s with the back-off): a network
+        // just picked in the menu gets its chance before an old remembered one takes over (T102)
+        if (_wifiFailures % 3 == 0 && gSettings.knownWifiCount() > 0 && wifiStartScan(now)) {
             Serial.println("[WiFi] Looking for a remembered network...");
             return;
         }
@@ -94,9 +108,11 @@ void AgentController::handleConnectivity() {
     }
     // T099: on a remembered network (hotspot, ...) look for the configured one now and then and go back to it -
     // only while asleep: the switch drops the connection, never in the middle of a conversation
-    if (up && _sleeping && !_wifiScanning && strcmp(_wifiTarget, _cfg.wifiSsid) &&
-        now - _wifiScanAt >= kWifiPrimaryCheckMs && wifiStartScan(now)) {
-        Serial.printf("[WiFi] On %s - is %s back in range?\n", _wifiTarget, _cfg.wifiSsid);
+    // T103: connected, look for a remembered network with a much stronger signal (the phone hotspot back next to
+    // the board) and move to it
+    if (up && _sleeping && !_wifiScanning && now - _wifiScanAt >= kWifiBetterCheckMs &&
+        (gSettings.knownWifiCount() >= 2 || strcmp(_wifiTarget, _cfg.wifiSsid)) && wifiStartScan(now)) {
+        Serial.printf("[WiFi] On %s (%d dBm) - looking for a stronger remembered network\n", _wifiTarget, WiFi.RSSI());
     }
 
     if (!_timeValidSeen && nowEpoch()) {
@@ -151,8 +167,8 @@ void AgentController::wifiBegin(const char* ssid, const char* pass) {
 /**
  * The scan for remembered networks finished (T099). The configured network wins whenever it is in range;
  * otherwise the best remembered one other than the network that just failed; nothing in range = the
- * configured one again. Connected to a remembered network (the 5-minute check): back to the configured one
- * when it is in range, else stay.
+ * configured one again. Connected (the 2-minute check while asleep, T103): move to a remembered network at
+ * least kWifiSwitchMarginDb stronger than the current one, else stay.
  */
 void AgentController::wifiScanDone(int16_t found) {
     _wifiScanning = false;
@@ -167,18 +183,41 @@ void AgentController::wifiScanDone(int16_t found) {
     }
     // the results are left for the next scan to clear: the settings menu may be reading the same scan
     const bool onPrimary = !strcmp(_wifiTarget, _cfg.wifiSsid);
+    if (WiFi.status() == WL_CONNECTED) {
+        int current = WiFi.RSSI();
+        for (const wifiknown::Seen& s : seen) {
+            if (!strcmp(s.ssid, _wifiTarget)) current = s.rssi;  // from the same scan as the others: comparable
+        }
+        wifiknown::List known = gSettings.knownWifi();
+        const int better = known.stronger(seen.data(), seen.size(), _wifiTarget, current, kWifiSwitchMarginDb);
+        if (better >= 0) {
+            const wifiknown::Net& n = known.at((size_t)better);
+            Serial.printf("[WiFi] %s is %d+ dB stronger than %s (%d dBm) - switching\n", n.ssid, kWifiSwitchMarginDb,
+                          _wifiTarget, current);
+            WiFi.disconnect();
+            _wifiRetryMs = kWifiRetryMinMs;
+            _wifiFailures = 0;
+            wifiBegin(n.ssid, n.pass);
+        } else if (!onPrimary && primaryInRange && known.find(_cfg.wifiSsid) < 0) {
+            // the configured network was never joined (not remembered, nothing to compare): back to it as before
+            Serial.printf("[WiFi] %s is in range again\n", _cfg.wifiSsid);
+            WiFi.disconnect();
+            wifiBegin(_cfg.wifiSsid, _cfg.wifiPass);
+        }
+        return;
+    }
     if (!onPrimary && primaryInRange) {
         Serial.printf("[WiFi] %s is in range again\n", _cfg.wifiSsid);
-        if (WiFi.status() == WL_CONNECTED) WiFi.disconnect();
         wifiBegin(_cfg.wifiSsid, _cfg.wifiPass);
         return;
     }
-    if (WiFi.status() == WL_CONNECTED) return;  // the check for the configured network: stay where we are
     wifiknown::List known = gSettings.knownWifi();
     known.forget(_wifiTarget);  // it just failed
     const int pick = known.pick(seen.data(), seen.size());
     if (pick < 0) {
-        Serial.printf("[WiFi] No remembered network in range (%d seen)\n", (int)found);
+        String names;  // which ones the scan saw (a remembered network missing here = not heard in this scan)
+        for (const wifiknown::Seen& s : seen) names += String(names.length() ? ", " : "") + s.ssid + " " + s.rssi;
+        Serial.printf("[WiFi] No remembered network in range (%d seen: %s)\n", (int)found, names.c_str());
         wifiBegin(_cfg.wifiSsid, _cfg.wifiPass);
         return;
     }

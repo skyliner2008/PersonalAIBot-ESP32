@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "../agent/Personas.h"
+#include "../agent/WifiLink.h"
 #include "../app/AppConfig.h"
 #include "../app/Settings.h"
 #include "../system/OtaUpdater.h"
@@ -373,6 +374,23 @@ void askWifiPassword(const String& ssid) {
     });
 }
 
+/** The network really joined ("" = none): a remembered one while the configured one is away (T099/T102). */
+String joinedSsid() {
+    return WiFi.status() == WL_CONNECTED ? WiFi.SSID() : String("");
+}
+
+/** A list showing the connection rebuilds itself when the board joins / leaves / switches network (T102). */
+bool joinedChanged(uint32_t now) {
+    static uint32_t lastCheck = 0;
+    static String last;
+    if (now - lastCheck < 1000) return false;
+    lastCheck = now;
+    const String j = joinedSsid();
+    if (j == last) return false;
+    last = j;
+    return true;
+}
+
 /**
  * Networks the board joined before (T099): it switches to the strongest of them in range by itself when the
  * configured one cannot be reached. Tap = forget (the password goes with it).
@@ -381,11 +399,15 @@ void openKnownWifi() {
     gWifiKnown.setup("Wi-Fi ที่จำไว้", [](ListScreen& l) {
         const wifiknown::List known = gSettings.knownWifi();
         const SettingsData s = gSettings.get();
-        l.add("ต่อตัวที่แรงที่สุดเองเมื่อ Wi-Fi หลักใช้ไม่ได้", "", nullptr);
+        const String joined = joinedSsid();
+        l.add("ต่อตัวที่สัญญาณแรงที่สุดเอง", "หลักใช้ไม่ได้ / มีตัวที่แรงกว่าชัดเจน", nullptr);  // T099 / T103
         for (size_t i = 0; i < known.size(); i++) {
             const String ssid = known.at(i).ssid;
-            const bool current = ssid == s.wifiSsid;
-            ListScreen::Item& it = l.add(ssid, current ? "Wi-Fi หลัก • แตะเพื่อลืม" : "แตะเพื่อลืม", [ssid]() {
+            const bool primary = ssid == s.wifiSsid;
+            const bool on = ssid == joined;
+            String value = on ? "เชื่อมต่ออยู่ • " : "";
+            value += primary ? "Wi-Fi หลัก • แตะเพื่อลืม" : "แตะเพื่อลืม";
+            ListScreen::Item& it = l.add(ssid, value, [ssid]() {
                 static String text;
                 text = "ลืม \"" + ssid + "\" และรหัสผ่าน? ต่ออีกครั้งต้องใส่รหัสใหม่";
                 gConfirm.ask("ลืม Wi-Fi", text.c_str(), "ลืม", [ssid]() {
@@ -393,7 +415,7 @@ void openKnownWifi() {
                     gWifiKnown.rebuild();
                 });
             });
-            it.checked = current;
+            it.checked = on;
         }
     });
     gUi.push(&gWifiKnown);
@@ -402,6 +424,18 @@ void openKnownWifi() {
 void openWifi() {
     gWifi.setup("Wi-Fi", [](ListScreen& l) {
         const SettingsData s = gSettings.get();
+        // what is really joined - it is not always the configured network (T102: the menu used to tick that one)
+        const String joined = joinedSsid();
+        const uint8_t primaryReason = gWifiPrimaryReason.load();
+        if (joined.length()) {
+            l.add("เชื่อมต่ออยู่: " + joined,
+                  joined == s.wifiSsid ? String("Wi-Fi หลัก") : "Wi-Fi ที่จำไว้ • หลัก \"" + String(s.wifiSsid) + "\"",
+                  nullptr);
+        } else if (s.wifiSsid[0]) {
+            l.add("ยังไม่ได้เชื่อมต่อ", "กำลังต่อ \"" + String(s.wifiSsid) + "\"" +
+                                           (primaryReason ? String(" • ") + wifiReasonTh(primaryReason) : String("")),
+                  nullptr);
+        }
         if (gScanning) {
             l.add("กำลังค้นหาเครือข่าย...", "", nullptr);
         } else if (gScanFailed) {
@@ -413,14 +447,29 @@ void openWifi() {
         for (const Net& n : gNets) {
             const char* q = n.rssi > -60 ? "แรง" : (n.rssi > -72 ? "ปานกลาง" : "อ่อน");
             const bool remembered = gSettings.isKnownWifi(n.ssid.c_str());
-            const bool current = n.ssid == s.wifiSsid;
-            // tapping the configured network again = its password changed / is wrong: the keyboard
-            String value = String(q) + (n.open ? " • เปิด" : "") +
-                           (remembered ? (current && !n.open ? " • แตะเพื่อใส่รหัสใหม่" : " • จำไว้") : "");
-            ListScreen::Item& it = l.add(n.ssid, value, [n, current]() {
+            const bool primary = n.ssid == s.wifiSsid;
+            const bool on = n.ssid == joined;
+            const bool wrongPass = primary && !on && !n.open && wifiReasonIsAuth(primaryReason);
+            String value = String(q) + (n.open ? " • เปิด" : "");
+            if (on) value += " • เชื่อมต่ออยู่";
+            else if (wrongPass) value += " • รหัสผ่านผิด แตะใส่ใหม่";
+            else if (primary) value += " • หลัก แตะเพื่อต่อ";
+            else if (remembered) value += " • จำไว้";
+            ListScreen::Item& it = l.add(n.ssid, value, [n, primary, on, wrongPass]() {
+                if (primary && !wrongPass && (!on || n.open)) {
+                    // the configured network: join it now with its password (T102) - no settings change, so the
+                    // agent is asked directly instead of waiting for its next retry / 5-minute check
+                    if (!on) gWifiJoinPrimaryNow = true;
+                    gUi.pop();
+                    return;
+                }
+                if (primary) {  // wrong password, or joined and tapped again: a new password
+                    askWifiPassword(n.ssid);
+                    return;
+                }
                 const wifiknown::List saved = gSettings.knownWifi();
                 const int i = saved.find(n.ssid.c_str());
-                if (i >= 0 && !(current && !n.open)) {  // joined before (T099): its saved password, no keyboard
+                if (i >= 0) {  // joined before (T099): its saved password, no keyboard
                     gSettings.update([&](SettingsData& d) {
                         strncpy(d.wifiSsid, saved.at((size_t)i).ssid, sizeof(d.wifiSsid) - 1);
                         d.wifiSsid[sizeof(d.wifiSsid) - 1] = '\0';
@@ -438,7 +487,7 @@ void openWifi() {
                     askWifiPassword(n.ssid);
                 }
             });
-            it.checked = current;
+            it.checked = on;
         }
         l.add("ค้นหาใหม่", "", []() {
             startScan();
@@ -455,7 +504,8 @@ void openWifi() {
             });
         });
     });
-    gWifi.onTick = [](ListScreen& l, uint32_t) {
+    gWifi.onTick = [](ListScreen& l, uint32_t now) {
+        if (joinedChanged(now)) l.rebuild();
         if (!gScanning) return;
         const int16_t n = WiFi.scanComplete();
         if (n == WIFI_SCAN_RUNNING) return;
@@ -588,8 +638,11 @@ void buildMenu(ListScreen& l) {
     eyeItem.hasSwatch = true;
     eyeItem.swatch = rgb565(eye.r, eye.g, eye.b);
 
-    l.addSubmenu("Wi-Fi", s.wifiSsid[0] ? s.wifiSsid : "ยังไม่ตั้ง", openWifi).valueColor =
-        s.wifiSsid[0] ? ui::DIM : ui::WARN;
+    // the network really joined, not the configured one (T102: a remembered network stands in when it is away)
+    const String joined = joinedSsid();
+    String wifiValue = joined.length() ? joined + (joined == s.wifiSsid ? "" : " (จำไว้)")
+                                       : String(s.wifiSsid[0] ? "ไม่ได้เชื่อมต่อ" : "ยังไม่ตั้ง");
+    l.addSubmenu("Wi-Fi", wifiValue, openWifi).valueColor = joined.length() ? ui::DIM : ui::WARN;
     l.addSubmenu("API Key", maskKey(s.apiKey), []() {
         const SettingsData d = gSettings.get();
         editText("Gemini API Key", d.apiKey, 120, true, true, [](SettingsData& x, const String& t) {
@@ -877,6 +930,9 @@ void openCalibration() { gUi.push(&gCalibration); }
 
 void openMenu() {
     gMenu.setup("ตั้งค่า", buildMenu);
+    gMenu.onTick = [](ListScreen& l, uint32_t now) {
+        if (joinedChanged(now)) l.rebuild();  // the Wi-Fi row follows the real connection
+    };
     gUi.push(&gMenu);
 }
 
