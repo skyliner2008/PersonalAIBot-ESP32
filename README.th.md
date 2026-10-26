@@ -216,7 +216,7 @@ flowchart LR
     PC[🖥️ ESP32-AI Studio] <-->|USB serial<br/>TAG + JSON| AG
 ```
 
-- **โมเดล:** Live model ที่เลือก → `gemini-3.8-live` → `gemini-3.8-live-extended-thinking` → `gemini-3.1-flash-live-preview` งานข้อความใช้ `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite` — แยกประเภท error (โควตา / server ล้น / key ผิด) และพักแต่ละโมเดลแยกกัน
+- **โมเดล:** Live model ที่เลือก → `gemini-3.8-live` → `gemini-3.8-live-extended-thinking` (ตอนนี้เรียก tool ไม่ได้ — ปัญหาฝั่ง Google) → `gemini-3.1-flash-live-preview` งานข้อความใช้ `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite` — แยกประเภท error (โควตา / server ล้น / key ผิด) และพักแต่ละโมเดลแยกกัน
 - **หน่วยความจำ:** บัฟเฟอร์เสียง, sprite จอ, frame WebSocket และบัฟเฟอร์ TLS ทั้งหมดอยู่ใน PSRAM — RAM ภายในเหลือ ~85 KB แม้ทำงานเต็มที่
 - **โทเคน:** VAD ในเครื่อง, บีบอัด context และพักอัตโนมัติ ช่วยให้ใช้ต่ำกว่าลิมิต Live 65k โทเคน/นาที
 

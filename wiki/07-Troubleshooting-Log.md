@@ -136,6 +136,29 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T108: ตรวจการตั้งค่า Gemini 3.8 Live / Extended Thinking — prompt หลุด, interactionStatus, tool ของ Extended Thinking, context compression
+
+**วันที่:** 2026-10-27 · **ผู้ใช้:** ใช้ 3.8 Live กับ 3.8 Live Extended Thinking เป็นหลัก — ตรวจ Affective Dialogue, Proactive Audio, system prompt ให้มีประสิทธิภาพสูงสุด
+
+**ตรวจกับเอกสาร (หน้าโมเดล 2026-09 + API reference):**
+- Affective dialog **ถูกถอดออกจาก API** (3.8) · Proactive audio **เปิดถาวรทั้งสองรุ่น** (ส่ง false = error) → บอร์ดไม่ส่งทั้งคู่ = ถูกแล้ว
+- thinking: 3.8 Live ห้ามส่ง / Extended Thinking low-medium-high (ของผู้ใช้ = medium) · ถูกแล้ว · tool: 3.8 Live BLOCKING (+ set_expression NON_BLOCKING SILENT), Extended NON_BLOCKING ไม่มี scheduling = ถูกแล้ว
+- VAD `silenceDurationMs` 900 (เอกสารแนะนำ 500–800) — คงไว้: เลือกเพื่อประโยคไทยที่เว้นจังหวะ (T036)
+
+**เจอและแก้:**
+1. **system prompt หลุดครึ่งท่อน (บั๊กของ T105):** ใส่ `;` เกินหลัง `"…get_weather, "` → สตริงรายการ tool ที่ตามมา (น้ำมัน หุ้น/ทอง ค่าเงิน ข่าว calculate "ห้ามคิดเลขเอง"
+   แปลงหน่วย เวลาโลก search_knowledge notes) กลายเป็น statement เปล่า ไม่เข้า prompt ตั้งแต่ `9994f5f` (คอมไพล์ผ่าน) → แก้ · ทดสอบ: เรียก get_oil_price / calculate ถูก
+2. **Extended Thinking: `turnComplete` ≠ จบ** — อ่าน `serverContent.interactionStatus` (`IN_PROGRESS` / `IDLE`) · IN_PROGRESS = ไม่ส่งตัวกระตุ้นของ T107 (ข้อความ turnComplete=true ตัดการคิด)
+   และรอต่อ (`_awaitingReply`, สูงสุด 60 วิ) · ทดสอบ: `turn complete … - still reasoning` แล้วตามด้วยคำตอบ
+3. **prompt ตามรุ่น:** 3.8 ทั้งสอง (proactive audio ถาวร) = "เสียงผ่านการกรองของอุปกรณ์แล้ว ถ้าผู้ใช้พูดกับคุณให้ตอบเสมอ" · Extended = "tool ทำงานเบื้องหลัง บอกว่ากำลังดู แล้วรอผลก่อนพูดตัวเลข"
+4. **Extended Thinking เรียก tool ไม่ได้:** ไม่มี `toolCall` ถึงบอร์ดเลย โมเดลพูด "ระบบคำนวณขัดข้อง" · `setupmode onetool` (ใหม่: prompt เต็ม + tool `calculate` ตัวเดียว)
+   ทั้งใส่ NON_BLOCKING และไม่ใส่ behavior ก็เหมือนกัน → **ปัญหาฝั่ง Google** (รายงานเดียวกัน: discuss.ai.google.dev t/185649, GitHub masudl-hub/theoremai#25 — เป็นๆ หายๆ)
+   → เมนูโมเดล: "คิดลึก ตอนนี้ใช้ tool ไม่ได้ (Google)" · แนะนำใช้ 3.8 Live เป็นหลัก
+5. **context compression:** log ใหม่ `[Gemini] usage: context N + reply M tokens` → setup + turn ล่าสุด ~8–9k, 1 turn ที่มีผล tool ~14–17k → `12000→5000` บีบอัดทุก 1–2 turn
+   (เอกสาร: บีบอัด = ช้าลงชั่วคราว ควรไม่บ่อย) → `16000→10000`: บีบอัดทุก ~4–5 turn · ทดสอบ 6 turn: หลังบีบอัด (17,469 → 8,917) ยังตอบราวดีเซล/ผลคูณที่คุยไว้ถูก
+
+**ผล:** host tests 2,676 ผ่าน, แฟลชแล้ว · ตั้งกลับเป็น 3.8 Live (model 0) ตามเดิม · Extended Thinking ใช้ tool ได้เมื่อ Google แก้ (ไม่ต้องแก้บอร์ด)
+
 ## T107: AI เงียบหลังผลของ tool มาช้า + แจ้ง "job stuck" ผิด
 
 **วันที่:** 2026-10-27 · **ผู้ใช้:** พิมพ์ `ask ขยายความ เกี่ยวกับ คดีข่าวปลอม "ค่าน้ำชา 7 ล้าน"` → `get_news` ok (3.9 วิ) → `turn complete` ไม่มีคำตอบ

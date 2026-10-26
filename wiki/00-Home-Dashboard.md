@@ -121,6 +121,7 @@ ESP32-AI/
 
 | Date | Activity | Related Docs |
 |------|----------|--------------|
+| 2026-10-27 | **ตรวจการตั้งค่า 3.8 Live / Extended Thinking (T108):** Affective dialog ถูกถอดจาก API, proactive audio ถาวร — บอร์ดถูกแล้ว · **แก้ prompt หลุดครึ่งท่อน (บั๊ก T105)** · อ่าน `interactionStatus` (Extended: turnComplete ≠ จบ) · prompt ตามรุ่น · Extended Thinking เรียก tool ไม่ได้ = ปัญหาฝั่ง Google · context compression 16k→10k | [[07-Troubleshooting-Log#T108]] |
 | 2026-10-27 | **AI เงียบหลังผล tool มาช้า (T107):** turn เปล่าหลังส่งผล web tool → บอร์ดกระตุ้นให้ตอบ 1 ครั้ง · แก้ "job stuck" แจ้งผิดตอนงานยังไม่เริ่ม | [[07-Troubleshooting-Log#T107]] |
 | 2026-10-26 | **ข้อมูลน้ำตรวจแล้วถูกต้อง + ฝน 3 / 5 วัน (T106):** อันดับฝน 7 วัน / ระดับน้ำ ตรงกับที่คำนวณเองจาก API · แก้ชื่อสถานีถูกตัดกลางคำ · `water rain days` 1/3/5/7 พร้อมช่วงวันที่บนการ์ด | [[07-Troubleshooting-Log#T106]] |
 | 2026-10-26 | **งานดึงข้อมูลค้างไม่จบ + AI แต่งผล (T105):** `rawByte()` เชื่อ `read()` ที่คืน 255 ตอนการเชื่อมต่อปิด → วนไม่จบแย่ง CPU คอนโซล → แก้ · `[Web] job stuck? stage …` บอกจุดค้าง · ผล busy/error สั่งห้าม AI แต่งตัวเลข | [[07-Troubleshooting-Log#T105]] |

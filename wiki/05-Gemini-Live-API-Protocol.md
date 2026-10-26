@@ -24,12 +24,21 @@ status: implemented
 | Input audio | PCM 16-bit mono **16 kHz** LE, Base64, chunk 40 ms (`audio/pcm;rate=16000`) |
 | Output audio | PCM 16-bit mono **24 kHz** LE, Base64 ใน `inlineData` |
 | Response modality | `AUDIO` เท่านั้น (ข้อความได้จาก `outputAudioTranscription`) |
-| Session | context window compression `triggerTokens 12000 → targetTokens 5000` (งบ 65k TPM); session resumption เปิด |
+| Session | context window compression `triggerTokens 16000 → targetTokens 10000` (T108; งบ 65k TPM); session resumption เปิด |
 | Input gating | Local VAD: ส่งเฉพาะช่วงที่พูด + `audioStreamEnd`; ปิด session เมื่อพัก |
 
 > [!NOTE] ข้อแตกต่างของ gemini-3.8-live ที่กระทบโค้ด
 > - Function calling เป็น **NON_BLOCKING โดย default** → เราประกาศ `behavior: "BLOCKING"` ทุก tool (ยกเว้น `set_expression`: NON_BLOCKING + `scheduling: SILENT` ระดับ FunctionResponse — T071)
 > - ห้ามส่ง `thinkingLevel` ใน setup · proactive audio เปิดถาวร (โมเดลอาจไม่ตอบเสียงที่ไม่เกี่ยว)
+> - **ตรวจกับเอกสาร 2026-09 (T108):** Affective dialog **ถูกถอดออกจาก API** (ห้ามส่ง `enableAffectiveDialog`) · Proactive audio **เปิดถาวรทั้ง 3.8 Live และ Extended Thinking** —
+>   ส่ง `proactivity.proactiveAudio: false` = error → บอร์ดไม่ส่งทั้งสองค่า (ถูกต้อง) · ไม่รับ language code (คุมภาษาใน system prompt)
+
+> [!NOTE] gemini-3.8-live-extended-thinking (T108)
+> - `thinkingLevel` low / medium / high (ไม่มี minimal) · tool **NON_BLOCKING เท่านั้น** (BLOCKING = 1007) ไม่มี scheduling
+> - `turnComplete` **ไม่ได้แปลว่าจบ**: `serverContent.interactionStatus` (ส่งคู่กับ turnComplete เสมอ) = `IN_PROGRESS` → ยังคิดต่อ จะพูด/เรียก tool ตามมา, `IDLE` = รอผู้ใช้
+>   → `GeminiLiveClient::interactionInProgress()` · agent ไม่นับเป็นจบ ไม่ส่งข้อความกระตุ้น (ข้อความ turnComplete=true **ตัด**การคิด) รอต่อสูงสุด 60 วิ · log `turn complete … - still reasoning`
+> - **tool ใช้ไม่ได้ (ปัญหาฝั่ง Google, 2026-10):** โมเดลคิดเบื้องหลังแล้วพูด "ระบบขัดข้อง" — ไม่มี `toolCall` ส่งถึง client เลย ทดสอบ `setupmode onetool`
+>   (tool `calculate` ตัวเดียว ใส่/ไม่ใส่ behavior) ก็เหมือนกัน · มีรายงานเดียวกันใน forum ของ Google และ GitHub (เป็นๆ หายๆ) → เมนูบอก "ตอนนี้ใช้ tool ไม่ได้ (Google)"
 > - ข้อความเดียวอาจมีทั้ง audio + transcript + `turnComplete` → ต้องประมวลผลทุก field ไม่ return ก่อน
 
 ---
@@ -87,7 +96,7 @@ sequenceDiagram
     "tools": [{ "googleSearch": {} }, { "functionDeclarations": [ /* 20 tools, ดู [[09-Assistant-Profiles-and-Tools]] */ ] }],
     "inputAudioTranscription": {},
     "outputAudioTranscription": {},
-    "contextWindowCompression": { "triggerTokens": 12000, "slidingWindow": { "targetTokens": 5000 } },
+    "contextWindowCompression": { "triggerTokens": 16000, "slidingWindow": { "targetTokens": 10000 } },
     "sessionResumption": { "handle": "<ถ้ามี>" }
   }
 }

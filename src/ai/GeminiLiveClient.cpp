@@ -649,7 +649,11 @@ void GeminiLiveClient::handleMessage(const char* json, size_t len) {
         if (out && *out) _listener->onOutputTranscript(out);
         if (sc["interrupted"] | false) _listener->onInterrupted();
         if (sc["generationComplete"] | false) _listener->onGenerationComplete();
-        if (sc["turnComplete"] | false) _listener->onTurnComplete();
+        if (sc["turnComplete"] | false) {
+            // always sent with turnComplete; IN_PROGRESS = Extended Thinking still reasoning (T108)
+            _inProgress = !strcmp(sc["interactionStatus"] | "", "IN_PROGRESS");
+            _listener->onTurnComplete();
+        }
     }
 
     JsonObjectConst toolCall = doc["toolCall"];
@@ -665,7 +669,14 @@ void GeminiLiveClient::handleMessage(const char* json, size_t len) {
     if (!goAway.isNull()) _listener->onGoAway(parseDurationMs(goAway["timeLeft"] | ""));
 
     const uint32_t tokens = doc["usageMetadata"]["totalTokenCount"] | 0u;
-    if (tokens) _listener->onUsage(tokens);
+    if (tokens) {
+        // the context billed for this turn (system prompt + tools + conversation): what contextWindowCompression
+        // is measured against (T108)
+        Serial.printf("[Gemini] usage: context %u + reply %u tokens\n",
+                      (unsigned)(doc["usageMetadata"]["promptTokenCount"] | 0u),
+                      (unsigned)(doc["usageMetadata"]["responseTokenCount"] | 0u));
+        _listener->onUsage(tokens);
+    }
 }
 
 // One line per server event with its keys (transcripts and tool calls in full); audio-only chunks

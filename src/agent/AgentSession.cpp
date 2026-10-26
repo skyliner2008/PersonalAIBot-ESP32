@@ -240,6 +240,7 @@ void AgentController::startFreshSession(const char* hint) {
     _dropAudio = false;
     _awaitingReply = false;
     _awaitToolAnswer = false;
+    _reasoningAt = 0;
     if (hint) _face->setHint(hint, 2000);
     if (_gemini.started()) _gemini.restart();
 }
@@ -272,14 +273,24 @@ void AgentController::buildSystemPrompt(PsString& p) {
          "การแนะนำ/นำเสนอ/รีวิวตัวเองเป็นข้อยกเว้นของการตอบสั้น: เล่าให้ครบทุกหมวดตาม how_to_present";
     p += "\nการพูด: ตอบเป็นภาษาเดียวกับที่ผู้ใช้พูด (ปกติภาษาไทย) สั้น เป็นธรรมชาติ ";
     p += persona::politeParticle((persona::Gender)_cfg.gender);
-    p += " ไม่อ่านสัญลักษณ์หรือรายการยาว\n"
-         "ดวงตา: คุณมีดวงตาบนจอ เรียก set_expression ให้เข้ากับอารมณ์ที่กำลังพูดอย่างเงียบๆ\n"
+    p += " ไม่อ่านสัญลักษณ์หรือรายการยาว\n";
+    if (_activeModel != (uint8_t)LiveModel::FlashLive31) {
+        // T108: 3.8 Live / Extended Thinking have proactive audio on for good (cannot be turned off): it may stay
+        // silent on audio it judges not meant for it - the board only sends what its own VAD / wake word let through
+        p += "การฟัง: เสียงที่ส่งมาถึงคุณผ่านการกรองของอุปกรณ์แล้ว ถ้าเป็นผู้ใช้พูดกับคุณ (คำถาม/คำสั่ง แม้สั้นหรือไม่ได้เรียกชื่อ) "
+             "ให้ตอบเสมอ เงียบเฉพาะเสียงที่ชัดว่าไม่ได้พูดกับคุณ (วิทยุ ทีวี คนอื่นคุยกัน)\n";
+    }
+    if (_activeModel == (uint8_t)LiveModel::Live38Thinking) {
+        // T108: here every tool runs in the background (NON_BLOCKING only) - the model keeps talking meanwhile
+        p += "เครื่องมือทำงานเบื้องหลัง: เรียกแล้วบอกผู้ใช้สั้นๆ ว่ากำลังดูให้ แล้วรอผลก่อนพูดตัวเลขหรือข้อเท็จจริง ห้ามพูดผลล่วงหน้า\n";
+    }
+    p += "ดวงตา: คุณมีดวงตาบนจอ เรียก set_expression ให้เข้ากับอารมณ์ที่กำลังพูดอย่างเงียบๆ\n"
          "ความจำ: เรียก save_memory/save_relation ทันทีที่รู้ข้อมูลสำคัญของผู้ใช้ และ recall_memory "
          "ก่อนตอบเรื่องส่วนตัว ห้ามแต่งความจำ บันทึกเฉพาะสิ่งที่ผู้ใช้พูดถึงตัวเองชัดเจน "
          "(ไม่ใช่เสียงไม่ชัด เสียงวิทยุ/ทีวี หรือคนอื่นคุยกัน)\n"
          "ผู้ช่วยส่วนตัว: ใช้ set_timer, set_reminder, add_task ฯลฯ ตามที่ผู้ใช้ขอ ";
     p += "ข้อมูลสด (แสดงกราฟิกบนจอให้เอง แล้วคุณพูดสรุปสั้นๆ จากผลของ tool นั้นเท่านั้น ถ้า tool ตอบ error/busy "
-         "หรือยังไม่ตอบ ให้บอกตรงๆ ว่ายังไม่ได้ข้อมูล ห้ามเดาหรือใช้ตัวเลขเก่า): อากาศ/ฝน/ฝุ่น PM2.5 = get_weather, ";
+         "หรือยังไม่ตอบ ให้บอกตรงๆ ว่ายังไม่ได้ข้อมูล ห้ามเดาหรือใช้ตัวเลขเก่า): อากาศ/ฝน/ฝุ่น PM2.5 = get_weather, "
          "ราคาน้ำมันในไทย = get_oil_price, หุ้น/ดัชนี/ทองคำ/คริปโต/ค่าเงิน/น้ำมันดิบ = get_market_quote, "
          "แลกเงิน = convert_currency, ข่าว = get_news, คิดเลข = calculate (ห้ามคิดเลขเอง), แปลงหน่วย = convert_units, "
          "เวลาต่างประเทศ = get_world_time, ความรู้ทั่วไป/ใครคือ/คืออะไร = search_knowledge, จดโน้ตยาว = notes ";
@@ -398,7 +409,19 @@ void AgentController::buildSetup(JsonObject setup) {
 
     _searchInSetup = searchAvailable();
     _tools->setSearchOffered(_searchInSetup);
-    _tools->addDeclarations(setup["tools"].to<JsonArray>(), behaviorFor(model), _searchInSetup);
+    if (_setupMode == SetupMode::OneTool) {  // diagnostic (T108): the full prompt but only `calculate`
+        JsonObject f = setup["tools"].to<JsonArray>().add<JsonObject>()["functionDeclarations"].to<JsonArray>().add<JsonObject>();
+        f["name"] = "calculate";
+        f["description"] = "Evaluate an arithmetic expression exactly. Always use it for any math.";
+        const ToolBehavior b = behaviorFor(model);
+        if (b != ToolBehavior::Unspecified) f["behavior"] = b == ToolBehavior::NonBlocking ? "NON_BLOCKING" : "BLOCKING";
+        f["parameters"]["type"] = "OBJECT";
+        f["parameters"]["properties"]["expression"]["type"] = "STRING";
+        f["parameters"]["required"].to<JsonArray>().add("expression");
+        Serial.println("[Agent] Setup: ONE TOOL (calculate) - diagnostic");
+    } else {
+        _tools->addDeclarations(setup["tools"].to<JsonArray>(), behaviorFor(model), _searchInSetup);
+    }
 
     setup["inputAudioTranscription"].to<JsonObject>();
     setup["outputAudioTranscription"].to<JsonObject>();
@@ -465,6 +488,7 @@ void AgentController::onDisconnected(bool wasReady) {
     flushAgentTurn(!wasReady);
     _awaitingReply = false;
     _awaitToolAnswer = false;  // the new session never saw that result
+    _reasoningAt = 0;
     _vadOpen = false;
     _prerollDraining = false;  // the queue was dropped with the link
     const bool closeSeen = _closeSeen;
@@ -760,11 +784,17 @@ void AgentController::onInterrupted() {
 void AgentController::onGenerationComplete() { _audio->flushPlayback(); }
 
 void AgentController::onTurnComplete() {
-    Serial.printf("[Chat] turn complete (tokens/min %lu)\n", (unsigned long)tokensPerMinute());
+    // T108: Extended Thinking sends turnComplete with interactionStatus IN_PROGRESS while it keeps reasoning in the
+    // background - more speech / tool calls follow. Not an end: no nudge (a text turn would interrupt it), and the
+    // session stays awake for the rest (bounded in checkNoReply).
+    const bool reasoning = _gemini.interactionInProgress();
+    Serial.printf("[Chat] turn complete (tokens/min %lu)%s\n", (unsigned long)tokensPerMinute(),
+                  reasoning ? " - still reasoning" : "");
+    _reasoningAt = reasoning ? millis() : 0;
     // T107: gemini-3.8-live sometimes ends the turn without a word right after a web tool result that took a few
     // seconds (the same result from the cache a minute later was answered). Ask once for the answer.
     bool nudged = false;
-    if (_awaitToolAnswer && !_replyAudio && _agentTurn.empty() && _gemini.isReady()) {
+    if (!reasoning && _awaitToolAnswer && !_replyAudio && _agentTurn.empty() && _gemini.isReady()) {
         _awaitToolAnswer = false;
         nudged = true;
         Serial.println("[Chat] empty turn after a tool result - asking for the answer");
@@ -776,7 +806,7 @@ void AgentController::onTurnComplete() {
     flushAgentTurn(_dropAudio);
     _audio->flushPlayback();
     _dropAudio = false;
-    _awaitingReply = nudged;  // the nudge is a question too: its answer is awaited
+    _awaitingReply = nudged || reasoning;  // the nudge is a question too / the reasoning model owes the rest
     if (_replyAudio) {
         // arrival rate: audio after the first message vs the time it took to come in (1.0 = real time)
         const uint32_t wall = _replyLastMs - _replyT0;

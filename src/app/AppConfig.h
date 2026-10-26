@@ -99,8 +99,12 @@
 // ============================================================
 // Gemini Live session (token budget: 65k tokens / minute)
 // ============================================================
-#define AGENT_CTX_TRIGGER_TOKENS  12000  // compress the context above this ...
-#define AGENT_CTX_TARGET_TOKENS   5000   // ... down to this (system prompt + tools stay)
+// System prompt + tools + the last turns come back to ~8-9k tokens after a compression (board, T108: "usage:
+// context 8211 / 8917"), and one turn with a tool result is already ~14k: at 12000 -> 5000 (a target below even
+// that) the context was compressed every 1-2 turns - a latency hit each time, the docs warn. At 16000 -> 10000
+// it runs every 4-5 turns and the recent turns were still known after it; a turn costs at most ~17k of 65k / min.
+#define AGENT_CTX_TRIGGER_TOKENS  16000  // compress the context above this ...
+#define AGENT_CTX_TARGET_TOKENS   10000  // ... down to this (system prompt + tools stay)
 #define AGENT_EXPRESSION_HOLD_MS  6000   // set_expression lasts this long
 
 // ============================================================

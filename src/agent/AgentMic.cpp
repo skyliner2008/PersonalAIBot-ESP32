@@ -146,6 +146,12 @@ void AgentController::bargeInNow(uint32_t now) {
 }
 
 void AgentController::checkNoReply(uint32_t now) {
+    // T108: reasoning in the background (turnComplete IN_PROGRESS) without a later IDLE: stop waiting after 60 s
+    if (_reasoningAt && sinceMs(now, _reasoningAt) > 60000) {
+        _reasoningAt = 0;
+        _awaitingReply = false;
+        Serial.println("[Chat] still no IDLE 60 s after IN_PROGRESS - not waiting any longer");
+    }
     // Google Search runs on the server and sends nothing until the answer: a session that offers it
     // and heard the question (transcript) waits longer before "AI ไม่ตอบ" - speaking again then would
     // cut off the answer that is on its way.

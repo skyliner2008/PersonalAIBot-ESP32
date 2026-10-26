@@ -121,6 +121,11 @@ public:
     uint32_t takeSlowReadMs() { const uint32_t v = _slowReadMs; _slowReadMs = 0; return v; }
     uint32_t takeSlowWriteMs() { const uint32_t v = _slowWriteMs; _slowWriteMs = 0; return v; }
     uint32_t audioBytesReceived() const { return _audioBytes; }
+    /**
+     * The last turnComplete came with interactionStatus IN_PROGRESS: Extended Thinking keeps reasoning (more output
+     * or tool calls follow) - the turn being complete does not mean the model is done (T108).
+     */
+    bool interactionInProgress() const { return _inProgress; }
     /** Bytes written to the WebSocket so far (diag: uplink throughput). */
     uint32_t txBytes() const { return _txBytes; }
     /** Console `trace`: one line per server event / client JSON message (audio only counted). */
@@ -170,6 +175,7 @@ private:
     volatile uint8_t _micGen = 0;
     volatile bool _streamEndPending = false;  // audioStreamEnd that did not fit the queue: sent after it
     uint32_t _audioBytes = 0;
+    bool _inProgress = false;
     volatile uint32_t _txBytes = 0;
     volatile bool _trace = false;
     uint32_t _traceAudioMsgs = 0;  // audio-only server messages since the last trace line

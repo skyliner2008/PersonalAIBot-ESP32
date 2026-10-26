@@ -160,7 +160,7 @@ void openEyeColors() {
 void openModels() {
     gPicker.setup("โมเดล AI (Live API)", [](ListScreen& l) {
         const SettingsData s = gSettings.get();
-        static const char* const notes[] = {"แนะนำ เร็ว ใช้ tool แบบรอผล", "คิดลึก tool แบบ async",
+        static const char* const notes[] = {"แนะนำ เร็ว ใช้ tool แบบรอผล", "คิดลึก ตอนนี้ใช้ tool ไม่ได้ (Google)",
                                             "รุ่นเก่า ไม่มี proactive audio"};
         for (uint8_t m = 0; m < (uint8_t)LiveModel::Count; m++) {
             ListScreen::Item& it = l.add(liveModelLabel(m), notes[m], [m]() {

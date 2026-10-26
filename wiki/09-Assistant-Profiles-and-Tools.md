@@ -104,12 +104,12 @@ status: implemented
 | โมเดล | ใช้ทำอะไร | ลิมิตของบัญชี |
 |---|---|---|
 | `gemini-3.8-live` (ค่าเริ่มต้น) | สนทนาเสียง | ∞ RPM • 65k TPM • ∞ RPD |
-| `gemini-3.8-live-extended-thinking` | สำรอง / คิดลึก | เหมือนกัน |
+| `gemini-3.8-live-extended-thinking` | สำรอง / คิดลึก (ตอนนี้เรียก tool ไม่ได้ — ปัญหาฝั่ง Google, T108) | เหมือนกัน |
 | `gemini-3.1-flash-live-preview` | สำรองสุดท้าย | เหมือนกัน |
 | `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite` | จัดระเบียบความจำเบื้องหลัง | 15 RPM • 250k TPM • 500 RPD |
 
 Live API **คิดโทเคนของบริบททั้งหมดซ้ำทุก turn** และ 3.8 มี proactive audio (นับตลอดเวลาที่ฟัง) จึงทำ:
-1. **contextWindowCompression** `triggerTokens 12000` → `slidingWindow.targetTokens 5000`
+1. **contextWindowCompression** `triggerTokens 16000` → `slidingWindow.targetTokens 10000` (T108: setup + turn ล่าสุด ~8–9k token, 1 turn ที่มีผล tool ~14k — ค่าเดิมบีบอัดทุก 1–2 turn) · log `[Gemini] usage: context N + reply M tokens` ทุก turn
 2. **Local VAD (hybrid)**: ส่งเสียงเฉพาะตอนพูดจริง (เกณฑ์ noise floor ×2.5, ขั้นต่ำ RMS 0.004, pre-roll 600 ms, hangover 1.5 s) + `audioStreamEnd` เมื่อหยุดพูด
    · ฟังต่อเนื่อง 6 วิหลัง AI พูดจบ · AGC ยกเสียงเบา (≤ ×6) · server VAD start HIGH / end LOW · log `[Mic]` ทุกประโยค ([[07-Troubleshooting-Log#T036 ไอคอนไมค์ขึ้นแต่ AI เงียบ - 3.8 Live ไม่ค่อยตอบ]])
 3. **Auto-sleep** หลังเงียบ N นาที: ปิด session (ไม่เสียโทเคน) — ปลุกด้วยการ**พูด** (4 chunk ติดกัน) หรือแตะจอ; เสียงที่พูดตอนปลุก (≤2 s) ถูกส่งต่อหลังเชื่อมต่อใหม่

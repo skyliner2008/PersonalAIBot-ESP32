@@ -406,7 +406,7 @@ void AgentController::handleCommands() {
                 ESP.restart();
                 break;
             case CMD_SETUP_MODE:
-                _setupMode = (SetupMode)(_requestedSetupMode > 3 ? 0 : _requestedSetupMode);
+                _setupMode = (SetupMode)(_requestedSetupMode > 4 ? 0 : _requestedSetupMode);
                 _liveSel.reset();
                 _resumeHandle = "";
                 retryNow();

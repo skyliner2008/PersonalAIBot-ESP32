@@ -219,7 +219,7 @@ flowchart LR
     PC[🖥️ ESP32-AI Studio] <-->|USB serial<br/>TAG + JSON| AG
 ```
 
-- **Models:** preferred Live model → `gemini-3.8-live` → `gemini-3.8-live-extended-thinking` → `gemini-3.1-flash-live-preview`; text tasks use `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite`. Quota / overload / auth errors are classified and each model cools down separately.
+- **Models:** preferred Live model → `gemini-3.8-live` → `gemini-3.8-live-extended-thinking` (its tool calls currently fail on Google's side) → `gemini-3.1-flash-live-preview`; text tasks use `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite`. Quota / overload / auth errors are classified and each model cools down separately.
 - **Memory budget:** audio rings, the LCD sprite, WebSocket frames and all TLS buffers live in PSRAM, keeping ~85 KB of internal RAM free under full load.
 - **Tokens:** local VAD, context compression and auto-sleep keep usage well under the 65k tokens/min Live limit.
 
