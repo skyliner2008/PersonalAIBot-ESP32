@@ -20,6 +20,24 @@ namespace {
 constexpr uint32_t kWaterTimeoutMs = 20000;     // a province: ~45 KB gzip (350 KB JSON), 1-3 s on this board
 constexpr uint32_t kNationTimeoutMs = 40000;    // the whole country: ~600 KB gzip (4.8 MB JSON)
 constexpr size_t kMaxRows = CardData::kMaxRows;
+constexpr int kWaterRetries = 2;
+
+/**
+ * The rows of a result (8 stations / provinces, up to ~2.5 KB with the T106 name lengths) in PSRAM: the webTools
+ * stack (12 KB) had ~1 KB left at its deepest.
+ */
+template <class T>
+struct PsRows {
+    T* p = (T*)psramMalloc(sizeof(T) * kMaxRows);
+    PsRows() {
+        if (p) for (size_t i = 0; i < kMaxRows; i++) new (&p[i]) T();
+    }
+    ~PsRows() { psramFree(p); }  // the row types are plain data
+    PsRows(const PsRows&) = delete;
+    PsRows& operator=(const PsRows&) = delete;
+    explicit operator bool() const { return p != nullptr; }
+    T& operator[](size_t i) { return p[i]; }
+};  // new connections after a stall / failure (T104: ~1 in 3 stalled on a phone hotspot)
 
 uint16_t levelColor(int level) {
     switch (level) {
@@ -30,6 +48,23 @@ uint16_t levelColor(int level) {
         case 1: return 0xDC05;  // critically low: dark gold
         default: return ui::DIM;
     }
+}
+
+/** Rain over 1 / 3 / 5 / 7 days (T106: ThaiWater keeps 3- and 5-day totals too). */
+struct RainSpan {
+    int days;
+    const char* key;      // field of each station
+    const char* path;     // endpoint (+ "?province_code=" for one province)
+    const char* period;   // for the model
+    const char* titleTh;  // card: "ฝน 24 ชม." / "ฝน 3 วัน"
+    const char* inTh;     // "ในรอบ 24 ชั่วโมง" / "ในรอบ 3 วัน"
+};
+
+RainSpan rainSpan(int days) {
+    if (days >= 6) return {7, "rain_7d", "provinces/rain7d", "last 7 days", "ฝน 7 วัน", "ในรอบ 7 วัน"};
+    if (days >= 4) return {5, "rain_5d", "provinces/rain5d", "last 5 days", "ฝน 5 วัน", "ในรอบ 5 วัน"};
+    if (days >= 2) return {3, "rain_3d", "provinces/rain3d", "last 3 days", "ฝน 3 วัน", "ในรอบ 3 วัน"};
+    return {1, "rain_24h", "public/rain_24h", "last 24 hours", "ฝน 24 ชม.", "ในรอบ 24 ชั่วโมง"};
 }
 
 uint16_t rainColor(float mm24) {
@@ -60,10 +95,15 @@ GzipHttpStream* openStream(const String& url, uint32_t timeoutMs, OpenStream& os
     os.t0 = millis();
     os.code = os.s->open(url, timeoutMs);
     if (os.code != 200) {
-        setError(out, os.code < 0 ? "ThaiWater (thaiwater.net) unreachable - check the Internet" : "ThaiWater answered with an error");
+        // -11 = sent, but no answer in time (the board's stalls, T104): not "no Internet"
+        setError(out, os.code == HTTPC_ERROR_READ_TIMEOUT ? "ThaiWater did not answer in time - try again"
+                      : os.code < 0                        ? "ThaiWater (thaiwater.net) unreachable - check the Internet"
+                                                           : "ThaiWater answered with an error");
         return nullptr;
     }
-    os.s->setTimeout(timeoutMs);
+    // Stream::find() re-polls read() until this timeout once it returns -1; read() itself already waits (up to
+    // the stall limit), so -1 means the end or a stall - no point spinning on it for another 40 s
+    os.s->setTimeout(1);
     return os.s;
 }
 
@@ -78,19 +118,38 @@ void closeStream(OpenStream& os, const String& url) {
     os.s = nullptr;
 }
 
+/**
+ * Another try after a stalled / failed connection, while there is time left (T104: downloads on the board stopped
+ * dead at random - the same request went through in 5 s the next time).
+ */
+bool retryAfter(const OpenStream& os, bool stalled, uint32_t t0, uint32_t timeoutMs, const String& url) {
+    if (!stalled && os.code >= 0) return false;  // a real answer (HTTP error / bad data): asking again won't help
+    if (millis() - t0 > timeoutMs * 3 / 5) return false;  // a stall is noticed in ~6-8 s: room for 2 more tries
+    Serial.printf("[Web] thaiwater %s %s - trying again\n", url.substring(strlen(thaiwater::kBase)).c_str(),
+                  stalled ? "stalled" : "failed");
+    return true;
+}
+
 /** A province-sized answer (<= ~400 KB of JSON) parsed whole, keeping only what `filter` names. */
 bool fetchFiltered(const String& url, const JsonDocument& filter, JsonDocument& doc, JsonDocument& out,
                    uint32_t timeoutMs = kWaterTimeoutMs) {
-    OpenStream os;
-    bool ok = false;
-    if (GzipHttpStream* s = openStream(url, timeoutMs, os, out)) {
-        GzipHttpStream::Reader rd = s->reader();
-        const DeserializationError e = deserializeJson(doc, rd, DeserializationOption::Filter(filter));
-        if (e) setError(out, s->timedOut() ? "ThaiWater is too slow right now - try again" : "ThaiWater sent data that could not be read");
-        ok = !e;
+    const uint32_t t0 = millis();
+    for (int attempt = 0;; attempt++) {
+        OpenStream os;
+        bool ok = false, stalled = false;
+        if (GzipHttpStream* s = openStream(url, timeoutMs, os, out)) {
+            GzipHttpStream::Reader rd = s->reader();
+            setStage("water: parse");
+            const DeserializationError e = deserializeJson(doc, rd, DeserializationOption::Filter(filter));
+            if (e) setError(out, s->timedOut() ? "ThaiWater is too slow right now - try again" : "ThaiWater sent data that could not be read");
+            ok = !e;
+            stalled = s->stalled();
+        }
+        closeStream(os, url);
+        if (ok || attempt >= kWaterRetries || !retryAfter(os, stalled, t0, timeoutMs, url)) return ok;
+        out.clear();
+        doc.clear();
     }
-    closeStream(os, url);
-    return ok;
 }
 
 /** "แม่น้ำปิง" -> "ปิง" (ThaiWater calls basins "ลุ่มน้ำปิง"), "อ.จอมทอง" -> "จอมทอง". */
@@ -226,9 +285,10 @@ void runLevel(const thaiplace::Province& prov, const char* query, JsonDocument& 
     JsonDocument doc(JsonPsramAllocator::instance());
     if (!fetchFiltered(String(thaiwater::kBase) + "public/waterlevel?province_code=" + prov.code, filter, doc, out)) return;
 
-    thaiwater::WaterLevel st[kMaxRows];
+    PsRows<thaiwater::WaterLevel> st;
+    if (!st) return setError(out, "out of memory");
     size_t matched = 0;
-    const size_t n = thaiwater::pickWaterLevels(doc["data"], query, st, kMaxRows, matched, prov.code == thaiwater::kBangkok);
+    const size_t n = thaiwater::pickWaterLevels(doc["data"], query, st.p, kMaxRows, matched, prov.code == thaiwater::kBangkok);
     if (!n) {
         setError(out, *query ? "no water level station with that name in this province - try the district or river, "
                                "or leave place empty for the whole province"
@@ -279,23 +339,29 @@ void runLevel(const thaiplace::Province& prov, const char* query, JsonDocument& 
 // ---------------------------------------------------------------- rain
 
 void runRain(const thaiplace::Province& prov, const char* query, int days, JsonDocument& out, CardData& card) {
-    const bool week = days >= 7;
-    const char* key = week ? "rain_7d" : "rain_24h";
+    const RainSpan span = rainSpan(days);
+    const bool multiDay = span.days > 1;  // several days: ThaiWater says which dates they are
+    const char* key = span.key;
     JsonDocument filter;
     JsonObject f = filter["data"][0].to<JsonObject>();
     f[key] = true;
     f["rainfall_datetime"] = true;
+    if (multiDay) {  // the days counted (T106: "last 7 days" is 2026-10-20..25 on the 26th - say which)
+        f["rainfall_start_date"] = true;
+        f["rainfall_end_date"] = true;
+    }
     f["station"]["tele_station_name"] = true;
     f["geocode"]["amphoe_name"] = true;
     f["geocode"]["tumbon_name"] = true;
     JsonDocument doc(JsonPsramAllocator::instance());
-    const String url = String(thaiwater::kBase) + (week ? "provinces/rain7d" : "public/rain_24h") +
+    const String url = String(thaiwater::kBase) + span.path +
                        "?province_code=" + prov.code;
     if (!fetchFiltered(url, filter, doc, out)) return;
 
-    thaiwater::Rain top[kMaxRows];
+    PsRows<thaiwater::Rain> top;
+    if (!top) return setError(out, "out of memory");
     thaiwater::RainSummary sum;
-    const size_t n = thaiwater::pickRain(doc["data"], key, query, top, kMaxRows, sum, prov.code == thaiwater::kBangkok);
+    const size_t n = thaiwater::pickRain(doc["data"], key, query, top.p, kMaxRows, sum, prov.code == thaiwater::kBangkok);
     if (!sum.stations) {
         setError(out, *query ? "no rain station with that name in this province - leave place empty for the whole province"
                              : "no rain station reports in this province");
@@ -304,13 +370,17 @@ void runRain(const thaiplace::Province& prov, const char* query, int days, JsonD
     JsonObject res = out["result"].to<JsonObject>();
     res["source"] = "ThaiWater (คลังข้อมูลน้ำแห่งชาติ) rain gauges";
     res["province"] = prov.th;
-    res["period"] = week ? "last 7 days" : "last 24 hours";
+    res["period"] = span.period;
+    if (multiDay) {
+        res["period_from"] = doc["data"][0]["rainfall_start_date"] | "";
+        res["period_to"] = doc["data"][0]["rainfall_end_date"] | "";
+    }
     res["time"] = sum.time;
     res["stations"] = sum.stations;
     res["stations_with_rain"] = sum.wet;
     res["max_mm"] = serialized(String(sum.max, 1));
     res["average_mm"] = serialized(String(sum.avg, 1));
-    if (!week) res["max_class"] = thaiwater::rainTh(sum.max);
+    if (!multiDay) res["max_class"] = thaiwater::rainTh(sum.max);
     JsonArray arr = res["wettest"].to<JsonArray>();
     for (size_t i = 0; i < n && top[i].mm > 0.1f; i++) {
         JsonObject o = arr.add<JsonObject>();
@@ -320,21 +390,27 @@ void runRain(const thaiplace::Province& prov, const char* query, int days, JsonD
     }
 
     card.kind = CardData::Bars;
-    snprintf(card.title, sizeof(card.title), "ฝน%s จ.%s", week ? " 7 วัน" : " 24 ชม.", prov.th);
+    snprintf(card.title, sizeof(card.title), "%s จ.%s", span.titleTh, prov.th);
     snprintf(card.subtitle, sizeof(card.subtitle), "เฉลี่ย %.1f มม. • ฝนตก %u/%u สถานี", sum.avg, (unsigned)sum.wet,
              (unsigned)sum.stations);
+    if (multiDay) {  // + the dates covered
+        const String dates = cardTime(doc["data"][0]["rainfall_start_date"] | "") + "–" +
+                             cardTime(doc["data"][0]["rainfall_end_date"] | "");
+        const size_t used = strlen(card.subtitle);
+        snprintf(card.subtitle + used, sizeof(card.subtitle) - used, " • %s", dates.c_str());
+    }
     for (size_t i = 0; i < n && top[i].mm > 0.1f; i++) {
         CardData::Row& r = card.row[card.rows++];
         copyStr(r.name, sizeof(r.name), top[i].name);  // with the district it no longer fits the row (board test)
         r.value = top[i].mm;
-        r.color = rainColor(week ? top[i].mm / 7 : top[i].mm);
+        r.color = rainColor(top[i].mm / span.days);  // the colour of an average day
         snprintf(r.extra, sizeof(r.extra), "%.1f", top[i].mm);
     }
     if (!card.rows) {  // a dry day: say so instead of an empty chart
         card.kind = CardData::Text;
         copyStr(card.big, sizeof(card.big), "ไม่มีฝน");
         snprintf(card.body, sizeof(card.body), "สถานีวัดฝน %u แห่งใน จ.%s ไม่มีฝน%s", (unsigned)sum.stations, prov.th,
-                 week ? "ในรอบ 7 วัน" : "ในรอบ 24 ชั่วโมง");
+                 span.inTh);
     }
 }
 
@@ -345,12 +421,17 @@ void runRain(const thaiplace::Province& prov, const char* query, int days, JsonD
  * 8 provinces whose highest station is highest. `query` (a river / station word) narrows it ("ปิง" = the Ping basin).
  */
 void runRank(bool level, const char* query, int days, JsonDocument& out, CardData& card) {
-    const bool week = !level && days >= 7;
-    const char* key = level ? "storage_percent" : (week ? "rain_7d" : "rain_24h");
+    const RainSpan span = rainSpan(days);
+    const bool multiDay = !level && span.days > 1;
+    const char* key = level ? "storage_percent" : span.key;
     // one station's filter: the array is walked element by element (see thaiwater::ProvinceRanker)
     JsonDocument filter;
     filter[key] = true;
     filter[level ? "waterlevel_datetime" : "rainfall_datetime"] = true;
+    if (multiDay) {
+        filter["rainfall_start_date"] = true;
+        filter["rainfall_end_date"] = true;
+    }
     filter["station"]["tele_station_name"] = true;
     filter["geocode"]["province_code"] = true;
     filter["geocode"]["province_name"] = true;
@@ -365,38 +446,57 @@ void runRank(bool level, const char* query, int days, JsonDocument& out, CardDat
         return;
     }
     thaiwater::ProvinceRanker ranker((thaiwater::ProvinceRank*)slotMem, key, level, query);
-    const String url = String(thaiwater::kBase) + (level ? "public/waterlevel" : week ? "provinces/rain7d" : "public/rain_24h");
-    char when[17] = "";
-    OpenStream os;
+    const String url = String(thaiwater::kBase) + (level ? "public/waterlevel" : span.path);
+    char when[17] = "", from[11] = "", to[11] = "";
     bool ok = false;
-    if (GzipHttpStream* s = openStream(url, kNationTimeoutMs, os, out)) {
-        if (!s->find("\"data\":[")) {
-            setError(out, "ThaiWater sent data that could not be read");
-        } else {
-            JsonDocument one(JsonPsramAllocator::instance());
-            ok = true;
-            do {
-                GzipHttpStream::Reader rd = s->reader();
-                const DeserializationError e = deserializeJson(one, rd, DeserializationOption::Filter(filter));
-                if (e) {
-                    ok = false;
-                    setError(out, s->timedOut() ? "ThaiWater is too slow right now - try again"
-                                                : "ThaiWater sent data that could not be read");
-                    break;
-                }
-                ranker.add(one.as<JsonObjectConst>());
-                if (!when[0]) thaiwater::copyText(when, sizeof(when), one[level ? "waterlevel_datetime" : "rainfall_datetime"] | "");
-            } while (s->findUntil(",", "]"));
+    const uint32_t t0 = millis();
+    for (int attempt = 0;; attempt++) {
+        OpenStream os;
+        bool stalled = false;
+        if (GzipHttpStream* s = openStream(url, kNationTimeoutMs, os, out)) {
+            if (!s->find("\"data\":[")) {
+                setError(out, s->timedOut() ? "ThaiWater is too slow right now - try again"
+                                            : "ThaiWater sent data that could not be read");
+            } else {
+                JsonDocument one(JsonPsramAllocator::instance());
+                setStage("water: parse stations");
+                ok = true;
+                do {
+                    GzipHttpStream::Reader rd = s->reader();
+                    const DeserializationError e = deserializeJson(one, rd, DeserializationOption::Filter(filter));
+                    if (e) {
+                        ok = false;
+                        setError(out, s->timedOut() ? "ThaiWater is too slow right now - try again"
+                                                    : "ThaiWater sent data that could not be read");
+                        break;
+                    }
+                    ranker.add(one.as<JsonObjectConst>());
+                    if (!when[0]) {
+                        thaiwater::copyText(when, sizeof(when), one[level ? "waterlevel_datetime" : "rainfall_datetime"] | "");
+                        thaiwater::copyText(from, sizeof(from), one["rainfall_start_date"] | "");
+                        thaiwater::copyText(to, sizeof(to), one["rainfall_end_date"] | "");
+                    }
+                } while (s->findUntil(",", "]"));
+            }
+            stalled = s->stalled();
         }
+        closeStream(os, url);
+        if (ok || attempt >= kWaterRetries || !retryAfter(os, stalled, t0, kNationTimeoutMs, url)) break;
+        out.clear();
+        ranker = thaiwater::ProvinceRanker((thaiwater::ProvinceRank*)slotMem, key, level, query);  // start over
+        when[0] = 0;
     }
-    closeStream(os, url);
     if (!ok) {
         psramFree(slotMem);
         return;
     }
-    thaiwater::ProvinceRank top[kMaxRows];
+    PsRows<thaiwater::ProvinceRank> top;
+    if (!top) {
+        psramFree(slotMem);
+        return setError(out, "out of memory");
+    }
     size_t provinces = 0;
-    const size_t n = ranker.top(top, kMaxRows, provinces);
+    const size_t n = ranker.top(top.p, kMaxRows, provinces);
     const size_t stations = ranker.stations();
     psramFree(slotMem);
     if (!n) {
@@ -406,9 +506,11 @@ void runRank(bool level, const char* query, int days, JsonDocument& out, CardDat
 
     JsonObject res = out["result"].to<JsonObject>();
     res["source"] = "ThaiWater (คลังข้อมูลน้ำแห่งชาติ), every station in Thailand";
-    res["ranking"] = level ? "provinces by their most filled river station (% of the bank)"
-                           : (week ? "provinces by their wettest station, last 7 days" : "provinces by their wettest station, last 24 hours");
+    if (level) res["ranking"] = "provinces by their most filled river station (% of the bank)";
+    else res["ranking"] = String("provinces by their wettest station, ") + span.period;
     if (*query) res["filter"] = query;
+    if (from[0]) res["period_from"] = (const char*)from;  // const char*: copied (a char array is kept by pointer)
+    if (to[0]) res["period_to"] = (const char*)to;
     res["provinces_with_data"] = provinces;
     res["stations"] = stations;
     if (level) res["situation_scale"] = "percent of the river bank: >100 overflow, >70 high, >30 normal, >10 low, <=10 critically low";
@@ -424,7 +526,7 @@ void runRank(bool level, const char* query, int days, JsonDocument& out, CardDat
             if (top[i].river[0]) o["river"] = top[i].river;
         } else {
             o["max_mm"] = serialized(String(top[i].value, 1));
-            if (!week) o["max_class"] = thaiwater::rainTh(top[i].value);
+            if (!multiDay) o["max_class"] = thaiwater::rainTh(top[i].value);
             o["stations_with_rain"] = top[i].count;
         }
         o["station"] = top[i].station;
@@ -437,10 +539,12 @@ void runRank(bool level, const char* query, int days, JsonDocument& out, CardDat
         card.g.ref[0] = 100;  // dashed line at the bank
         copyStr(card.title, sizeof(card.title), "ระดับน้ำสูงสุด 8 จังหวัด");
     } else {
-        copyStr(card.title, sizeof(card.title), week ? "ฝน 7 วัน สูงสุด 8 จังหวัด" : "ฝน 24 ชม. สูงสุด 8 จังหวัด");
+        snprintf(card.title, sizeof(card.title), "%s สูงสุด 8 จังหวัด", span.titleTh);
     }
+    // several days: the dates they cover ("21/10–25/10"), not the day it was fetched
+    const String dates = from[0] ? cardTime(from) + "–" + cardTime(to) : cardTime(when);
     snprintf(card.subtitle, sizeof(card.subtitle), "%s%s%u สถานี • %s", query, *query ? " • " : "", (unsigned)stations,
-             cardTime(when).c_str());
+             dates.c_str());
     card.rows = (uint8_t)n;
     for (size_t i = 0; i < n; i++) {
         CardData::Row& r = card.row[i];
@@ -450,7 +554,7 @@ void runRank(bool level, const char* query, int days, JsonDocument& out, CardDat
             r.color = levelColor(thaiwater::levelFromPercent(top[i].value));
             snprintf(r.extra, sizeof(r.extra), "%.0f%%", top[i].value);
         } else {
-            r.color = rainColor(week ? top[i].value / 7 : top[i].value);
+            r.color = rainColor(top[i].value / span.days);
             snprintf(r.extra, sizeof(r.extra), "%.1f", top[i].value);
         }
     }

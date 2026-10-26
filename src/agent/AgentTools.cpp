@@ -409,7 +409,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
             {"action", "STRING", nullptr, true, kWaterActions},
             {"province", "STRING", "Omit = top 8 provinces nationwide.", false, nullptr},
             {"place", "STRING", "Optional river/district/station.", false, nullptr},
-            {"days", "INTEGER", "rain: 1 or 7.", false, nullptr},
+            {"days", "INTEGER", "rain: 1, 3, 5 or 7.", false, nullptr},
         };
         declare(d, b, "water", "Measured river level (graph), rain, storms in Thailand from ThaiWater, shown as a chart.",
                 water, 4);

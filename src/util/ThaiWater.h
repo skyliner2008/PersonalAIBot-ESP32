@@ -28,6 +28,11 @@ namespace thaiwater {
 
 constexpr const char* kBase = "https://api-v3.thaiwater.net/api/v1/thaiwater30/";
 
+// Text fields, in bytes (Thai = 3 per letter). 64 cut real names mid-word and the model read them out that way
+// ("อ่างเก็บน้ำบางเหนียวด", "อ.เมืองประจวบคีรีขันธ" - board, T106)
+constexpr size_t kStationCap = 128;  // "วัดนิคมประชาสรรค์ (วัดวังไทรดิ่ง)" = 93 bytes
+constexpr size_t kPlaceCap = 96;     // "อ.เมืองประจวบคีรีขันธ์" = 64 bytes
+
 /** 0 = unknown, 1 critical low .. 5 overflowing the bank. */
 inline int levelFromPercent(float pct) {
     if (isnan(pct)) return 0;
@@ -119,10 +124,10 @@ inline bool matches(const char* query, const char* a, const char* b = "", const 
 
 struct WaterLevel {
     long id = 0;            // station id for public/waterlevel_graph
-    char name[64] = "";     // "บ้านสบสอย"
+    char name[kStationCap] = "";  // "บ้านสบสอย"
     char code[16] = "";     // "P.73"
     char river[96] = "";    // basin: "ลุ่มน้ำปิง" ("ลุ่มน้ำภาคใต้ฝั่งตะวันตก" = 72 bytes)
-    char place[64] = "";    // "อ.จอมทอง"
+    char place[kPlaceCap] = "";   // "อ.จอมทอง"
     char time[17] = "";     // "2026-10-25 18:00"
     float msl = NAN;        // m above mean sea level (ม.รทก.)
     float percent = NAN;    // % of the bank
@@ -220,8 +225,8 @@ inline size_t downsample(JsonArrayConst points, float* out, size_t max, char* fi
 // ---------------------------------------------------------------- rain of a province
 
 struct Rain {
-    char name[64] = "";
-    char place[64] = "";
+    char name[kStationCap] = "";
+    char place[kPlaceCap] = "";
     float mm = NAN;
 };
 
@@ -269,10 +274,10 @@ inline size_t pickRain(JsonArrayConst data, const char* key, const char* query, 
 /** One province of a nationwide ranking: its highest station (rain mm or % of the bank). */
 struct ProvinceRank {
     int code = 0;              // province code (10 = Bangkok)
-    char name[48] = "";        // "สุพรรณบุรี"
+    char name[64] = "";        // "สุพรรณบุรี"
     float value = NAN;         // the highest station's mm / % of the bank
-    char station[64] = "";     // that station
-    char place[64] = "";       // its district
+    char station[kStationCap] = "";  // that station
+    char place[kPlaceCap] = "";      // its district
     char river[96] = "";       // its basin (water level)
     uint16_t stations = 0;     // stations with a value in the province
     uint16_t count = 0;        // rain: > 0.1 mm; water level: > 70 % (high or overflowing)

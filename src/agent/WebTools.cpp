@@ -749,6 +749,7 @@ void WebTools::loop() {
         }
         JobPriority boost;
         const uint32_t t0 = millis();
+        setStage(j.name);  // T105: the agent reports a job that stops moving
         const uint32_t ttl = cacheTtlMs(j.name);
         PsString key;
         if (ttl) {
@@ -818,6 +819,7 @@ void WebTools::loop() {
             alertsKnown = hasPriceAlerts(env);
             nextAlertCheck = millis() + 20000;
         }
+        setStage("idle");
         _busy = uxQueueMessagesWaiting(_jobs) > 0;
     }
 }

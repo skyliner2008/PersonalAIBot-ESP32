@@ -29,6 +29,17 @@ namespace webtools {
 /** True for the tools this module runs (declared in AgentTools::addDeclarations). */
 bool isWebTool(const char* name);
 
+/**
+ * What the webTools task is doing right now and since when (T105): a job that stops moving starves the console
+ * task, so the agent (higher priority) reports the stage instead.
+ */
+inline const char* volatile gStage = "idle";
+inline volatile uint32_t gStageAt = 0;
+inline void setStage(const char* s) {
+    gStage = s;
+    gStageAt = millis();
+}
+
 /** Result.tag of a fired price alert (name "_price_alert", json = {"message": "..."}). */
 constexpr uint32_t kAlertTag = 0xFFFFFFFFu;
 

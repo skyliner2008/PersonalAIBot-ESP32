@@ -19,6 +19,7 @@
 
 #include "../ai/GoogleRootCA.h"
 #include "../util/PsramAlloc.h"
+#include "WebTools.h"  // setStage
 
 namespace webtools {
 
@@ -26,24 +27,38 @@ class GzipHttpStream : public Stream {
 public:
     ~GzipHttpStream() override { close(); }
 
-    /** GET `url` (https only); returns the HTTP status (200 = the body can be read), < 0 = no connection. */
-    int open(const String& url, uint32_t timeoutMs) {
+    /**
+     * GET `url` (https only); returns the HTTP status (200 = the body can be read), < 0 = no connection.
+     * `stallMs`: no byte for this long (headers or body) = given up (stalled()) - the board saw downloads stop dead
+     * mid-way at random and sit until the overall timeout, while a new connection went through (T104).
+     */
+    int open(const String& url, uint32_t timeoutMs, uint32_t stallMs = 6000) {
         if (WiFi.status() != WL_CONNECTED) return -10;
         if (!url.startsWith("https://")) return -3;
         _deadline = millis() + timeoutMs;
+        _stallMs = stallMs;
         _tls.setCACert(WEB_ROOT_CA_PEM);
         _tls.setHandshakeTimeout(10);
-        _http.setTimeout(timeoutMs);
+        _http.setTimeout(stallMs + 2000);  // waiting for the headers (HTTPClient reads them itself)
         _http.setConnectTimeout(timeoutMs);
         _http.setUserAgent("Mozilla/5.0 (ESP32-AI personal assistant)");
         _http.setAcceptEncoding("gzip");
         static const char* kHeaders[] = {"Content-Encoding", "Transfer-Encoding"};
         _http.collectHeaders(kHeaders, 2);
         if (!_http.begin(_tls, url)) return -2;
+        // connected here (DNS + TCP + TLS) rather than inside GET(): the stage shows which half got stuck (T105);
+        // HTTPClient then reuses the open connection
+        const int hostEnd = url.indexOf('/', 8);
+        const String host = url.substring(8, hostEnd < 0 ? url.length() : hostEnd);
+        setStage("connect (DNS + TLS)");
+        if (!_tls.connect(host.c_str(), 443, (int32_t)timeoutMs)) return -1;
+        setStage("request + headers");
         const int code = _http.GET();
+        setStage("body");
         if (code != 200) return code;
         _s = _http.getStreamPtr();
         if (!_s) return -1;
+        _lastData = millis();
         _chunked = _http.header("Transfer-Encoding").equalsIgnoreCase("chunked");
         _left = _chunked ? -1 : _http.getSize();  // -1 = until the connection closes
         _gzip = _http.header("Content-Encoding").equalsIgnoreCase("gzip");
@@ -57,6 +72,7 @@ public:
     }
 
     void close() {
+        setStage("close");
         _http.end();
         psramFree(_inf);
         psramFree(_dict);
@@ -68,6 +84,7 @@ public:
     size_t wireBytes() const { return _wire; }  // as received (compressed)
     size_t bodyBytes() const { return _body; }  // as parsed (plain JSON)
     bool timedOut() const { return _timedOut; }
+    bool stalled() const { return _stalled; }  // nothing arrived for stallMs: a new connection may get through
     uint32_t netMs() const { return _netUs / 1000; }   // waiting for / reading the connection
     uint32_t inflateMs() const { return _infUs / 1000; }  // gzip
 
@@ -105,7 +122,8 @@ private:
     HTTPClient _http;
     NetworkClient* _s = nullptr;
     uint32_t _deadline = 0;
-    bool _chunked = false, _gzip = false, _eof = false, _timedOut = false;
+    uint32_t _stallMs = 6000, _lastData = 0;
+    bool _chunked = false, _gzip = false, _eof = false, _timedOut = false, _stalled = false;
     long _left = -1;       // plain body: bytes still to come (-1 = until close)
     long _chunkLeft = 0;   // chunked: bytes left in the current chunk
     size_t _wire = 0, _body = 0;
@@ -124,15 +142,29 @@ private:
 
     /** One byte from the connection, waiting up to the deadline. -1 = closed / timed out. */
     int rawByte() {
-        while (_s && !_s->available()) {
+        for (;;) {
+            if (!_s) return -1;
+            if (_s->available() > 0) {
+                // read(buf, 1), not read(): when available() says yes but nothing can be read (closed / TLS error)
+                // read() hands out 255 without consuming anything - the chunk-size loop waited for its '\n' for ever
+                // at job priority 4 and froze the console (board, T105 "stuck in water: parse stations")
+                uint8_t b;
+                if (_s->read(&b, 1) == 1) {
+                    _lastData = millis();
+                    return b;
+                }
+            }
             if (!_s->connected()) return -1;
             if ((int32_t)(millis() - _deadline) > 0) {
                 _timedOut = true;
                 return -1;
             }
+            if (millis() - _lastData > _stallMs) {
+                _timedOut = _stalled = true;
+                return -1;
+            }
             delay(1);
         }
-        return _s ? _s->read() : -1;
     }
 
     /** Body bytes with the chunked framing removed: up to `n` into `buf`, 0 = end. */
@@ -164,15 +196,22 @@ private:
         size_t got = 0;
         while (got < (size_t)want) {
             const int avail = _s ? _s->available() : 0;
-            if (avail <= 0) {
-                if (got) break;  // hand out what is here
-                const int c = rawByte();
-                if (c < 0) return (_eof = true), 0;
-                buf[got++] = (uint8_t)c;
-                continue;
+            if (avail > 0) {
+                const size_t take = (size_t)avail < (size_t)want - got ? (size_t)avail : (size_t)want - got;
+                const int r = _s->read(buf + got, take);
+                if (r > 0) {
+                    got += (size_t)r;
+                    _lastData = millis();
+                    continue;
+                }
+                // available() said yes but read() gave 0 (closed) / < 0 (TLS error): added to `got` as before, that
+                // spun here for ever at job priority 4 - the console (priority 1) froze (board, T104) - or wrapped
+                // `got` past the buffer. Fall through: rawByte() notices the closed / dead connection.
             }
-            const size_t take = (size_t)avail < (size_t)want - got ? (size_t)avail : (size_t)want - got;
-            got += _s->read(buf + got, take);
+            if (got) break;  // hand out what is here
+            const int c = rawByte();
+            if (c < 0) return (_eof = true), 0;
+            buf[got++] = (uint8_t)c;
         }
         _wire += got;
         if (_chunked) _chunkLeft -= (long)got;

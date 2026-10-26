@@ -110,7 +110,8 @@ void AgentController::handleConnectivity() {
     // only while asleep: the switch drops the connection, never in the middle of a conversation
     // T103: connected, look for a remembered network with a much stronger signal (the phone hotspot back next to
     // the board) and move to it
-    if (up && _sleeping && !_wifiScanning && now - _wifiScanAt >= kWifiBetterCheckMs &&
+    // (not during a download: the radio leaves the channel for the scan - it lined up with both stuck downloads, T104)
+    if (up && _sleeping && !_wifiScanning && !_web.busy() && now - _wifiScanAt >= kWifiBetterCheckMs &&
         (gSettings.knownWifiCount() >= 2 || strcmp(_wifiTarget, _cfg.wifiSsid)) && wifiStartScan(now)) {
         Serial.printf("[WiFi] On %s (%d dBm) - looking for a stronger remembered network\n", _wifiTarget, WiFi.RSSI());
     }
@@ -276,12 +277,13 @@ void AgentController::buildSystemPrompt(PsString& p) {
          "ก่อนตอบเรื่องส่วนตัว ห้ามแต่งความจำ บันทึกเฉพาะสิ่งที่ผู้ใช้พูดถึงตัวเองชัดเจน "
          "(ไม่ใช่เสียงไม่ชัด เสียงวิทยุ/ทีวี หรือคนอื่นคุยกัน)\n"
          "ผู้ช่วยส่วนตัว: ใช้ set_timer, set_reminder, add_task ฯลฯ ตามที่ผู้ใช้ขอ ";
-    p += "ข้อมูลสด (แสดงกราฟิกบนจอให้เอง แล้วคุณพูดสรุปสั้นๆ): อากาศ/ฝน/ฝุ่น PM2.5 = get_weather, "
+    p += "ข้อมูลสด (แสดงกราฟิกบนจอให้เอง แล้วคุณพูดสรุปสั้นๆ จากผลของ tool นั้นเท่านั้น ถ้า tool ตอบ error/busy "
+         "หรือยังไม่ตอบ ให้บอกตรงๆ ว่ายังไม่ได้ข้อมูล ห้ามเดาหรือใช้ตัวเลขเก่า): อากาศ/ฝน/ฝุ่น PM2.5 = get_weather, ";
          "ราคาน้ำมันในไทย = get_oil_price, หุ้น/ดัชนี/ทองคำ/คริปโต/ค่าเงิน/น้ำมันดิบ = get_market_quote, "
          "แลกเงิน = convert_currency, ข่าว = get_news, คิดเลข = calculate (ห้ามคิดเลขเอง), แปลงหน่วย = convert_units, "
          "เวลาต่างประเทศ = get_world_time, ความรู้ทั่วไป/ใครคือ/คืออะไร = search_knowledge, จดโน้ตยาว = notes ";
     if (_cfg.waterTools) {  // T100: measured data, while get_weather is the forecast
-        p += "น้ำ (วัดจริงจากคลังข้อมูลน้ำแห่งชาติ): ระดับน้ำ/น้ำท่วม/น้ำล้นตลิ่ง = water level, ฝนตกไปเท่าไร = water rain, "
+        p += "น้ำ (วัดจริงจากคลังข้อมูลน้ำแห่งชาติ): ระดับน้ำ/น้ำท่วม/น้ำล้นตลิ่ง = water level, ฝนตกไปเท่าไร = water rain (days 1/3/5/7 ตามที่ถาม ไม่ระบุ = 1), "
              "พายุ = water storm · ใส่ province เมื่อถามถึงจังหวัด/สถานที่ · ทั่วประเทศ/จังหวัดไหนหนักสุด = ไม่ใส่ province "
              "(ได้ 8 จังหวัดสูงสุด, ใช้เวลาราว 10 วิ: บอกผู้ใช้ว่ากำลังดึงข้อมูลทั้งประเทศ) ";
     }
@@ -816,7 +818,10 @@ void AgentController::onToolCall(JsonArrayConst calls) {
         if (webtools::isWebTool(name)) {
             // its queue is full: AgentTools does not know web tools and answered "unknown function", after
             // which the model stopped using the tool for the whole session (T069)
-            response["error"] = "busy: other lookups are still running - try again in a few seconds";
+            // T105: the model said "done, see the chart" and quoted older numbers after this - spell it out
+            response["error"] =
+                "busy: an earlier lookup is still running, so you got NO data now. Tell the user it is not ready / "
+                "failed for now; never make up results, never reuse numbers from earlier, nothing new is on screen.";
             Serial.printf("[Tool] %s -> busy (web tool queue full)\n", name);
             continue;
         }
@@ -859,6 +864,13 @@ void AgentController::onToolCall(JsonArrayConst calls) {
 
 // Finished web-tool calls: answer the model (same session only) or print for the console / PC app
 void AgentController::handleWebResults() {
+    // T105: a web job that stops moving (one froze the console - its task starves loopTask) - say where, from here
+    static uint32_t lastStuckReport = 0;
+    const uint32_t stuckFor = millis() - webtools::gStageAt;
+    if (_web.busy() && stuckFor > 45000 && millis() - lastStuckReport > 15000) {
+        lastStuckReport = millis();
+        Serial.printf("[Web] job stuck? stage \"%s\" for %lu s\n", webtools::gStage, (unsigned long)(stuckFor / 1000));
+    }
     webtools::Result r;
     while (_web.poll(r)) {
         JsonDocument result(JsonPsramAllocator::instance());
