@@ -239,6 +239,7 @@ void AgentController::startFreshSession(const char* hint) {
     _audio->clearPlayback();
     _dropAudio = false;
     _awaitingReply = false;
+    _awaitToolAnswer = false;
     if (hint) _face->setHint(hint, 2000);
     if (_gemini.started()) _gemini.restart();
 }
@@ -463,6 +464,7 @@ void AgentController::onDisconnected(bool wasReady) {
     flushUserTurn();
     flushAgentTurn(!wasReady);
     _awaitingReply = false;
+    _awaitToolAnswer = false;  // the new session never saw that result
     _vadOpen = false;
     _prerollDraining = false;  // the queue was dropped with the link
     const bool closeSeen = _closeSeen;
@@ -759,11 +761,22 @@ void AgentController::onGenerationComplete() { _audio->flushPlayback(); }
 
 void AgentController::onTurnComplete() {
     Serial.printf("[Chat] turn complete (tokens/min %lu)\n", (unsigned long)tokensPerMinute());
+    // T107: gemini-3.8-live sometimes ends the turn without a word right after a web tool result that took a few
+    // seconds (the same result from the cache a minute later was answered). Ask once for the answer.
+    bool nudged = false;
+    if (_awaitToolAnswer && !_replyAudio && _agentTurn.empty() && _gemini.isReady()) {
+        _awaitToolAnswer = false;
+        nudged = true;
+        Serial.println("[Chat] empty turn after a tool result - asking for the answer");
+        _gemini.sendClientText("(ระบบ: ผลของเครื่องมือมาถึงแล้ว ตอบคำถามล่าสุดของผู้ใช้จากผลนั้นเลย)");
+    } else if (_replyAudio || !_agentTurn.empty()) {
+        _awaitToolAnswer = false;
+    }
     flushUserTurn();
     flushAgentTurn(_dropAudio);
     _audio->flushPlayback();
     _dropAudio = false;
-    _awaitingReply = false;
+    _awaitingReply = nudged;  // the nudge is a question too: its answer is awaited
     if (_replyAudio) {
         // arrival rate: audio after the first message vs the time it took to come in (1.0 = real time)
         const uint32_t wall = _replyLastMs - _replyT0;
@@ -867,7 +880,8 @@ void AgentController::handleWebResults() {
     // T105: a web job that stops moving (one froze the console - its task starves loopTask) - say where, from here
     static uint32_t lastStuckReport = 0;
     const uint32_t stuckFor = millis() - webtools::gStageAt;
-    if (_web.busy() && stuckFor > 45000 && millis() - lastStuckReport > 15000) {
+    // ("idle" = the job was queued a moment ago and has not started: not stuck - a false report in a user's log)
+    if (_web.busy() && strcmp(webtools::gStage, "idle") != 0 && stuckFor > 45000 && millis() - lastStuckReport > 15000) {
         lastStuckReport = millis();
         Serial.printf("[Web] job stuck? stage \"%s\" for %lu s\n", webtools::gStage, (unsigned long)(stuckFor / 1000));
     }
@@ -917,6 +931,7 @@ void AgentController::handleWebResults() {
             fr["name"] = r.name;
             fr["response"] = result.as<JsonObjectConst>();
             if (!_gemini.sendJson(resp)) Serial.println("[Tool] ERROR: failed to send toolResponse");
+            else _awaitToolAnswer = true;  // T107: an empty turn after this gets one nudge
         } else {
             Serial.printf("[Tool] %s result dropped (session changed)\n", r.name);
         }

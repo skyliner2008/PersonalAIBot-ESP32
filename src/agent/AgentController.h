@@ -275,6 +275,7 @@ private:
     uint32_t _sleepSince = 0;
     uint32_t _loopMaxMs = 0;
     bool _replyAudio = false;          // audio of the current reply has started
+    bool _awaitToolAnswer = false;     // a web tool result was sent: the model owes an answer (T107)
     bool _replyReportPending = false;  // print the per-reply audio line once playback ends
     uint32_t _replyT0 = 0, _replyLastMs = 0, _replyBytes0 = 0, _replyNeedMs = 0;
     float _replyRate = 0.0f;  // audio received / wall time for the last reply (1.0 = real time)  // longest agent-loop pass (diag; reset on read)
