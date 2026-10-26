@@ -33,4 +33,10 @@ extern const size_t kProvinceCount;
  */
 const Province* findProvince(const char* name);
 
+/**
+ * A province named inside free text ("ปิง อ.เมือง จ.เชียงใหม่"), as a whole word: "ตากใบ" / "ตากฟ้า" (districts of
+ * other provinces) are not "ตาก". The longest name wins. nullptr = none.
+ */
+const Province* findProvinceInText(const char* text);
+
 }  // namespace thaiplace

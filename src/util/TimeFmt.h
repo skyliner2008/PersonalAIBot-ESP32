@@ -86,6 +86,17 @@ inline bool formatDateTime(uint32_t epoch, int32_t utcOffsetSec, char* buf, size
     return true;
 }
 
+/**
+ * "2026-10-25 22:30" -> "25/10 22:30" (a card's short time); a date alone -> "25/10"; anything else is copied.
+ */
+inline void shortStamp(const char* when, char* buf, size_t cap) {
+    int y = 0, m = 0, d = 0, hh = 0, mm = 0;
+    const int got = when ? sscanf(when, "%4d-%2d-%2d %2d:%2d", &y, &m, &d, &hh, &mm) : 0;
+    if (got >= 5) snprintf(buf, cap, "%d/%d %02d:%02d", d, m, hh, mm);
+    else if (got >= 3) snprintf(buf, cap, "%d/%d", d, m);
+    else snprintf(buf, cap, "%s", when ? when : "");
+}
+
 /** Thai weekday name (UTF-8). */
 inline const char* thaiWeekday(int weekday) {
     static const char* const names[] = {"อาทิตย์", "จันทร์", "อังคาร", "พุธ",

@@ -102,7 +102,9 @@ public:
     /** Connected to it: remember / refresh it (written only when something changed). */
     bool rememberWifi(const char* ssid, const char* pass);
     bool forgetWifi(const char* ssid);
-    wifiknown::List knownWifi() const;
+    wifiknown::List knownWifi() const;  // with the passwords (the copy wipes them when dropped)
+    size_t knownWifiCount() const;
+    bool isKnownWifi(const char* ssid) const;
 
     /** Apply a persona preset (voice, gender, personality, eye color, agent name). */
     static bool applyProfile(SettingsData& d, const char* profileId);

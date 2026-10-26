@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "../util/TextWrap.h"
+#include "../util/TimeFmt.h"
 
 CardScreen gCard;
 
@@ -482,13 +483,6 @@ void CardScreen::drawTable(LGFX_Sprite& c) {
 }
 
 namespace {
-// "2026-10-25 22:30" -> "25/10 22:30"
-void shortTime(const char* when, char* out, size_t n) {
-    int y = 0, m = 0, d = 0, hh = 0, mm = 0;
-    if (sscanf(when, "%4d-%2d-%2d %2d:%2d", &y, &m, &d, &hh, &mm) >= 3) snprintf(out, n, "%d/%d %02d:%02d", d, m, hh, mm);
-    else snprintf(out, n, "%s", when);
-}
-
 void dashedHLine(LGFX_Sprite& c, int x0, int x1, int y, uint16_t col) {
     for (int x = x0; x < x1; x += 8) c.drawFastHLine(x, y, x + 4 < x1 ? 4 : x1 - x, col);
 }
@@ -551,12 +545,12 @@ void CardScreen::drawGraph(LGFX_Sprite& c) {
     for (int i = 1; i < g.n; i++) c.drawWideLine(px(i - 1), py(g.v[i - 1]), px(i), py(g.v[i]), 1.5f, col);
     c.fillCircle(px(g.n - 1), py(g.v[g.n - 1]), 3, col);
 
-    shortTime(g.from, buf, sizeof(buf));
+    timefmt::shortStamp(g.from, buf, sizeof(buf));
     c.setFont(&fonts::Font0);
     c.setTextColor(ui::DIM);
     c.setTextDatum(textdatum_t::top_left);
     c.drawString(buf, x0, y1 + 6);
-    shortTime(g.to, buf, sizeof(buf));
+    timefmt::shortStamp(g.to, buf, sizeof(buf));
     c.setTextDatum(textdatum_t::top_right);
     c.drawString(buf, x1, y1 + 6);
 }

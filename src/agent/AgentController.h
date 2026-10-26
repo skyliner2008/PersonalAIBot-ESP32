@@ -242,6 +242,7 @@ private:
     uint32_t _wifiScanAt = 0;
     void wifiBegin(const char* ssid, const char* pass);
     void wifiScanDone(int16_t found);
+    bool wifiStartScan(uint32_t now);
     bool _wifiErrorShown = false;
     bool _timeStarted = false, _timeValidSeen = false;
     uint8_t _activeModel = 0;

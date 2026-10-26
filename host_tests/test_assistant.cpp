@@ -1561,6 +1561,17 @@ TEST(thai_provinces) {
     CHECK_EQ(findProvince("เชียงใหม่")->code, 50);
     CHECK_EQ(findProvince("กรุงเทพมหานคร")->code, 10);
     CHECK_EQ(findProvince("บึงกาฬ")->code, 38);
+    // a province inside free text (water tool's place), whole words only: districts of other provinces that
+    // start with a province name ("ตากใบ" Narathiwat, "ตากฟ้า" Nakhon Sawan) are not "ตาก"
+    using thaiplace::findProvinceInText;
+    CHECK(findProvinceInText("ปิง อ.จอมทอง จ.เชียงใหม่") == findProvince("เชียงใหม่"));
+    CHECK(findProvinceInText("อ.เมืองตาก") == findProvince("ตาก"));
+    CHECK(findProvinceInText("ตาก") == findProvince("ตาก"));
+    CHECK(findProvinceInText("อ.ตากใบ") == nullptr);
+    CHECK(findProvinceInText("ตากฟ้า") == nullptr);
+    CHECK(findProvinceInText("ตากใบ นราธิวาส") == findProvince("นราธิวาส"));
+    CHECK(findProvinceInText("สะพานนวรัฐ") == nullptr);
+    CHECK(findProvinceInText("") == nullptr && findProvinceInText(nullptr) == nullptr);
 
     auto is = [&](const char* name, const char* want) {
         const thaiplace::Province* p = findProvince(name);
@@ -1930,4 +1941,34 @@ TEST(thaiwater_province_ranking) {
     CHECK(top[1].code == 50 && top[1].over == 0 && top[1].count == 1);
     n = rank(wl["data"], "storage_percent", true, "ปิง", 8);  // one basin
     CHECK(n == 1 && top[0].code == 50 && stations == 2);
+
+    // province_code as a number works too (the API sends "50" today)
+    JsonDocument numeric;
+    CHECK(!deserializeJson(numeric, R"({"data":[
+        {"rain_24h":5,"station":{"tele_station_name":{"th":"ก"}},"geocode":{"province_code":50,"province_name":{"th":"เชียงใหม่"}}},
+        {"rain_24h":9,"station":{"tele_station_name":{"th":"ข"}},"geocode":{"province_code":"63","province_name":{"th":"ตาก"}}}]})"));
+    n = rank(numeric["data"], "rain_24h", false, "", 8);
+    CHECK(n == 2 && top[0].code == 63 && top[1].code == 50 && stations == 2);
+    CHECK_EQ(intOf(numeric["data"][0]["geocode"]["province_code"]), 50);
+    CHECK_EQ(intOf(numeric["data"][1]["geocode"]["province_code"]), 63);
+    CHECK_EQ(intOf(numeric["data"][0]["missing"]), 0);
+
+    // the shared "best first, at most max" insertion: ties keep arrival order, overflow drops the lowest
+    int best[3];
+    size_t kept = 0;
+    for (int v : {5, 9, 1, 9, 7}) kept = insertTop(best, kept, 3, v, [](int x) { return (float)x; });
+    CHECK(kept == 3 && best[0] == 9 && best[1] == 9 && best[2] == 7);
+}
+
+// a card's short time (graph axis, water cards)
+TEST(time_short_stamp) {
+    char buf[40];
+    timefmt::shortStamp("2026-10-25 22:30", buf, sizeof(buf));
+    CHECK(!strcmp(buf, "25/10 22:30"));
+    timefmt::shortStamp("2026-10-05", buf, sizeof(buf));
+    CHECK(!strcmp(buf, "5/10"));  // no time: no made-up 00:00
+    timefmt::shortStamp("เมื่อวาน", buf, sizeof(buf));
+    CHECK(!strcmp(buf, "เมื่อวาน"));
+    timefmt::shortStamp(nullptr, buf, sizeof(buf));
+    CHECK(!buf[0]);
 }

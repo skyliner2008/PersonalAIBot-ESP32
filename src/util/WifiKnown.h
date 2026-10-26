@@ -30,6 +30,17 @@ struct Seen {
 
 class List {
 public:
+    List() = default;
+    List(const List&) = default;
+    List& operator=(const List&) = default;
+    /** Copies are handed around (menus, scans): each wipes its passwords when it goes out of scope. */
+    ~List() {
+        for (Net& n : _items) {
+            volatile char* p = n.pass;  // volatile: not optimised away as a dead store
+            for (size_t i = 0; i < sizeof(n.pass); i++) p[i] = 0;
+        }
+    }
+
     size_t size() const { return _count; }
     const Net& at(size_t i) const { return _items[i]; }
 

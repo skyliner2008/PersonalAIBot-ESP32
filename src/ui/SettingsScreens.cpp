@@ -410,15 +410,17 @@ void openWifi() {
                 gWifi.rebuild();
             });
         }
-        const wifiknown::List known = gSettings.knownWifi();
         for (const Net& n : gNets) {
             const char* q = n.rssi > -60 ? "แรง" : (n.rssi > -72 ? "ปานกลาง" : "อ่อน");
-            const int k = known.find(n.ssid.c_str());
-            String value = String(q) + (n.open ? " • เปิด" : "") + (k >= 0 ? " • จำไว้" : "");
-            ListScreen::Item& it = l.add(n.ssid, value, [n]() {
+            const bool remembered = gSettings.isKnownWifi(n.ssid.c_str());
+            const bool current = n.ssid == s.wifiSsid;
+            // tapping the configured network again = its password changed / is wrong: the keyboard
+            String value = String(q) + (n.open ? " • เปิด" : "") +
+                           (remembered ? (current && !n.open ? " • แตะเพื่อใส่รหัสใหม่" : " • จำไว้") : "");
+            ListScreen::Item& it = l.add(n.ssid, value, [n, current]() {
                 const wifiknown::List saved = gSettings.knownWifi();
                 const int i = saved.find(n.ssid.c_str());
-                if (i >= 0) {  // joined before (T099): its saved password, no keyboard
+                if (i >= 0 && !(current && !n.open)) {  // joined before (T099): its saved password, no keyboard
                     gSettings.update([&](SettingsData& d) {
                         strncpy(d.wifiSsid, saved.at((size_t)i).ssid, sizeof(d.wifiSsid) - 1);
                         d.wifiSsid[sizeof(d.wifiSsid) - 1] = '\0';
@@ -436,13 +438,14 @@ void openWifi() {
                     askWifiPassword(n.ssid);
                 }
             });
-            it.checked = n.ssid == s.wifiSsid;
+            it.checked = current;
         }
         l.add("ค้นหาใหม่", "", []() {
             startScan();
             gWifi.rebuild();
         });
-        if (known.size()) l.addSubmenu("Wi-Fi ที่จำไว้", String((unsigned)known.size()) + " เครือข่าย", openKnownWifi);
+        const size_t known = gSettings.knownWifiCount();
+        if (known) l.addSubmenu("Wi-Fi ที่จำไว้", String((unsigned)known) + " เครือข่าย", openKnownWifi);
         l.add("ป้อนชื่อเครือข่ายเอง", "", []() {
             KeyboardScreen::Options o;
             o.title = "ชื่อ Wi-Fi (SSID)";

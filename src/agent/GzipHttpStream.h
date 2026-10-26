@@ -96,12 +96,7 @@ public:
 
     // ---- Stream (find / findUntil between the elements) ----
     int available() override { return (_outLen || fill()) ? (int)_outLen : 0; }
-    int read() override {
-        if (!_outLen && !fill()) return -1;
-        _outLen--;
-        _body++;
-        return *_out++;
-    }
+    int read() override { return next(); }
     int peek() override { return (_outLen || fill()) ? *_out : -1; }
     size_t write(uint8_t) override { return 0; }
 
@@ -149,7 +144,7 @@ private:
             uint32_t t0;
             ~Add() { acc += micros() - t0; }
         } add{_netUs, t0};
-        if (_chunked && _chunkLeft == 0) {  // "<hex size>[;ext]\r\n" (after the previous chunk's "\r\n")
+        while (_chunked && _chunkLeft == 0) {  // "<hex size>[;ext]\r\n" (after the previous chunk's "\r\n")
             char line[20];
             size_t len = 0;
             int c;
@@ -158,7 +153,7 @@ private:
             }
             if (c < 0) return (_eof = true), 0;
             line[len] = '\0';
-            if (!len) return bodyRead(buf, n);  // the CRLF that ends the previous chunk
+            if (!len) continue;  // the CRLF that ends the previous chunk (a loop: one timer for the whole read)
             _chunkLeft = strtol(line, nullptr, 16);
             if (_chunkLeft <= 0) return (_eof = true), 0;  // the last chunk
         }

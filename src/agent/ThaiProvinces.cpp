@@ -167,4 +167,27 @@ const Province* findProvince(const char* name) {
     return nullptr;
 }
 
+const Province* findProvinceInText(const char* text) {
+    if (!text) return nullptr;
+    const Province* best = nullptr;
+    size_t bestLen = 0;
+    for (size_t i = 0; i < kProvinceCount; i++) {
+        const char* th = kProvinces[i].th;
+        const size_t n = strlen(th);
+        for (const char* at = strstr(text, th); at; at = strstr(at + 1, th)) {
+            // a whole word: "ตากใบ" (Narathiwat) / "ตากฟ้า" (Nakhon Sawan) are not "ตาก" - Thai letters follow
+            // (U+0E00-U+0E7F = E0 B8 xx / E0 B9 xx in UTF-8)
+            const unsigned char* next = (const unsigned char*)at + n;
+            const bool thaiFollows = next[0] == 0xE0 && (next[1] == 0xB8 || next[1] == 0xB9);
+            if (thaiFollows) continue;
+            if (n > bestLen) {  // the longest name found ("นครสวรรค์" over a shorter one inside it)
+                best = &kProvinces[i];
+                bestLen = n;
+            }
+            break;
+        }
+    }
+    return best;
+}
+
 }  // namespace thaiplace

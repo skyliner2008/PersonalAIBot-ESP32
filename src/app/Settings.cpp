@@ -598,6 +598,16 @@ wifiknown::List Settings::knownWifi() const {
     return _known;
 }
 
+size_t Settings::knownWifiCount() const {
+    Guard g(_lock);
+    return _known.size();
+}
+
+bool Settings::isKnownWifi(const char* ssid) const {
+    Guard g(_lock);
+    return _known.find(ssid) >= 0;
+}
+
 void Settings::persistKnown(const wifiknown::List& list) {
     Guard s(_saveLock);
     JsonDocument doc;

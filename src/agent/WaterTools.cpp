@@ -109,20 +109,48 @@ void placeQuery(const char* place, char* out, size_t cap) {
     for (size_t n = strlen(out); n > 0 && out[n - 1] == ' '; n--) out[n - 1] = '\0';
 }
 
-/** The province from `province`, or the first province name found inside `place`. */
+/**
+ * Remove a separate province word from the station query: "ตากใบ จ.นราธิวาส" -> "ตากใบ". A word that only starts
+ * with the name stays ("เมืองเชียงใหม่" is a district; there "เมือง" comes before it, not a space).
+ */
+void dropProvinceWord(char* query, const char* provinceTh) {
+    static const char* const kLead[] = {"จังหวัด", "จ."};
+    const size_t n = strlen(provinceTh);
+    for (char* at = strstr(query, provinceTh); at; at = strstr(at + 1, provinceTh)) {
+        char* start = at;
+        for (const char* lead : kLead) {
+            const size_t ln = strlen(lead);
+            if ((size_t)(start - query) >= ln && !strncmp(start - ln, lead, ln)) {
+                start -= ln;
+                break;
+            }
+        }
+        const unsigned char* after = (const unsigned char*)at + n;
+        const bool wordStart = start == query || start[-1] == ' ';
+        const bool wordEnd = !*after || *after == ' ';
+        if (!wordStart || !wordEnd) continue;
+        memmove(start, at + n, strlen(at + n) + 1);
+        break;
+    }
+    // tidy the spaces left behind
+    char* w = query;
+    for (const char* r = query; *r; r++) {
+        if (*r == ' ' && (w == query || w[-1] == ' ')) continue;
+        *w++ = *r;
+    }
+    while (w > query && w[-1] == ' ') w--;
+    *w = '\0';
+}
+
+/** The province from `province`, or a province named (as a whole word) inside `place`. */
 const thaiplace::Province* findProvinceIn(const char* province, const char* place) {
     if (const thaiplace::Province* p = thaiplace::findProvince(province)) return p;
-    for (size_t i = 0; i < thaiplace::kProvinceCount; i++) {
-        if (strstr(place, thaiplace::kProvinces[i].th)) return &thaiplace::kProvinces[i];
-    }
-    return nullptr;
+    return thaiplace::findProvinceInText(place);
 }
 
 String cardTime(const char* when) {  // "2026-10-25 22:30" -> "25/10 22:30"
-    int y = 0, m = 0, d = 0, hh = 0, mm = 0;
-    if (sscanf(when, "%4d-%2d-%2d %2d:%2d", &y, &m, &d, &hh, &mm) < 3) return String(when);
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%d/%d %02d:%02d", d, m, hh, mm);
+    char buf[24];
+    timefmt::shortStamp(when, buf, sizeof(buf));
     return String(buf);
 }
 
@@ -226,8 +254,11 @@ void runLevel(const thaiplace::Province& prov, const char* query, JsonDocument& 
         o["time"] = st[i].time;
     }
 
-    // one station asked for (or only one there): its graph; otherwise the list as bars (% of the bank)
-    if (matched == 1 || (*query && strstr(st[0].name, query))) stationGraph(st[0], prov.th, res, card);
+    // one station asked for (or only one there): its graph; otherwise the list as bars (% of the bank).
+    // A word that is only part of the top station's name ("ปิง" for the whole basin) keeps the bars.
+    if (matched == 1 || (*query && (!strcmp(st[0].name, query) || !strcmp(st[0].code, query)))) {
+        stationGraph(st[0], prov.th, res, card);
+    }
     if (card.kind == CardData::Graph) return;
     card.kind = CardData::Bars;
     card.g.ref[0] = 100;  // dashed line at the bank
@@ -475,6 +506,7 @@ void runWater(JsonObjectConst a, JsonDocument& out, CardData& card) {
     }
     // place = the province itself -> the whole province ("เมืองเชียงใหม่" is a district and stays)
     if (!strcmp(query, prov->th) || !strcasecmp(query, prov->en)) query[0] = '\0';
+    dropProvinceWord(query, prov->th);  // "ตากใบ นราธิวาส" -> "ตากใบ" (board test: the name was searched for)
     if (!strcmp(action, "rain")) return runRain(*prov, query, a["days"] | 1, out, card);
     runLevel(*prov, query, out, card);
 }

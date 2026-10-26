@@ -39,6 +39,8 @@ inline constexpr size_t kPrerollSamples = AUDIO_UPLOAD_RATE * AGENT_VAD_PREROLL_
 inline constexpr size_t kWakeBufferSamples = AUDIO_UPLOAD_RATE * 6;  // 6 s spoken while the session connects (PSRAM; connecting takes 2-4 s)
 inline constexpr uint32_t kWifiRetryMinMs = 3000;   // back-off between Wi-Fi attempts: 3 s doubling to 60 s
 inline constexpr uint32_t kWifiRetryMaxMs = 60000;   // (routers block clients that retry every second)
+inline constexpr uint32_t kWifiScanTimeoutMs = 15000;     // a remembered-network scan that has not answered by then is stopped
+inline constexpr uint32_t kWifiPrimaryCheckMs = 300000;   // on a remembered network: look for the configured one every 5 min (asleep only)
 inline constexpr uint32_t kThinkingTimeoutMs = 12000;
 inline constexpr uint32_t kLateReminderSec = 15 * 60;  // fired this late = missed while the board was off
 inline constexpr uint32_t kSearchThinkingTimeoutMs = AGENT_NO_REPLY_SEARCH_MS;  // Google Search answers take longer

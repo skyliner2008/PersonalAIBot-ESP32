@@ -53,6 +53,28 @@ inline float num(JsonVariantConst v) {
     return end == s ? NAN : f;
 }
 
+/** An integer that may come as 50 or "50" (0 = missing). */
+inline int intOf(JsonVariantConst v) {
+    if (const char* s = v.as<const char*>()) return atoi(s);
+    return v | 0;
+}
+
+/**
+ * Keep the `max` best items, best first: insert `item` into `out` (holding `n`) by `key(item)` (higher = better,
+ * equal keys keep arrival order). Returns the new count.
+ */
+template <typename T, typename Key>
+inline size_t insertTop(T* out, size_t n, size_t max, const T& item, Key key) {
+    const float k = key(item);
+    size_t pos = n;
+    while (pos > 0 && key(out[pos - 1]) < k) pos--;
+    if (pos >= max) return n;
+    const size_t last = n < max ? n : max - 1;
+    for (size_t i = last; i > pos; i--) out[i] = out[i - 1];
+    out[pos] = item;
+    return n < max ? n + 1 : n;
+}
+
 inline void copyText(char* dst, size_t cap, const char* src) {
     if (!src) src = "";
     size_t n = strlen(src);
@@ -145,15 +167,8 @@ inline size_t pickWaterLevels(JsonArrayConst data, const char* query, WaterLevel
         w.percent = num(s["storage_percent"]);
         w.toBank = num(s["diff_wl_bank"]);
         w.level = levelFromPercent(w.percent);
-        // keep the `max` most filled (insertion into the sorted list; unknown % sorts last)
-        const float key = isnan(w.percent) ? -1e9f : w.percent;
-        size_t pos = n;
-        while (pos > 0 && (isnan(out[pos - 1].percent) ? -1e9f : out[pos - 1].percent) < key) pos--;
-        if (pos >= max) continue;
-        const size_t last = n < max ? n : max - 1;
-        for (size_t k = last; k > pos; k--) out[k] = out[k - 1];
-        out[pos] = w;
-        if (n < max) n++;
+        // keep the `max` most filled (unknown % sorts last)
+        n = insertTop(out, n, max, w, [](const WaterLevel& x) { return isnan(x.percent) ? -1e9f : x.percent; });
     }
     return n;
 }
@@ -243,13 +258,7 @@ inline size_t pickRain(JsonArrayConst data, const char* key, const char* query, 
         copyText(r.name, sizeof(r.name), name);
         districtLabel(r.place, sizeof(r.place), amphoe, bangkok);
         r.mm = mm;
-        size_t pos = n;
-        while (pos > 0 && out[pos - 1].mm < mm) pos--;
-        if (pos >= max) continue;
-        const size_t last = n < max ? n : max - 1;
-        for (size_t k = last; k > pos; k--) out[k] = out[k - 1];
-        out[pos] = r;
-        if (n < max) n++;
+        n = insertTop(out, n, max, r, [](const Rain& x) { return x.mm; });
     }
     sum.avg = sum.stations ? (float)(total / sum.stations) : 0;
     return n;
@@ -290,7 +299,7 @@ public:
     void add(JsonObjectConst s) {
         const float v = num(s[_key]);
         if (isnan(v)) return;
-        const int code = atoi(s["geocode"]["province_code"] | "0");
+        const int code = intOf(s["geocode"]["province_code"]);  // "50" today, read 50 too
         if (code <= 0 || code >= kProvinceSlots) return;  // Laos / Myanmar / "other" stations
         JsonObjectConst st = s["station"];
         const char* name = nameOf(st["tele_station_name"]);
@@ -326,13 +335,7 @@ public:
             const ProvinceRank& p = _slots[code];
             if (isnan(p.value)) continue;
             provinces++;
-            size_t pos = n;
-            while (pos > 0 && out[pos - 1].value < p.value) pos--;
-            if (pos >= max) continue;
-            const size_t last = n < max ? n : max - 1;
-            for (size_t k = last; k > pos; k--) out[k] = out[k - 1];
-            out[pos] = p;
-            if (n < max) n++;
+            n = insertTop(out, n, max, p, [](const ProvinceRank& x) { return x.value; });
         }
         return n;
     }
