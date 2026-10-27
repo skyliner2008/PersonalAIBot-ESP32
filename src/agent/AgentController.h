@@ -129,6 +129,7 @@ public:
     void requestMicMute() override { _mutePending = true; }
     bool stopRadio() override;
     const char* playRadio(const char* station, JsonObject result) override;
+    const char* playMusic(const char* query, JsonObject result) override;
     bool applyAssistantChange(const AssistantChange& change, JsonObject result) override;
     void describeAssistant(JsonObject out) override;
     void describeBoard(JsonObject out) override;

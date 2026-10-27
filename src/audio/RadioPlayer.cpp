@@ -15,12 +15,14 @@
 
 #include "../system/PsramTask.h"
 #include "../util/HttpRedirect.h"
+#include "../util/Id3.h"
 #include "../util/IcyMeta.h"
 #include "../util/RadioResampler.h"
 #include "../util/Utf8.h"
 #include "AudioManager.h"
 
 RadioPlayer gRadio;
+void (*RadioPlayer::onFileEnd)(bool played) = nullptr;
 
 namespace {
 
@@ -51,36 +53,6 @@ void copyStr(char* dst, size_t cap, const char* src, size_t len = (size_t)-1) {
     dst[n] = '\0';
 }
 
-bool validUtf8(const uint8_t* s, size_t n) {
-    for (size_t i = 0; i < n;) {
-        const uint8_t c = s[i];
-        size_t extra = c < 0x80 ? 0 : (c >> 5) == 6 ? 1 : (c >> 4) == 14 ? 2 : (c >> 3) == 30 ? 3 : 9;
-        if (extra == 9 || i + extra >= n + (extra ? 0 : 1)) return false;
-        for (size_t k = 1; k <= extra; k++) {
-            if ((s[i + k] & 0xC0) != 0x80) return false;
-        }
-        i += extra + 1;
-    }
-    return true;
-}
-
-/** Thai stations often send TIS-620 titles: 0xA1-0xFB -> U+0E01-U+0E5B. */
-void tis620ToUtf8(const uint8_t* s, size_t n, char* out, size_t cap) {
-    size_t o = 0;
-    for (size_t i = 0; i < n && o + 4 < cap; i++) {
-        const uint8_t c = s[i];
-        if (c < 0x80) {
-            out[o++] = (char)c;
-        } else if (c >= 0xA1 && c <= 0xFB) {
-            const uint16_t cp = 0x0E00 + (c - 0xA0);
-            out[o++] = (char)(0xE0 | (cp >> 12));
-            out[o++] = (char)(0x80 | ((cp >> 6) & 0x3F));
-            out[o++] = (char)(0x80 | (cp & 0x3F));
-        }
-    }
-    out[o] = '\0';
-}
-
 }  // namespace
 
 bool RadioPlayer::begin(AudioManager* audio) {
@@ -98,6 +70,27 @@ bool RadioPlayer::play(const char* url, const char* name) {
         _title[0] = '\0';
         _error[0] = '\0';
     }
+    _isFile = false;
+    _gen = _gen + 1;
+    _want = true;
+    _state = State::Connecting;
+    if (_audio) _audio->clearRadio();
+    xTaskNotifyGive(_task);
+    return true;
+}
+
+bool RadioPlayer::playFile(const char* path, const char* name, uint32_t offset) {
+    if (!_task || !path || path[0] != '/') return false;
+    {
+        Guard g(_lock);
+        copyStr(_url, sizeof(_url), path);
+        copyStr(_name, sizeof(_name), name && *name ? name : "MP3");
+        _title[0] = '\0';
+        _error[0] = '\0';
+    }
+    _isFile = true;
+    _fileOffset = offset;
+    _filePos = offset;
     _gen = _gen + 1;
     _want = true;
     _state = State::Connecting;
@@ -135,8 +128,8 @@ void RadioPlayer::setError(const char* e) {
 
 void RadioPlayer::setTitle(const char* raw, size_t len) {
     char buf[sizeof(_title)];
-    if (validUtf8((const uint8_t*)raw, len)) copyStr(buf, sizeof(buf), raw, len);
-    else tis620ToUtf8((const uint8_t*)raw, len, buf, sizeof(buf));
+    if (textcodec::validUtf8((const uint8_t*)raw, len)) copyStr(buf, sizeof(buf), raw, len);
+    else textcodec::tis620ToUtf8((const uint8_t*)raw, len, buf, sizeof(buf));
     Guard g(_lock);
     if (strcmp(buf, _title) != 0) {
         copyStr(_title, sizeof(_title), buf);
@@ -156,10 +149,21 @@ void RadioPlayer::loop() {
         }
         const uint32_t gen = _gen;
         const uint32_t t0 = millis();
-        const bool played = session(gen);
+        const bool file = _isFile;
+        _fileEnded = false;
+        const bool played = file ? fileSession(gen) : session(gen);
         const bool ranLong = millis() - t0 > 10000;
         if (!_want || gen != _gen) {  // stopped or switched station: start over at once
             retries = 0;
+            continue;
+        }
+        if (file && _fileEnded) {  // the song is over (or unreadable): the song list picks the next one
+            retries = 0;
+            if (onFileEnd) onFileEnd(played);
+            if (gen == _gen) {  // nothing new was started
+                _want = false;
+                _state = _error[0] ? State::Error : State::Idle;
+            }
             continue;
         }
         retries = played ? 1 : retries + 1;  // a stream that played resets the count
@@ -249,36 +253,12 @@ bool RadioPlayer::session(uint32_t gen) {
     _codec = aac ? "AAC" : "MP3";
     WiFiClient* stream = http.getStreamPtr();
 
-    uint8_t* in = (uint8_t*)heap_caps_malloc(kInBuf, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    int16_t* pcm = (int16_t*)heap_caps_malloc(kPcmMax * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    int16_t* out = (int16_t*)heap_caps_malloc(kOutMax * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    HMP3Decoder mp3dec = nullptr;
-    HAACDecoder aacdec = nullptr;
-    if (aac) aacdec = AACInitDecoder();
-    else mp3dec = MP3InitDecoder();
-    if (!in || !pcm || !out || (!mp3dec && !aacdec)) {
-        setError("out of memory");
-        if (mp3dec) MP3FreeDecoder(mp3dec);
-        if (aacdec) AACFreeDecoder(aacdec);
-        heap_caps_free(in);
-        heap_caps_free(pcm);
-        heap_caps_free(out);
-        http.end();
-        return false;
-    }
     Serial.printf("[Radio] Connected: %s, %s%s\n", url, _codec, metaint ? ", ICY titles" : "");
 
-    RadioResampler rs;
-    uint32_t rate = 0;
-    int lockRate = 0, lockCh = 0, mismatch = 0;  // format of the stream once established
-    size_t fill = 0;           // bytes in `in`
     int untilMeta = metaint;   // audio bytes before the next ICY metadata block
     const uint32_t connectedAt = millis();
     uint32_t lastData = connectedAt;
     uint32_t totalBytes = 0;   // stream bytes read (a stall report says when the data stopped)
-    bool played = false;
-    size_t badBytes = 0;        // bytes skipped since the last good frame
-    bool undecodable = false;
     char meta[256 * 16 + 1];
 
     // ---- HTTP body reader: Transfer-Encoding: chunked is common on CDN-hosted streams ----
@@ -341,20 +321,18 @@ bool RadioPlayer::session(uint32_t gen) {
         return got;
     };
 
-    while (_want && gen == _gen) {
-        // ---- network -> input buffer (chunk framing and ICY metadata stripped out) ----
-        int avail = stream->available();
-        if (avail > 0 && fill < kInBuf) {
-            int want = (int)(kInBuf - fill);
-            if (want > avail) want = avail;
+    // ---- network -> input buffer (chunk framing and ICY metadata stripped out) ----
+    auto pull = [&](uint8_t* d, int n, size_t fill) -> int {
+        const int avail = stream->available();
+        if (avail > 0) {
+            int want = n < avail ? n : avail;
             if (metaint && want > untilMeta) want = untilMeta;
-            const int got = body(in + fill, want);
+            const int got = body(d, want);
             if (got < 0) {
                 setError(bodyEnded ? "stream ended" : "stream broken");
-                break;
+                return -1;
             }
             if (got > 0) {
-                fill += got;
                 totalBytes += (uint32_t)got;
                 lastData = millis();
                 if (metaint) {
@@ -375,119 +353,204 @@ bool RadioPlayer::session(uint32_t gen) {
                     }
                 }
             }
-        } else if (avail <= 0) {
-            if (!stream->connected() && avail <= 0 && fill < 2048) {
-                setError("stream ended");
-                break;
-            }
-            const bool stuckStart = totalBytes > 0 && totalBytes < kStartBytes;  // (a slow first byte is not)
-            if (millis() - lastData > (stuckStart ? kStartStallMs : kStallMs)) {
-                setError("stream stalled");
-                Serial.printf("[Radio] Stalled: %lu bytes, data stopped %lu ms after connecting, %s, %u bytes undecoded, "
-                              "%u ms buffered\n",
-                              (unsigned long)totalBytes, (unsigned long)(lastData - connectedAt),
-                              stream->connected() ? "socket open" : "socket closed", (unsigned)fill,
-                              (unsigned)(_audio->radioBuffered() / 24));
-                break;
-            }
+            return got;
         }
+        if (!stream->connected() && fill < 2048) {
+            setError("stream ended");
+            return -1;
+        }
+        const bool stuckStart = totalBytes > 0 && totalBytes < kStartBytes;  // (a slow first byte is not)
+        if (millis() - lastData > (stuckStart ? kStartStallMs : kStallMs)) {
+            setError("stream stalled");
+            Serial.printf("[Radio] Stalled: %lu bytes, data stopped %lu ms after connecting, %s, %u bytes undecoded, "
+                          "%u ms buffered\n",
+                          (unsigned long)totalBytes, (unsigned long)(lastData - connectedAt),
+                          stream->connected() ? "socket open" : "socket closed", (unsigned)fill,
+                          (unsigned)(_audio->radioBuffered() / 24));
+            return -1;
+        }
+        return 0;
+    };
+    uint32_t consumed = 0;
+    bool ended = false;
+    const bool played = decodeLoop(gen, aac, pull, consumed, ended);
+    http.end();
+    return played;
+}
 
-        // ---- decode as many frames as the buffer holds ----
-        bool progressed = false;
-        while (fill > 0 && _want && gen == _gen) {
-            const int sync = aac ? AACFindSyncWord(in, (int)fill) : MP3FindSyncWord(in, (int)fill);
-            if (sync < 0) {  // keep the last bytes: a sync word may straddle the boundary
-                if (fill > 4) {
-                    memmove(in, in + fill - 4, 4);
-                    fill = 4;
+// One song from the SD card. Returns true if any audio was played; _fileEnded = over (or not readable).
+bool RadioPlayer::fileSession(uint32_t gen) {
+    char path[sizeof(_url)];
+    {
+        Guard g(_lock);
+        copyStr(path, sizeof(path), _url);
+    }
+    FILE* f = fopen(path, "rb");
+    if (!f) {
+        setError("ไม่พบไฟล์เพลง");
+        Serial.printf("[Music] Cannot open %s\n", path);
+        _fileEnded = true;
+        return false;
+    }
+    // the FILE buffer would come from malloc (< 4 KB = internal RAM, T119): give it one in PSRAM
+    char* fbuf = (char*)heap_caps_malloc(8192, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (fbuf) setvbuf(f, fbuf, _IOFBF, 8192);
+    id3::Tag tag;
+    auto rd = [&](uint32_t off, uint8_t* b, int n) -> int {
+        return fseek(f, (long)off, SEEK_SET) == 0 ? (int)fread(b, 1, (size_t)n, f) : 0;
+    };
+    id3::read(rd, tag);
+    if (tag.title[0] || tag.artist[0]) {
+        Guard g(_lock);
+        if (tag.title[0]) copyStr(_name, sizeof(_name), tag.title);
+        copyStr(_title, sizeof(_title), tag.artist);
+    }
+    const uint32_t start = _fileOffset > tag.size ? _fileOffset : tag.size;
+    fseek(f, (long)start, SEEK_SET);
+    const char* dot = strrchr(path, '.');
+    const bool aac = dot && !strcasecmp(dot, ".aac");
+    _codec = aac ? "AAC" : "MP3";
+    Serial.printf("[Music] Playing %s (%s%s%s)\n", path, _codec, tag.title[0] ? ", ID3: " : "", tag.title);
+    uint32_t consumed = 0;
+    auto pull = [&](uint8_t* d, int n, size_t) -> int {
+        _filePos = start + consumed;  // live: pause() reads it before stop() (it was only set at the end: resumed at 0)
+        const size_t got = fread(d, 1, (size_t)n, f);
+        return got > 0 ? (int)got : -1;  // 0 = the end of the file
+    };
+    bool ended = false;
+    const bool played = decodeLoop(gen, aac, pull, consumed, ended);
+    fclose(f);
+    heap_caps_free(fbuf);
+    _filePos = start + consumed;
+    if (ended && gen == _gen) _fileEnded = true;
+    return played;
+}
+
+template <class Pull>
+bool RadioPlayer::decodeLoop(uint32_t gen, bool aac, Pull& pull, uint32_t& consumed, bool& reachedEnd) {
+    uint8_t* in = (uint8_t*)heap_caps_malloc(kInBuf, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    int16_t* pcm = (int16_t*)heap_caps_malloc(kPcmMax * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    int16_t* out = (int16_t*)heap_caps_malloc(kOutMax * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    HMP3Decoder mp3dec = nullptr;
+    HAACDecoder aacdec = nullptr;
+    if (aac) aacdec = AACInitDecoder();
+    else mp3dec = MP3InitDecoder();
+    bool played = false;
+    if (!in || !pcm || !out || (!mp3dec && !aacdec)) {
+        setError("out of memory");
+    } else {
+        RadioResampler rs;
+        uint32_t rate = 0;
+        int lockRate = 0, lockCh = 0, mismatch = 0;  // format of the stream once established
+        size_t fill = 0;           // bytes in `in`
+        size_t badBytes = 0;       // bytes skipped since the last good frame
+        bool undecodable = false;
+        bool ended = false;        // the source has nothing more: decode what is left, then stop
+        auto drop = [&](size_t k) {  // k bytes off the front of the buffer
+            memmove(in, in + k, fill - k);
+            fill -= k;
+            consumed += (uint32_t)k;
+        };
+        while (_want && gen == _gen) {
+            int got = 0;
+            if (!ended && fill < kInBuf) {
+                got = pull(in + fill, (int)(kInBuf - fill), fill);
+                if (got < 0) {
+                    ended = true;
+                    got = 0;
                 }
-                break;
+                fill += (size_t)got;
             }
-            if (sync > 0) {
-                memmove(in, in + sync, fill - sync);
-                fill -= sync;
-            }
-            unsigned char* ptr = in;
-            int left = (int)fill;
-            int err;
-            int nChans, sr, samps;
-            if (aac) {
-                err = AACDecode(aacdec, &ptr, &left, pcm);
-                AACFrameInfo fi;
-                AACGetLastFrameInfo(aacdec, &fi);
-                nChans = fi.nChans, sr = fi.sampRateOut, samps = fi.outputSamps;
-            } else {
-                err = MP3Decode(mp3dec, &ptr, &left, pcm, 0);
-                MP3FrameInfo fi;
-                MP3GetLastFrameInfo(mp3dec, &fi);
-                nChans = fi.nChans, sr = fi.samprate, samps = fi.outputSamps;
-            }
-            if (err == ERR_AAC_INDATA_UNDERFLOW || err == ERR_MP3_INDATA_UNDERFLOW) break;  // need more bytes
-            if (err != 0 && !(err == ERR_MP3_MAINDATA_UNDERFLOW && !aac)) {
-                // corrupt frame: skip a byte and look for the next sync word
-                memmove(in, in + 1, fill - 1);
-                fill -= 1;
-                // a stream the decoder cannot read is skipped byte by byte: give the core back now and then
-                // (IDLE0 starved = task watchdog reboot, T070) and give up after 64 KB without a good frame
-                if (++badBytes % 256 == 0) vTaskDelay(1);
-                if (badBytes > 64 * 1024) {
-                    undecodable = true;
+
+            // ---- decode as many frames as the buffer holds ----
+            bool progressed = false;
+            while (fill > 0 && _want && gen == _gen) {
+                const int sync = aac ? AACFindSyncWord(in, (int)fill) : MP3FindSyncWord(in, (int)fill);
+                if (sync < 0) {  // keep the last bytes: a sync word may straddle the boundary
+                    if (fill > 4) drop(fill - 4);
                     break;
                 }
-                continue;
-            }
-            badBytes = 0;
-            const size_t used = fill - (size_t)left;
-            memmove(in, in + used, (size_t)left);
-            fill = (size_t)left;
-            progressed = true;
-            if (err != 0 || samps <= 0 || nChans < 1 || nChans > 2) continue;
+                if (sync > 0) drop((size_t)sync);
+                unsigned char* ptr = in;
+                int left = (int)fill;
+                int err;
+                int nChans, sr, samps;
+                if (aac) {
+                    err = AACDecode(aacdec, &ptr, &left, pcm);
+                    AACFrameInfo fi;
+                    AACGetLastFrameInfo(aacdec, &fi);
+                    nChans = fi.nChans, sr = fi.sampRateOut, samps = fi.outputSamps;
+                } else {
+                    err = MP3Decode(mp3dec, &ptr, &left, pcm, 0);
+                    MP3FrameInfo fi;
+                    MP3GetLastFrameInfo(mp3dec, &fi);
+                    nChans = fi.nChans, sr = fi.samprate, samps = fi.outputSamps;
+                }
+                if (err == ERR_AAC_INDATA_UNDERFLOW || err == ERR_MP3_INDATA_UNDERFLOW) break;  // need more bytes
+                if (err != 0 && !(err == ERR_MP3_MAINDATA_UNDERFLOW && !aac)) {
+                    // corrupt frame: skip a byte and look for the next sync word
+                    drop(1);
+                    // a stream the decoder cannot read is skipped byte by byte: give the core back now and then
+                    // (IDLE0 starved = task watchdog reboot, T070) and give up after 64 KB without a good frame
+                    if (++badBytes % 256 == 0) vTaskDelay(1);
+                    if (badBytes > 64 * 1024) {
+                        undecodable = true;
+                        break;
+                    }
+                    continue;
+                }
+                badBytes = 0;
+                drop(fill - (size_t)left);
+                progressed = true;
+                if (err != 0 || samps <= 0 || nChans < 1 || nChans > 2) continue;
 
-            // a false sync in damaged data decodes as a "frame" with another rate/channel count:
-            // keep the established format unless the new one persists
-            if (!lockRate) {
-                lockRate = sr;
-                lockCh = nChans;
-            } else if (sr != lockRate || nChans != lockCh) {
-                if (++mismatch < 8) continue;
-                lockRate = sr;
-                lockCh = nChans;
-            }
-            mismatch = 0;
+                // a false sync in damaged data decodes as a "frame" with another rate/channel count:
+                // keep the established format unless the new one persists
+                if (!lockRate) {
+                    lockRate = sr;
+                    lockCh = nChans;
+                } else if (sr != lockRate || nChans != lockCh) {
+                    if (++mismatch < 8) continue;
+                    lockRate = sr;
+                    lockCh = nChans;
+                }
+                mismatch = 0;
 
-            if ((uint32_t)sr != rate) {
-                rate = (uint32_t)sr;
-                _sampleRate = rate;
-                rs.reset(rate);
-                Serial.printf("[Radio] %s %lu Hz, %d ch\n", _codec, (unsigned long)rate, nChans);
+                if ((uint32_t)sr != rate) {
+                    rate = (uint32_t)sr;
+                    _sampleRate = rate;
+                    rs.reset(rate);
+                    Serial.printf("[Radio] %s %lu Hz, %d ch\n", _codec, (unsigned long)rate, nChans);
+                }
+                const size_t n = rs.process(pcm, (size_t)samps / nChans, nChans, out, kOutMax);
+                // pace to real time: wait for room in the speaker's radio buffer
+                while (_audio->radioFree() < n && _want && gen == _gen) vTaskDelay(pdMS_TO_TICKS(15));
+                if (!_want || gen != _gen) break;
+                _audio->writeRadio(out, n);
+                if (!played) {
+                    played = true;
+                    _state = State::Playing;
+                }
+                // while the buffer fills faster than real time, decoding never waits: give the core
+                // back every frame (the idle task must run, or the task watchdog resets the board)
+                vTaskDelay(1);
             }
-            const size_t n = rs.process(pcm, (size_t)samps / nChans, nChans, out, kOutMax);
-            // pace to real time: wait for room in the speaker's radio buffer
-            while (_audio->radioFree() < n && _want && gen == _gen) vTaskDelay(pdMS_TO_TICKS(15));
-            if (!_want || gen != _gen) break;
-            _audio->writeRadio(out, n);
-            if (!played) {
-                played = true;
-                _state = State::Playing;
+            if (undecodable) {
+                setError(aac ? "AAC stream the decoder cannot read" : "MP3 stream the decoder cannot read");
+                Serial.printf("[Radio] %s: no good frame in 64 KB - giving up on this stream\n", _codec);
+                ended = true;
+                break;
             }
-            // while the buffer fills faster than real time, decoding never waits: give the core
-            // back every frame (the idle task must run, or the task watchdog resets the board)
-            vTaskDelay(1);
+            if (ended && !progressed) break;  // what was left is played
+            // nothing decoded: wait for data, and never spin (bytes keep coming but no frame decodes)
+            if (!progressed) vTaskDelay(pdMS_TO_TICKS(got > 0 ? 1 : 10));
         }
-        if (undecodable) {
-            setError(aac ? "AAC stream the decoder cannot read" : "MP3 stream the decoder cannot read");
-            Serial.printf("[Radio] %s: no good frame in 64 KB - giving up on this stream\n", _codec);
-            break;
-        }
-        // nothing decoded: wait for data, and never spin (bytes keep coming but no frame decodes)
-        if (!progressed) vTaskDelay(pdMS_TO_TICKS(stream->available() > 0 ? 1 : 10));
+        reachedEnd = ended;
     }
-
     if (mp3dec) MP3FreeDecoder(mp3dec);
     if (aacdec) AACFreeDecoder(aacdec);
     heap_caps_free(in);
     heap_caps_free(pcm);
     heap_caps_free(out);
-    http.end();
     return played;
 }

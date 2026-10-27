@@ -196,6 +196,14 @@ public:
         r["station"] = "COOL Fahrenheit 93";
         return nullptr;
     }
+    std::string musicAsked;
+    const char* playMusic(const char* query, JsonObject r) override {
+        musicAsked = query;
+        if (!strcmp(query, "ไม่มี")) return "ไม่พบเพลงนี้";
+        radioOn = true;
+        r["song"] = "เพลงทดสอบ";
+        return nullptr;
+    }
     void fillStatus(JsonObject out) override { out["battery_percent"] = 80; }
     bool vehicleOn = false;
     std::string vehicleCall;
@@ -297,8 +305,8 @@ TEST(tool_declarations_per_model) {
     CHECK(search);
     CHECK(recall == "BLOCKING" && expr == "NON_BLOCKING");
     // billed every turn: keep the declarations compact (+200 for about_me, T096; +470 for water, T100 -
-    // switched off with "set water 0" like the finance pack)
-    CHECK(bytes < 15700);
+    // switched off with "set water 0" like the finance pack; +100 for play_radio "music" = the SD-card songs, T122)
+    CHECK(bytes < 15800);
     printf("    tool declarations: %u bytes JSON\n", (unsigned)bytes);
 
     // the vehicle dash: the board always declares it, so "เปิดหน้าปัด" works before a source is set (T079)
@@ -307,7 +315,7 @@ TEST(tool_declarations_per_model) {
     CHECK_EQ(count, (size_t)45);
     // one tool for the dash, live values, health, trip and trouble codes (T112: +scan / explain / clear_codes)
     CHECK(withVehicle - bytes < 600);
-    CHECK(withVehicle < 16300);  // what the board really sends every session
+    CHECK(withVehicle < 16400);  // what the board really sends every session
     printf("    + vehicle dash tool: %u bytes JSON\n", (unsigned)(withVehicle - bytes));
     {
         // default build (VEHICLE_BLE = 0): the model is not offered the Bluetooth source it cannot pick (T078)
@@ -595,6 +603,15 @@ TEST(tools_assistant_and_device) {
     CHECK(!callTool(rig.tools, "play_radio", "{\"station\":\"ไม่มี\"}", r));
     CHECK(callTool(rig.tools, "play_radio", "{}", r));  // empty = last station
     CHECK(rig.dev.radioAsked.empty());
+    // T122: songs on the SD card go through play_radio too ("music"), never as a station name
+    rig.dev.radioAsked = "unchanged";
+    CHECK(callTool(rig.tools, "play_radio", "{\"music\":\"คิดถึง\"}", r));
+    CHECK(rig.dev.musicAsked == "คิดถึง");
+    CHECK(rig.dev.radioAsked == "unchanged");
+    CHECK(strcmp(r["result"]["song"] | "", "เพลงทดสอบ") == 0);
+    CHECK(callTool(rig.tools, "play_radio", "{\"music\":\"*\"}", r));
+    CHECK(rig.dev.musicAsked == "*");
+    CHECK(!callTool(rig.tools, "play_radio", "{\"music\":\"ไม่มี\"}", r));
     CHECK(callTool(rig.tools, "stop_radio", "{}", r));
     CHECK(r["result"]["was_playing"] | false);
     CHECK(!rig.dev.radioOn);
@@ -1678,8 +1695,122 @@ TEST(thai_provinces) {
 #include <filesystem>
 
 #include "util/IcyMeta.h"
+#include "util/Id3.h"
 #include "util/JsonFile.h"
 #include "util/NoteSearch.h"
+
+// T122: the MP3 player's song names
+namespace {
+struct Id3Builder {
+    std::vector<uint8_t> b;
+    int ver;
+    explicit Id3Builder(int v) : ver(v) {}
+    void frame(const char* id, const std::vector<uint8_t>& body) {
+        const size_t n = body.size();
+        if (ver == 2) {
+            b.insert(b.end(), id, id + 3);
+            b.push_back((uint8_t)(n >> 16)), b.push_back((uint8_t)(n >> 8)), b.push_back((uint8_t)n);
+        } else {
+            b.insert(b.end(), id, id + 4);
+            if (ver == 4) {  // syncsafe
+                b.push_back((uint8_t)((n >> 21) & 0x7F)), b.push_back((uint8_t)((n >> 14) & 0x7F));
+                b.push_back((uint8_t)((n >> 7) & 0x7F)), b.push_back((uint8_t)(n & 0x7F));
+            } else {
+                b.push_back((uint8_t)(n >> 24)), b.push_back((uint8_t)(n >> 16));
+                b.push_back((uint8_t)(n >> 8)), b.push_back((uint8_t)n);
+            }
+            b.push_back(0), b.push_back(0);
+        }
+        b.insert(b.end(), body.begin(), body.end());
+    }
+    std::vector<uint8_t> file(size_t padding = 0, const char* audio = "\xFF\xFB\x90\x44") const {
+        const size_t n = b.size() + padding;
+        std::vector<uint8_t> f = {'I', 'D', '3', (uint8_t)ver, 0, 0, (uint8_t)((n >> 21) & 0x7F),
+                                  (uint8_t)((n >> 14) & 0x7F), (uint8_t)((n >> 7) & 0x7F), (uint8_t)(n & 0x7F)};
+        f.insert(f.end(), b.begin(), b.end());
+        f.insert(f.end(), padding, 0);
+        f.insert(f.end(), audio, audio + strlen(audio));
+        return f;
+    }
+};
+std::vector<uint8_t> text(uint8_t enc, const std::string& bytes) {
+    std::vector<uint8_t> v{enc};
+    v.insert(v.end(), bytes.begin(), bytes.end());
+    return v;
+}
+bool readTag(const std::vector<uint8_t>& f, id3::Tag& t) {
+    auto rd = [&](uint32_t off, uint8_t* d, int n) -> int {
+        if (off >= f.size()) return 0;
+        const int k = (int)std::min<size_t>((size_t)n, f.size() - off);
+        memcpy(d, f.data() + off, (size_t)k);
+        return k;
+    };
+    return id3::read(rd, t);
+}
+}  // namespace
+
+TEST(id3_song_names) {
+    // v2.3, UTF-16 with BOM (Thai "เพลง" + an artist), 32 bytes of padding
+    Id3Builder v3(3);
+    v3.frame("TIT2", text(1, std::string("\xFF\xFE\x1E\x0E\x1E\x0E\x25\x0E\x07\x0E", 10)));  // "พพลง" in UTF-16LE
+    v3.frame("TPE1", text(0, "Bodyslam"));
+    std::vector<uint8_t> f = v3.file(32);
+    id3::Tag t;
+    CHECK(readTag(f, t));
+    CHECK(strcmp(t.title, "\xE0\xB8\x9E\xE0\xB8\x9E\xE0\xB8\xA5\xE0\xB8\x87") == 0);  // U+0E1E U+0E1E U+0E25 U+0E07
+    CHECK(strcmp(t.artist, "Bodyslam") == 0);
+    CHECK_EQ(t.size, (uint32_t)(f.size() - 4));  // the audio starts right after the tag + padding
+    CHECK(f[t.size] == 0xFF);
+
+    // v2.4 UTF-8, a big cover picture BEFORE the title (never loaded whole), syncsafe frame sizes
+    Id3Builder v4(4);
+    v4.frame("APIC", std::vector<uint8_t>(300000, 0x55));
+    v4.frame("TIT2", text(3, "ลมหนาว  "));
+    f = v4.file();
+    CHECK(readTag(f, t));
+    CHECK(strcmp(t.title, "ลมหนาว") == 0);  // trailing spaces trimmed
+    CHECK(t.artist[0] == '\0');
+    CHECK_EQ(t.size, (uint32_t)(f.size() - 4));
+
+    // "Latin-1" filled with TIS-620 by a Thai tagger (0xC5 0xC1 = ล ม), v2.2 three-letter ids
+    Id3Builder v2(2);
+    v2.frame("TT2", text(0, "\xC5\xC1 Song"));
+    v2.frame("TP1", text(0, "Artist"));
+    f = v2.file();
+    CHECK(readTag(f, t));
+    CHECK(strcmp(t.title, "ลม Song") == 0);
+    CHECK(strcmp(t.artist, "Artist") == 0);
+
+    // no tag / broken sizes: never past the end
+    const std::vector<uint8_t> plain = {0xFF, 0xFB, 0x90, 0x00, 1, 2, 3};
+    CHECK(!readTag(plain, t));
+    CHECK_EQ(t.size, 0u);
+    std::vector<uint8_t> bad = {'I', 'D', '3', 3, 0, 0, 0, 0, 0, 30, 'T', 'I', 'T', '2', 0x7F, 0xFF, 0xFF, 0xFF, 0, 0};
+    CHECK(readTag(bad, t));  // a frame bigger than the tag is not read
+    CHECK(t.title[0] == '\0');
+
+    // UTF-16BE with a surrogate pair (an emoji) and a lone surrogate (dropped)
+    char out[32];
+    const uint8_t be[] = {0xD8, 0x3C, 0xDF, 0xB5, 0x00, 'A', 0xDC, 0x00, 0x00, 'B'};
+    textcodec::utf16ToUtf8(be, sizeof(be), true, out, sizeof(out));
+    CHECK(strcmp(out, "\xF0\x9F\x8E\xB5" "AB") == 0);
+
+    // file names
+    id3::titleFromPath("/sdcard/music/Pop/01 - Song_Name.mp3", out, sizeof(out));
+    CHECK(strcmp(out, "Song Name") == 0);
+    id3::titleFromPath("03.ลมหนาว.MP3", out, sizeof(out));
+    CHECK(strcmp(out, "ลมหนาว") == 0);
+    id3::titleFromPath("/sdcard/music/1999.mp3", out, sizeof(out));  // a name that is a number stays
+    CHECK(strcmp(out, "1999") == 0);
+    id3::titleFromPath("/x/42.mp3", out, sizeof(out));
+    CHECK(strcmp(out, "42") == 0);
+    id3::titleFromPath("/sdcard/music/ชื่อเพลงยาวมากมากมาก.mp3", out, 10);  // cut on a character boundary
+    CHECK(strlen(out) == 9);
+    for (size_t cap = 2; cap < 20; cap++) {  // seen on the board: a 96-byte cut left half a Thai character ("�")
+        id3::titleFromPath("02- สุชาติ ชวางกูร - เหมันต์ที่ผ่านพ้นไป.mp3", out, cap);
+        CHECK(strlen(out) < cap && utf8::completeLength(out, strlen(out)) == strlen(out));
+    }
+}
 
 TEST(icy_meta_interval) {
     CHECK_EQ(icy::metaInterval("16000"), 16000);

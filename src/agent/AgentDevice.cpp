@@ -213,6 +213,36 @@ const char* AgentController::playRadio(const char* station, JsonObject r) {
     return nullptr;
 }
 
+// play_radio with "music" (T122): songs from /sdcard/music through the radio's player - the same ducking, wake
+// and back-to-sleep rules as a station
+const char* AgentController::playMusic(const char* query, JsonObject r) {
+    if (!gMusic.available()) return "ไม่มี SD card จึงเล่นเพลงไม่ได้ (ใส่ SD card ที่มีไฟล์ .mp3 ในโฟลเดอร์ music)";
+    if (!gMusic.count() && !gMusic.scan()) return "ยังไม่มีไฟล์เพลง (.mp3) ในโฟลเดอร์ music บน SD card";
+    String q = query ? query : "";
+    q.trim();
+    static const char* const kAny[] = {"*", "เพลง", "music", "mp3", "ต่อ", "เล่นต่อ", "เพลงต่อ", "all", "ทั้งหมด"};
+    for (const char* g : kAny) {
+        if (q.equalsIgnoreCase(g)) q = "";
+    }
+    if (q.length()) {
+        const int i = gMusic.find(q.c_str());
+        if (i < 0) return "ไม่พบเพลงนี้ใน SD card (ค้นจากชื่อไฟล์เพลง) บอกผู้ใช้ตรงๆ";
+        if (!gMusic.play(i)) return "เปิดเพลงไม่ได้";
+    } else if (!gMusic.playing() && !gMusic.resume()) {
+        return "เปิดเพลงไม่ได้";
+    }
+    const int cur = gMusic.current();
+    char name[160] = "";
+    gMusic.get((size_t)cur, name, sizeof(name));
+    r["song"] = (const char*)name;
+    r["number"] = cur + 1;
+    r["of"] = (unsigned)gMusic.count();
+    r["note"] = "กำลังเล่นเพลงจาก SD card บอกชื่อเพลงสั้นๆ แล้วเงียบ (จบเพลงแล้วเล่นเพลงถัดไปเอง)";
+    noteActivity();
+    requestSleep();  // like a station: the song plays at full level, the mic only listens for a wake-up
+    return nullptr;
+}
+
 void AgentController::handleRadio(uint32_t now, bool busy) {
     if (!gRadio.active()) {
         if (_radioWasOn) {  // stopped, or gave up after retries

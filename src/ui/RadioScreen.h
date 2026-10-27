@@ -1,13 +1,13 @@
 /**
  * @file RadioScreen.h
- * @brief Touch radio player: now-playing panel (tap = talk to the assistant), station presets, volume
+ * @brief Touch radio + MP3 player: now-playing panel (tap = talk to the assistant), stations / songs, volume
  * @see wiki/12-Internet-Radio.md
  *
- *   ┌ ‹  วิทยุออนไลน์                  12:30   ⏹ ┐  header: back / stop or play
- *   │ ▮▮▮  COOL Fahrenheit 93                    │  now playing — TAP = talk to the AI (like the face)
- *   │      Song - Artist                          │
+ *   ┌ ‹ [วิทยุ|MP3]                    12:30   ⏹ ┐  header: back / source (T122) / stop or play
+ *   │ ▮▮▮  COOL Fahrenheit 93 | song name        │  now playing — TAP = talk to the AI (like the face)
+ *   │      Song - Artist | artist · เพลง 3/42      │
  *   │      แตะตรงนี้เพื่อคุยกับ AI                 │
- *   │ [ลูกทุ่ง 90] [มิติข่าว] [Smooth] [94 ...] → │  station chips (drag sideways, tap to play)
+ *   │ [ลูกทุ่ง 90] [มิติข่าว] [Smooth] [94 ...] → │  station / song chips (drag sideways, tap to play)
  *   └ [⏮]   [ − ]    70%    [ + ]   [⏭]         ┘  previous / volume / next
  */
 
@@ -38,8 +38,11 @@ private:
     float _bars[6] = {0};
     uint32_t _now = 0, _nextSettings = 0;
     int _volume = 70;
-    int _current = -1;  // station playing (index in the list), else the last one
+    int _current = -1;  // station / song playing (index in the list), else the last one
+    bool _music = false;  // T122: the MP3 tab (songs on the SD card) instead of the stations
 
+    int count() const;
+    void setMusic(bool on);
     int hitTest(int x, int y) const;
     int chipAt(int x) const;
     float maxScroll() const;

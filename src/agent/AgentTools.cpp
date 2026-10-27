@@ -308,9 +308,10 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     declare(d, b, "go_to_sleep", "Stop listening and sleep after this reply (user said goodbye / good night).");
     static const Param radio[] = {
         {"station", "STRING", "Number, name or genre the user asked for. Omit = the last station played.", false, nullptr},
+        {"music", "STRING", "SD-card songs instead: song/artist words, '*' = carry on.", false, nullptr},
     };
-    declare(d, b, "play_radio",
-            "Play a station from the radio list (in your instructions). Name it briefly, then stay quiet.", radio, 1);
+    declare(d, b, "play_radio", "Play a radio-list station (in your instructions) or SD-card songs. Name it, then stay quiet.",
+            radio, 2);
     declare(d, b, "stop_radio", "Turn the radio off (and close its screen).");
     declare(d, b, "mute_microphone",
             "Mic OFF after this reply. Only the screen mic button turns it back on: tell the user.");
@@ -851,6 +852,10 @@ bool AgentTools::controlLed(JsonObjectConst a, JsonObject r, const char*& e) {
 }
 
 bool AgentTools::playRadio(JsonObjectConst a, JsonObject r, const char*& e) {
+    if (a["music"].is<const char*>()) {  // T122: the MP3 player (songs on the SD card)
+        if (const char* err = _device.playMusic(a["music"] | "", r)) return (e = err), false;
+        return true;
+    }
     if (const char* err = _device.playRadio(a["station"] | "", r)) return (e = err), false;
     return true;
 }

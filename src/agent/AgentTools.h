@@ -71,6 +71,8 @@ public:
     virtual bool stopRadio() = 0;                   // true if the Internet radio was on
     /** Play from the station list: number, name or genre ("" = last station). nullptr = ok, else why not. */
     virtual const char* playRadio(const char* station, JsonObject result) = 0;
+    /** Play songs from the SD card: words of a song / artist, "" or "*" = carry on (T122). nullptr = ok. */
+    virtual const char* playMusic(const char* query, JsonObject result) = 0;
     virtual bool applyAssistantChange(const AssistantChange& change, JsonObject result) = 0;
     virtual void describeAssistant(JsonObject out) = 0;
     /** The device itself for about_me: firmware version, hardware (no secrets). */

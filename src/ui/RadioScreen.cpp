@@ -9,6 +9,7 @@
 
 #include "../app/Settings.h"
 #include "../audio/AudioManager.h"
+#include "../audio/MusicLibrary.h"
 #include "../audio/RadioPlayer.h"
 #include "../audio/RadioStations.h"
 
@@ -23,7 +24,10 @@ constexpr int kChipW = 100, kChipGap = 6;
 constexpr int kCtrlY = 180, kCtrlH = 54;     // prev / - / volume / + / next
 
 // hit ids
-enum Hit { kNone = -1, kBack = 1000, kStopPlay, kClose, kPanel, kPrev, kMinus, kPlus, kNext };
+enum Hit { kNone = -1, kBack = 1000, kStopPlay, kClose, kPanel, kPrev, kMinus, kPlus, kNext, kTabRadio, kTabMusic };
+
+// header, left: [วิทยุ|MP3] source switch (T122)
+constexpr int kTabX = 44, kTabW = 54, kTabGap = 2;
 
 // header, right side: [pause/play] [power "ปิด"]
 constexpr int kCloseW = 62, kPauseW = 44, kHdrBtnGap = 4;
@@ -43,12 +47,24 @@ void RadioScreen::onEnter() {
     _dragging = _fingerDown = false;
     _pressed = kNone;
     _nextSettings = millis();  // due now (0 read as weeks ahead once the uptime passed 24.8 days)
+    if (gRadio.active()) _music = gRadio.isFile();  // the tab of what plays (else the one used last)
     tick(millis(), 0);
     scrollTo(_current);
 }
 
+int RadioScreen::count() const { return (int)(_music ? gMusic.count() : gStations.count()); }
+
+void RadioScreen::setMusic(bool on) {
+    if (on == _music) return;
+    _music = on;
+    if (on && !gMusic.playing()) gMusic.scan();  // songs copied to the card since: in the list now
+    _current = on ? gMusic.current() : gStations.lastIndex();
+    _scroll = _velocity = 0;
+    scrollTo(_current);
+}
+
 float RadioScreen::maxScroll() const {
-    const int n = (int)gStations.count();
+    const int n = count();
     const float total = n * (kChipW + kChipGap) + kChipGap;
     return total > ui::W ? total - ui::W : 0;
 }
@@ -67,13 +83,15 @@ int RadioScreen::chipAt(int x) const {
     if (pos < 0) return -1;
     const int i = (int)(pos / (kChipW + kChipGap));
     const float within = pos - i * (kChipW + kChipGap);
-    if (within > kChipW || i >= (int)gStations.count()) return -1;
+    if (within > kChipW || i >= count()) return -1;
     return i;
 }
 
 int RadioScreen::hitTest(int x, int y) const {
     if (y < kHeaderH) {
-        if (x < 48) return kBack;
+        if (x < kTabX) return kBack;
+        if (x < kTabX + kTabW + kTabGap / 2) return kTabRadio;
+        if (x < kTabX + 2 * kTabW + kTabGap + 4) return kTabMusic;
         if (x >= kCloseX - kHdrBtnGap / 2) return kClose;
         if (x >= kPauseX - kHdrBtnGap) return kStopPlay;
         return kNone;
@@ -90,10 +108,10 @@ int RadioScreen::hitTest(int x, int y) const {
 }
 
 void RadioScreen::playIndex(int index) {
-    const int n = (int)gStations.count();
+    const int n = count();
     if (n <= 0) return;
     index = ((index % n) + n) % n;
-    if (gStations.play((size_t)index)) {
+    if (_music ? gMusic.play(index) : gStations.play((size_t)index)) {
         _current = index;
         scrollTo(index);
     }
@@ -134,9 +152,17 @@ void RadioScreen::onTouch(const TouchEvent& e) {
             const int hit = hitTest(e.x, e.y);
             if (hit == kBack) {
                 gUi.pop();
+            } else if (hit == kTabRadio || hit == kTabMusic) {
+                setMusic(hit == kTabMusic);
             } else if (hit == kStopPlay) {  // pause / resume: stays on this screen
-                if (gRadio.active()) gRadio.stop();
-                else playIndex(gStations.lastIndex());
+                if (_music) {  // a song carries on where it was paused
+                    if (gMusic.playing()) gMusic.pause();
+                    else if (!gMusic.resume()) setMusic(true);  // (rescans an empty list)
+                } else if (gRadio.active()) {
+                    gRadio.stop();
+                } else {
+                    playIndex(gStations.lastIndex());
+                }
             } else if (hit == kClose) {  // radio off and back to the face
                 if (gRadio.active()) gRadio.stop();
                 gUi.pop();
@@ -175,11 +201,18 @@ void RadioScreen::tick(uint32_t now, float dt) {
     if ((int32_t)(now - _nextSettings) >= 0) {
         _nextSettings = now + 400;
         _volume = gSettings.get().volume;
-        char name[64];
-        gRadio.info(name, sizeof(name), nullptr, 0);
-        const int playing = gRadio.active() ? gStations.indexOf(name) : -1;
+        if (gRadio.active() && gRadio.isFile() != _music && !_fingerDown) setMusic(gRadio.isFile());  // by voice
+        int playing = -1;
+        if (_music) {
+            playing = gMusic.current();
+        } else {
+            char name[64];
+            gRadio.info(name, sizeof(name), nullptr, 0);
+            playing = gRadio.active() && !gRadio.isFile() ? gStations.indexOf(name) : -1;
+            if (playing < 0) playing = gStations.lastIndex();
+        }
         const int was = _current;
-        _current = playing >= 0 ? playing : gStations.lastIndex();
+        _current = playing;
         if (_current != was && !_fingerDown) scrollTo(_current);  // changed by voice / console / Studio
     }
     if (!_fingerDown && fabsf(_velocity) > 0.3f) {  // fling
@@ -207,7 +240,15 @@ void RadioScreen::draw(LGFX_Sprite& c) {
     c.fillRect(0, 0, ui::W, kHeaderH, ui::PANEL);
     c.drawWideLine(22, 8, 13, 15, 2.5f, ui::TEXT);
     c.drawWideLine(13, 15, 22, 22, 2.5f, ui::TEXT);
-    gUi.drawFitted(c, "วิทยุออนไลน์", 44, 15, 108, gUi.thai20(), ui::TEXT);
+    for (int t = 0; t < 2; t++) {  // [วิทยุ|MP3]: the source the list below shows
+        const bool on = (t == 1) == _music;
+        const int x = kTabX + t * (kTabW + kTabGap);
+        const int hit = t ? kTabMusic : kTabRadio;
+        c.fillRoundRect(x, 4, kTabW, 22, 6, on ? ui::ACCENT : (_pressed == hit ? ui::PANEL_HI : ui::BG));
+        if (!on) c.drawRoundRect(x, 4, kTabW, 22, 6, ui::LINE);
+        gUi.drawFitted(c, t ? "MP3" : "วิทยุ", x + kTabW / 2, 15, kTabW - 6, gUi.thai20(), on ? ui::BG : ui::DIM,
+                       textdatum_t::middle_center);
+    }
     const time_t t = time(nullptr);
     if (t > 1700000000) {
         struct tm lt;
@@ -223,7 +264,7 @@ void RadioScreen::draw(LGFX_Sprite& c) {
     c.fillRoundRect(kPauseX, 3, kPauseW, 24, 6, _pressed == kStopPlay ? ui::PANEL_HI : ui::BG);
     c.drawRoundRect(kPauseX, 3, kPauseW, 24, 6, ui::LINE);
     const int pcx = kPauseX + kPauseW / 2;
-    if (active) {  // pause bars
+    if (_music ? gMusic.playing() : active) {  // pause bars (MP3 tab while the radio plays: ▶ = the songs)
         c.fillRect(pcx - 6, 9, 4, 12, ui::TEXT);
         c.fillRect(pcx + 2, 9, 4, 12, ui::TEXT);
     } else {
@@ -242,20 +283,36 @@ void RadioScreen::draw(LGFX_Sprite& c) {
         const int h = 6 + (int)(_bars[i] * 48);
         c.fillRoundRect(18 + i * 8, kPanelY + 68 - h, 5, h, 2, active ? ui::ACCENT : ui::LINE);
     }
-    char name[64] = "", title[128] = "";
-    gRadio.info(name, sizeof(name), title, sizeof(title));
-    if (!active) {
+    // what plays when it is this tab's source, else the station / song picked in the list
+    const bool mine = active && gRadio.isFile() == _music;
+    char name[128] = "", title[128] = "";
+    if (mine || (!active && st == RadioPlayer::State::Error)) gRadio.info(name, sizeof(name), title, sizeof(title));
+    if (!mine) {
         RadioStation s;
-        if (_current >= 0 && gStations.get((size_t)_current, s)) snprintf(name, sizeof(name), "%s", s.name);
+        if (_music) gMusic.get((size_t)(_current < 0 ? 0 : _current), name, sizeof(name));
+        else if (_current >= 0 && gStations.get((size_t)_current, s)) snprintf(name, sizeof(name), "%s", s.name);
+        if (st != RadioPlayer::State::Error) title[0] = '\0';
     }
-    gUi.drawFitted(c, name[0] ? name : "ยังไม่ได้เลือกสถานี", 76, kPanelY + 20, ui::W - 90, gUi.thai26(), ui::TEXT);
-    const char* line2 = title;
+    char line2buf[160];
+    if (_music && st != RadioPlayer::State::Error && count() > 0) {  // "artist · เพลง 3/42"
+        snprintf(line2buf, sizeof(line2buf), "%s%sเพลง %d/%d", title, title[0] ? " · " : "", _current + 1, count());
+    } else {
+        snprintf(line2buf, sizeof(line2buf), "%s", title);
+    }
+    const char* none = _music ? (gMusic.available() ? "ยังไม่มีเพลงใน SD card" : "ไม่มี SD card") : "ยังไม่ได้เลือกสถานี";
+    gUi.drawFitted(c, name[0] ? name : none, 76, kPanelY + 20, ui::W - 90, gUi.thai26(), ui::TEXT);
+    const char* line2 = line2buf;
     char err[96];
-    if (st == RadioPlayer::State::Connecting) line2 = "กำลังเชื่อมต่อ...";
-    else if (st == RadioPlayer::State::Error) {
+    if (mine && st == RadioPlayer::State::Connecting) line2 = _music ? "กำลังเปิดเพลง..." : "กำลังเชื่อมต่อ...";
+    else if (!active && st == RadioPlayer::State::Error) {
         snprintf(err, sizeof(err), "เปิดไม่ได้ (%s)", gRadio.lastError());
         line2 = err;
-    } else if (!active) line2 = "หยุดอยู่ - แตะสถานีด้านล่างเพื่อฟัง";
+    } else if (!mine && _music) {
+        if (!count()) line2 = gMusic.available() ? "ใส่ไฟล์ .mp3 ไว้ในโฟลเดอร์ music" : "ใส่ SD card ที่มีโฟลเดอร์ music";
+        else if (active) line2 = "วิทยุเล่นอยู่ - แตะเพลงเพื่อสลับมาฟังเพลง";
+    } else if (!mine) {
+        line2 = active ? "เพลงจาก SD เล่นอยู่ - แตะสถานีเพื่อสลับ" : "หยุดอยู่ - แตะสถานีด้านล่างเพื่อฟัง";
+    }
     if (line2[0]) {
         gUi.drawFitted(c, line2, 76, kPanelY + 48, ui::W - 90, gUi.thai20(),
                        st == RadioPlayer::State::Error ? ui::ERR : ui::DIM);
@@ -269,16 +326,21 @@ void RadioScreen::draw(LGFX_Sprite& c) {
     else if (as == AVATAR_CONNECTING) hint = "กำลังเรียก AI...", hintCol = ui::WARN;
     gUi.drawFitted(c, hint, 76, kPanelY + 72, ui::W - 90, gUi.thai20(), hintCol);
 
-    // ---- station chips ----
-    const int n = (int)gStations.count();
+    // ---- station / song chips ----
+    const int n = count();
     c.setClipRect(0, kChipY, ui::W, kChipH);
     for (int i = 0; i < n; i++) {
         const int x = (int)(kChipGap + i * (kChipW + kChipGap) - _scroll);
         if (x > ui::W || x + kChipW < 0) continue;
         RadioStation s;
-        if (!gStations.get((size_t)i, s)) continue;
+        if (_music) {  // song name + its folder (else its number)
+            if (!gMusic.get((size_t)i, s.name, sizeof(s.name), s.genre, sizeof(s.genre))) continue;
+            if (!s.genre[0]) snprintf(s.genre, sizeof(s.genre), "เพลงที่ %d", i + 1);
+        } else if (!gStations.get((size_t)i, s)) {
+            continue;
+        }
         const bool cur = i == _current;
-        const uint16_t bg = cur ? (active ? ui::ACCENT : 0x2B4F) : (_pressed == i ? ui::PANEL_HI : ui::PANEL);
+        const uint16_t bg = cur ? (mine ? ui::ACCENT : 0x2B4F) : (_pressed == i ? ui::PANEL_HI : ui::PANEL);
         c.fillRoundRect(x, kChipY, kChipW, kChipH, 8, bg);
         gUi.drawFitted(c, s.name, x + kChipW / 2, kChipY + 16, kChipW - 8, gUi.thai20(), cur ? ui::BG : ui::TEXT,
                        textdatum_t::middle_center);
@@ -286,8 +348,12 @@ void RadioScreen::draw(LGFX_Sprite& c) {
                        textdatum_t::middle_center);
     }
     c.clearClipRect();
-    if (!n) gUi.drawFitted(c, "ยังไม่มีสถานี - เพิ่มได้ที่ ESP32-AI Studio", ui::W / 2, kChipY + 23, ui::W - 20,
-                           gUi.thai20(), ui::DIM, textdatum_t::middle_center);
+    if (!n) {
+        const char* empty = !_music ? "ยังไม่มีสถานี - เพิ่มได้ที่ ESP32-AI Studio"
+                            : gMusic.available() ? "ไม่มีไฟล์ .mp3 ใน /music ของ SD card"
+                                                 : "ไม่มี SD card";
+        gUi.drawFitted(c, empty, ui::W / 2, kChipY + 23, ui::W - 20, gUi.thai20(), ui::DIM, textdatum_t::middle_center);
+    }
 
     // ---- controls ----
     struct Btn {

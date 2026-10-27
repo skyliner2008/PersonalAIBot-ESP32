@@ -367,11 +367,24 @@ void AgentController::buildSystemPrompt(PsString& p) {
             p += " — ถ้าผู้ใช้สั่งเปิดวิทยุโดยไม่บอกสถานี ให้เรียก play_radio โดยไม่ใส่ station";
         }
         char playing[64] = "";
-        if (gRadio.active()) gRadio.info(playing, sizeof(playing), nullptr, 0);
+        if (gRadio.active() && !gRadio.isFile()) gRadio.info(playing, sizeof(playing), nullptr, 0);
         if (playing[0]) {  // after a wake-up the user usually wants something else - not the radio again
             p += " • ตอนนี้วิทยุกำลังเล่น: ";
             p += playing;
             p += " (เรียก play_radio เฉพาะเมื่อประโยคล่าสุดขอเปิดหรือเปลี่ยนสถานี อย่าพูดถึงวิทยุถ้าไม่ได้ถาม)";
+        }
+        p += "\n";
+    }
+    if (gMusic.count()) {  // T122: the MP3 player - play_radio with music
+        char song[64] = "";
+        if (gRadio.active() && gRadio.isFile()) gRadio.info(song, sizeof(song), nullptr, 0);
+        p += "เพลงใน SD card: ";
+        p += String((unsigned)gMusic.count()).c_str();
+        p += " เพลง — ผู้ใช้ขอฟังเพลง (ไม่ใช่วิทยุ) ให้เรียก play_radio ใส่ music = คำในชื่อเพลง/ศิลปิน หรือ \"*\" = เล่นต่อ";
+        if (song[0]) {
+            p += " • ตอนนี้กำลังเล่นเพลง: ";
+            p += song;
+            p += " (เรียกเฉพาะเมื่อผู้ใช้ขอเปลี่ยนเพลง)";
         }
         p += "\n";
     }

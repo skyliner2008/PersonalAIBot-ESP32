@@ -24,6 +24,7 @@
 #include "app/Settings.h"
 #include "audio/AudioManager.h"
 #include "audio/RadioPlayer.h"
+#include "audio/MusicLibrary.h"
 #include "audio/RadioStations.h"
 #include "display/LGFX_ES3C28P.hpp"
 #include "display/TouchFT6336.h"
@@ -42,6 +43,7 @@
 #include "ui/UiManager.h"
 #include "util/Base64.h"
 #include "util/JsonFile.h"
+#include "util/JsonAlloc.h"
 #include "util/PsramAlloc.h"
 #include "util/Sha256.h"
 #include "util/Utf8.h"
@@ -276,6 +278,9 @@ static void printStatus() {
 
 // ---- Machine-readable replies for the PC app (tools/pc_app): one line "<TAG> <json>" ----
 
+// console RX queue: lines with Thai JSON exceed the 256-byte default; a song upload from Studio (T123) borrows more
+constexpr size_t kRxBuf = 2048, kRxBufUpload = 12288;
+
 // One Serial.write per line: HWCDC holds its TX lock for a whole write, so log lines printed by
 // other tasks cannot land in the middle of the JSON (chunked writes let them, breaking the PC app).
 static void printTagged(const char* tag, const String& json) {
@@ -474,6 +479,16 @@ static void printWifiScan() {
 
 // Internal RAM budget (wiki 14: ESP-SR needs headroom) and every task's stack: where it lives and how
 // much of it was never touched (high-water mark).
+// T123: the song list for ESP32-AI Studio's music tab
+static void printMusicList() {
+    JsonDocument d(JsonPsramAllocator::instance());
+    gMusic.toJson(d.to<JsonObject>());
+    if (storage.kind() == StorageKind::SdCard) d["free_mb"] = (uint32_t)((storage.totalBytes() - storage.usedBytes()) >> 20);
+    String json;
+    serializeJson(d, json);
+    printTagged("MUSICLIST", json);
+}
+
 static void printMemory() {
     JsonDocument d;
     d["internal_free_kb"] = heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
@@ -599,6 +614,7 @@ static void handleConsoleLine(String line) {
     if (cmd == "help") {
         Serial.println("status | audio | tone [hz] [ms] | mic [sec] | vol <0-100> | i2c | regs | reg <r> [v]");
         Serial.println("tool <name> [json] | say <u|a|s> <text> | expr <emotion> | sleep | powersave | wake | screenshot | radio [<n>|<url> [name]|stop]");
+        Serial.println("music [list|rescan|next|prev|pause|resume|<n>|<words>] (MP3 from /sdcard/music)");
         Serial.println("ask <text> (type to the assistant) | mute (toggle mic) | retry | new (fresh session) | memclear <facts|history>");
         Serial.println("rec [sec] (record what the mic sends to Gemini: RECINFO <json> + RECORD <rate> <bytes> + PCM + END)");
         Serial.println("recref [sec] (raw mic + echo reference, interleaved: RECPAIRS <rate> <bytes> + PCM + END)");
@@ -961,6 +977,84 @@ static void handleConsoleLine(String line) {
             Serial.printf("radio %s | %s | %s | %s %lu Hz | buffered %u ms | %s\n", gRadio.stateName(), rn, rt, gRadio.codec(),
                           (unsigned long)gRadio.sampleRate(), (unsigned)(audio.radioBuffered() / 24), gRadio.lastError());
         }
+    } else if (cmd == "music") {  // T122: MP3 from /sdcard/music - music [list|rescan|next|prev|pause|resume|<n>|<words>]
+        if (!gMusic.available()) {
+            Serial.println("ERR no SD card");
+        } else if (rest == "" || rest == "list" || rest == "rescan") {
+            if (rest == "rescan") gMusic.scan();
+            const size_t n = gMusic.count();
+            Serial.printf("music: %u song(s) in %s%s\n", (unsigned)n, gMusic.root(), gMusic.playing() ? " (playing)" : "");
+            char nm[96], fd[64];
+            for (size_t i = 0; i < n && i < 200; i++) {
+                if (gMusic.get(i, nm, sizeof(nm), fd, sizeof(fd))) {
+                    Serial.printf("%c%3u %s%s%s%s\n", (int)i == gMusic.current() ? '>' : ' ', (unsigned)(i + 1), nm,
+                                  fd[0] ? "  [" : "", fd, fd[0] ? "]" : "");
+                }
+            }
+        } else if (rest == "next" || rest == "prev") {
+            Serial.println(gMusic.step(rest == "next" ? 1 : -1) ? "OK music" : "ERR music");
+        } else if (rest == "pause") {
+            gMusic.pause();
+            Serial.println("OK music");
+        } else if (rest == "resume") {
+            Serial.println(gMusic.resume() ? "OK music" : "ERR music");
+        } else {
+            const int i = gMusic.find(rest.c_str());
+            Serial.println(i >= 0 && gMusic.play(i) ? "OK music" : "ERR no such song");
+        }
+    } else if (cmd == "musiclist") {
+        printMusicList();
+    } else if (cmd == "musicput") {  // T123: musicput <size> <file name> -> MUSICPUT READY 0 | MUSICPUT ERR <why>
+        const int sp2 = rest.indexOf(' ');
+        const long size = sp2 > 0 ? rest.substring(0, sp2).toInt() : 0;
+        const uint64_t freeBytes = storage.totalBytes() - storage.usedBytes();
+        const char* err = sp2 > 0 && size > 0 ? gMusic.uploadBegin(rest.substring(sp2 + 1).c_str(), (uint32_t)size, freeBytes)
+                                              : "usage: musicput <size> <file name>";
+        if (err) {
+            Serial.printf("MUSICPUT ERR %s\n", err);
+        } else {
+            // the PC keeps 8 chunk lines (~11 KB) in flight: the console's RX queue (internal RAM, one byte per item,
+            // bytes past its end are dropped) grows to 12 KB only while a song comes in - back to 2 KB in loop()
+            // (nothing is in the queue now: the PC waits for this READY)
+            Serial.setRxBufferSize(kRxBufUpload);
+            Serial.println("MUSICPUT READY 8");
+        }
+    } else if (cmd == "musicdata") {  // musicdata <offset> <length> <base64 of up to 1 KB> -> MUSICPUT ACK <bytes in>
+        // the length catches a line that lost bytes (RX buffer overrun) and ran into the next one: base64 skips the
+        // spaces, so "....musicend 00" would decode - such a chunk is not written, the PC sends it again
+        static uint8_t* bin = (uint8_t*)psramMalloc(1100);
+        const int sp2 = rest.indexOf(' ');
+        const int sp3 = sp2 > 0 ? rest.indexOf(' ', sp2 + 1) : -1;
+        if (!gMusic.uploading() || sp3 <= 0 || !bin) {
+            Serial.println(gMusic.uploading() ? "MUSICPUT ERR usage: musicdata <offset> <length> <base64>"
+                                              : "MUSICPUT ERR no upload in progress");
+        } else {
+            const char* b64 = rest.c_str() + sp3 + 1;
+            const size_t blen = strlen(b64);
+            const size_t want = (size_t)rest.substring(sp2 + 1, sp3).toInt();
+            const size_t n = blen <= 1400 ? b64::decode(b64, blen, bin) : b64::kError;
+            const uint32_t before = gMusic.uploadChunk(0xFFFFFFFF, nullptr, 0);  // (just the count)
+            const uint32_t got = n == b64::kError || n != want
+                                     ? before  // refused: the PC sends it again
+                                     : gMusic.uploadChunk((uint32_t)rest.substring(0, sp2).toInt(), bin, n);
+            // an ACK per 4 KB (and for a refused chunk, and the last one): replies written back to back took ~15 ms
+            // each, the PC keeps 8 lines in flight
+            const bool ack = got == before || got % 4096 == 0 || got == gMusic.uploadSize();
+            if (!gMusic.uploading()) Serial.println("MUSICPUT ERR SD card write failed");
+            else if (ack) Serial.printf("MUSICPUT ACK %lu\n", (unsigned long)got);
+        }
+    } else if (cmd == "musicend") {  // musicend <sha256 hex> -> MUSICPUT OK | MUSICPUT ERR <why>, then MUSICLIST
+        const char* err = gMusic.uploadEnd(rest.c_str());
+        if (err) Serial.printf("MUSICPUT ERR %s\n", err);
+        else Serial.println("MUSICPUT OK");
+        printMusicList();
+    } else if (cmd == "musicabort") {
+        if (gMusic.uploading()) gMusic.uploadAbort("cancelled from the PC");
+        Serial.println("MUSICPUT ABORTED");
+    } else if (cmd == "musicdel") {  // musicdel <n> (1-based)
+        const char* err = rest.toInt() > 0 ? gMusic.remove((size_t)rest.toInt() - 1) : "usage: musicdel <n>";
+        Serial.println(err ? (String("ERR ") + err) : String("OK deleted"));
+        printMusicList();
     } else if (cmd.startsWith("radio")) {  // station list (ESP32-AI Studio radio tab); numbers are 1-based
         const char* err = nullptr;
         RadioStation st;
@@ -1051,17 +1145,30 @@ static void handleConsoleLine(String line) {
 static void pollConsole() {
     static String buf;
     static bool tooLong = false;  // a cut line must not run as a command (half a `devices save`, `ask` ...)
-    while (Serial.available()) {
-        const char c = (char)Serial.read();
-        if (c == '\n' || c == '\r') {
+    // T123: in blocks - one read() per byte took the RX ring buffer's lock each time, ~50 ms for a 1.4 KB
+    // song chunk line (the upload ran at 14 KB/s)
+    char block[256];
+    int got;
+    while ((got = Serial.available()) > 0) {
+        got = (int)Serial.read((uint8_t*)block, got < (int)sizeof(block) ? (size_t)got : sizeof(block));
+        if (got <= 0) break;
+        int start = 0;
+        for (int i = 0; i < got; i++) {
+            const char c = block[i];
+            if (c != '\n' && c != '\r') continue;
+            if (i > start && !tooLong) {
+                if (buf.length() + (i - start) <= 1500) buf.concat(block + start, (unsigned)(i - start));
+                else tooLong = true;
+            }
+            start = i + 1;
             if (tooLong) Serial.println("ERR line too long (max 1500 characters) - not run");
             else if (buf.length()) handleConsoleLine(buf);
             buf = "";
             tooLong = false;
-        } else if (buf.length() < 1500) {
-            buf += c;
-        } else {
-            tooLong = true;
+        }
+        if (got > start && !tooLong) {  // the rest of the line comes in the next block
+            if (buf.length() + (got - start) <= 1500) buf.concat(block + start, (unsigned)(got - start));
+            else tooLong = true;
         }
     }
 }
@@ -1093,7 +1200,7 @@ static void* tlsCalloc(size_t n, size_t size) {
 
 void setup() {
     mbedtls_platform_set_calloc_free(tlsCalloc, heap_caps_free);  // before any TLS connection
-    Serial.setRxBufferSize(2048);  // console lines with Thai JSON exceed the 256-byte default
+    Serial.setRxBufferSize(kRxBuf);  // console lines with Thai JSON exceed the 256-byte default
     Serial.setTxBufferSize(4096);  // whole "<TAG> <json>" replies fit without blocking
     // a reading host drains the 4 KB buffer in milliseconds; a host that holds the port without reading
     // (ESP32-AI Studio busy/disconnected) made every log line wait 500 ms: the agent loop stalled 10 s and
@@ -1158,6 +1265,7 @@ void setup() {
     if (!audio.begin(&i2c)) gFace.setSystemText("ระบบเสียงผิดพลาด (ES8311 / I2S) ดู Serial log", 0);
     gStations.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // radio_stations.json
     gRadio.begin(&audio);  // Internet radio task (idle until play_radio)
+    gMusic.begin(storage.kind() == StorageKind::SdCard ? "/sdcard/music" : "");  // MP3 songs (T122)
     gPhone.begin();  // before the agent: a paired phone declares the `navigate` tool (wiki 18)
     agent.begin(&audio, &gFace, &storage);
     gVehicle.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // after the devices (GPIO 43/44)
@@ -1202,5 +1310,10 @@ void loop() {
         }
         lastMin = minFree;
     }
-    vTaskDelay(pdMS_TO_TICKS(20));
+    gMusic.uploadTick(millis());
+    static bool uploadWas = false;
+    if (uploadWas && !gMusic.uploading()) Serial.setRxBufferSize(kRxBuf);  // the 10 KB back (the PC now waits for OK)
+    uploadWas = gMusic.uploading();
+    // a song from ESP32-AI Studio comes 1 KB per console line, each waiting for its ACK: poll fast meanwhile
+    vTaskDelay(pdMS_TO_TICKS(gMusic.uploading() ? 1 : 20));
 }

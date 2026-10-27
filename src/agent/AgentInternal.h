@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "../app/AppConfig.h"
+#include "../audio/MusicLibrary.h"
 #include "../audio/RadioPlayer.h"
 #include "../phone/PhoneLink.h"
 #include "../audio/RadioStations.h"

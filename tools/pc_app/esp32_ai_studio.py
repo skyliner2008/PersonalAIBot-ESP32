@@ -33,6 +33,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+import music_upload  # tools/pc_app/music_upload.py (T123)
+
 try:
     import serial
     import serial.tools.list_ports
@@ -67,7 +69,7 @@ EMOTIONS = ["neutral", "happy", "excited", "love", "sad", "worried", "angry", "s
 # set wake 0|1|2 (firmware Settings::wakeMode)
 WAKE_MODES = ["ระดับเสียง (แบบเดิม)", "คำปลุกอย่างเดียว", "คำปลุก + ระดับเสียง"]
 
-TAG_RE = re.compile(r"^(CONFIG|OPTIONS|TOOLS|DIAG|WIFISCAN|APITEST|RECINFO|RADIOLIST|TOOL|OTA)\s+(.*)$")
+TAG_RE = re.compile(r"^(CONFIG|OPTIONS|TOOLS|DIAG|WIFISCAN|APITEST|RECINFO|RADIOLIST|MUSICLIST|TOOL|OTA)\s+(.*)$")
 SECRET_RE = re.compile(r"(key=)[^&\s\"]+")
 
 
@@ -103,6 +105,7 @@ class SerialLink:
         self._thread = None
         self._stop = threading.Event()
         self._wlock = threading.Lock()
+        self.music_q: "queue.Queue[str]" = queue.Queue()  # "MUSICPUT ..." replies for the song upload (T123)
 
     @property
     def connected(self) -> bool:
@@ -153,7 +156,9 @@ class SerialLink:
         pending = None  # (kind, a, b, data) waiting for the "\nEND\n" trailer that proves nothing was interleaved
         while not self._stop.is_set():
             try:
-                chunk = self.ser.read(8192)
+                # whatever is there, at once (read(8192) waited out the 50 ms timeout on every short reply:
+                # a song upload ran at 16 KB/s waiting for its ACKs, T123)
+                chunk = self.ser.read(self.ser.in_waiting or 1)
             except (serial.SerialException, OSError, TypeError, AttributeError) as e:
                 if not self._stop.is_set():
                     self.events.put(("lost", str(e)))
@@ -203,6 +208,10 @@ class SerialLink:
                     continue
                 if text == "END" or not text.strip():
                     continue
+                if text.startswith("MUSICPUT "):  # one reply per 1 KB of a song: to the uploader, not the log
+                    self.music_q.put(text[9:])
+                    if not text.startswith("MUSICPUT ERR"):
+                        continue
                 self.events.put(("line", time.time(), text))
 
 
@@ -309,6 +318,7 @@ class Studio:
         self._build_status_tab()
         self._build_firmware_tab()
         self._build_radio_tab()  # appended last: other code refers to tab indices
+        self._build_music_tab()
         self._install_clipboard()
         self.refresh_ports(auto_connect=True)
         root.after(30, self._pump)
@@ -481,7 +491,7 @@ class Studio:
         self.conn_btn.configure(text="ตัดการเชื่อมต่อ", style="TButton")
         self.status_var.set(f"เชื่อมต่อ {port} แล้ว • กำลังอ่านค่า...")
         self.log_local(f"เชื่อมต่อ {port} @ {BAUD}", "ok")
-        for cmd in ("config", "options", "tools", "diag", "radiolist"):
+        for cmd in ("config", "options", "tools", "diag", "radiolist", "musiclist"):
             self.send(cmd, echo=False)
 
     def _on_disconnected(self, why):
@@ -667,6 +677,8 @@ class Studio:
             self.show_radio_list(data)
             if data.get("error"):
                 messagebox.showwarning(APP_TITLE, f"บอร์ดตอบกลับ: {data['error']}")
+        elif tag == "MUSICLIST":
+            self.show_music_list(data if isinstance(data, dict) else {})
         elif tag == "TOOL":
             self.show_tool_result(name, data)
 
@@ -1699,6 +1711,176 @@ class Studio:
         ttk.Label(tab, text="AI เลือกสถานีจากรายการนี้ตามชื่อ / ลำดับ / แนวเพลง (\"เปิดวิทยุลูกทุ่ง\", \"เปิดสถานีที่ 3\")  •  "
                             "เก็บในการ์ด SD: agent/radio_stations.json (สูงสุด 40 สถานี, MP3 / AAC)",
                   style="Dim.TLabel").pack(anchor="w")
+
+    # ---------------------------------------------------------- music tab (T123: MP3 on the board's SD card)
+    def _build_music_tab(self):
+        tab = ttk.Frame(self.nb)
+        self.nb.add(tab, text="🎵 เพลง (SD)")
+        self.music_list: list[dict] = []
+        self.music_busy = False
+        self.music_cancel = False
+        bar = ttk.Frame(tab)
+        bar.pack(fill="x", pady=6)
+        ttk.Button(bar, text="โหลดรายการ", command=lambda: self.send("musiclist", echo=False)).pack(side="left")
+        ttk.Button(bar, text="➕ เพิ่มเพลงลง SD card...", style="Accent.TButton",
+                   command=self.music_add_files).pack(side="left", padx=(12, 4))
+        ttk.Button(bar, text="▶ เล่น", command=self.music_play).pack(side="left", padx=(12, 4))
+        ttk.Button(bar, text="⏸ หยุด", command=lambda: self.music_cmd("music pause")).pack(side="left", padx=4)
+        ttk.Button(bar, text="▶ เล่นต่อ", command=lambda: self.music_cmd("music resume")).pack(side="left", padx=4)
+        ttk.Button(bar, text="⏭ ถัดไป", command=lambda: self.music_cmd("music next")).pack(side="left", padx=4)
+        ttk.Button(bar, text="ลบ", style="Danger.TButton", command=self.music_delete).pack(side="left", padx=(12, 4))
+        self.music_status = ttk.Label(tab, text="ยังไม่ได้โหลดรายการ — กด \"โหลดรายการ\"", style="Dim.TLabel")
+        self.music_status.pack(anchor="w")
+
+        body = ttk.Frame(tab)
+        body.pack(fill="both", expand=True, pady=4)
+        self.music_tree = ttk.Treeview(body, columns=("name", "folder", "file"), show="headings", height=14,
+                                       selectmode="extended")
+        for col, text, w in (("name", "ชื่อเพลง", 320), ("folder", "โฟลเดอร์", 140), ("file", "ไฟล์", 420)):
+            self.music_tree.heading(col, text=text)
+            self.music_tree.column(col, width=w, stretch=col == "file")
+        sb = ttk.Scrollbar(body, orient="vertical", command=self.music_tree.yview)
+        self.music_tree.configure(yscrollcommand=sb.set)
+        self.music_tree.pack(side="left", fill="both", expand=True)
+        sb.pack(side="left", fill="y")
+        self.music_tree.tag_configure("playing", foreground=OK)
+        self.music_tree.bind("<Double-1>", lambda e: self.music_play())
+
+        up = ttk.LabelFrame(tab, text="ส่งเพลงจาก PC ไปที่บอร์ด (ผ่านสาย USB)")
+        up.pack(fill="x", pady=6)
+        self.music_progress = ttk.Progressbar(up, mode="determinate", maximum=1000, style="Horizontal.TProgressbar")
+        self.music_progress.pack(fill="x", padx=6, pady=(6, 2))
+        row = ttk.Frame(up)
+        row.pack(fill="x", padx=6, pady=(0, 6))
+        self.music_up_label = ttk.Label(row, text="เลือกไฟล์ด้วยปุ่ม \"➕ เพิ่มเพลงลง SD card\" (เลือกได้หลายไฟล์)",
+                                        style="Dim.TLabel")
+        self.music_up_label.pack(side="left")
+        self.music_cancel_btn = ttk.Button(row, text="ยกเลิก", command=self.music_cancel_upload, state="disabled")
+        self.music_cancel_btn.pack(side="right")
+        ttk.Label(tab, text="ไฟล์ไปที่โฟลเดอร์ music บน SD card ของบอร์ด  •  .mp3 / .aac  •  ชื่อเพลงบนจออ่านจาก ID3 tag "
+                            "(ไม่มี = ชื่อไฟล์)  •  สั่ง AI: \"เปิดเพลง ...\"  •  ประมาณ 1 นาทีต่อเพลง 8 MB",
+                  style="Dim.TLabel").pack(anchor="w")
+
+    def show_music_list(self, data: dict):
+        self.music_list = data.get("songs", [])
+        playing = int(data.get("playing", 0))
+        self.music_tree.delete(*self.music_tree.get_children())
+        for i, s in enumerate(self.music_list):
+            mark = "▶ " if i + 1 == playing else ""
+            self.music_tree.insert("", "end", iid=str(i),
+                                   values=(f"{mark}{i + 1}. {s.get('name', '')}", s.get("folder", ""), s.get("file", "")),
+                                   tags=("playing",) if i + 1 == playing else ())
+        if not data.get("available", False):
+            self.music_status.configure(text="บอร์ดไม่มี SD card — ใส่การ์ดแล้วรีบูต")
+            return
+        free = data.get("free_mb")
+        now = (f"กำลังเล่น: {self.music_list[playing - 1].get('name', '')}" if 0 < playing <= len(self.music_list)
+               else "ไม่ได้เล่นเพลง")
+        self.music_status.configure(
+            text=f"{len(self.music_list)}/{data.get('max', 500)} เพลง ใน {data.get('root', '')}"
+                 f"{f'  •  ว่าง {free:,} MB' if free is not None else ''}  •  {now}")
+
+    def music_selected(self) -> list[int]:
+        return sorted(int(i) for i in self.music_tree.selection())
+
+    def music_cmd(self, cmd: str):
+        if self.send(cmd):
+            self.root.after(1500, lambda: self.send("musiclist", echo=False))
+
+    def music_play(self):
+        sel = self.music_selected()
+        if not sel:
+            messagebox.showwarning(APP_TITLE, "เลือกเพลงในตารางก่อน")
+            return
+        self.music_cmd(f"music {sel[0] + 1}")
+
+    def music_delete(self):
+        sel = self.music_selected()
+        if not sel or self.music_busy:
+            return
+        names = "\n".join(self.music_list[i].get("file", "") for i in sel[:10]) + ("\n..." if len(sel) > 10 else "")
+        if not messagebox.askyesno(APP_TITLE, f"ลบ {len(sel)} เพลงออกจาก SD card ของบอร์ด?\n\n{names}"):
+            return
+        for i in reversed(sel):  # from the end: the numbers before it stay the same
+            self.send(f"musicdel {i + 1}", echo=False)
+
+    def music_cancel_upload(self):
+        self.music_cancel = True
+
+    def music_add_files(self):
+        if self.music_busy:
+            return
+        if not self.link.connected:
+            messagebox.showwarning(APP_TITLE, "ยังไม่ได้เชื่อมต่อบอร์ด")
+            return
+        paths = filedialog.askopenfilenames(title="เลือกไฟล์เพลง", filetypes=[("เพลง MP3 / AAC", "*.mp3 *.aac"),
+                                                                             ("ทุกไฟล์", "*.*")])
+        if not paths:
+            return
+        bad = [Path(p).name for p in paths if Path(p).suffix.lower() not in (".mp3", ".aac")
+               or len(Path(p).name.encode("utf-8")) > 120 or re.search(r'[\\/:*?"<>|]', Path(p).name)]
+        if bad:
+            messagebox.showwarning(APP_TITLE, "ข้ามไฟล์เหล่านี้ (ต้องเป็น .mp3 / .aac ชื่อไม่เกิน 120 ไบต์):\n" +
+                                   "\n".join(bad[:10]))
+            paths = [p for p in paths if Path(p).name not in bad]
+            if not paths:
+                return
+        self.music_busy = True
+        self.music_cancel = False
+        self.music_cancel_btn.configure(state="normal")
+        threading.Thread(target=self._music_upload_worker, args=(list(paths),), name="music-upload",
+                         daemon=True).start()
+
+    def _music_ui(self, frac: float, text: str):
+        self.call_in_ui(lambda: (self.music_progress.configure(value=int(frac * 1000)),
+                                 self.music_up_label.configure(text=text)))
+
+    def _music_upload_worker(self, paths: list[str]):
+        """Songs one by one through music_upload.upload() (window of chunk lines, sha256 checked by the board)."""
+        saved, failed = [], []
+        total = sum(Path(p).stat().st_size for p in paths)
+        sent_before = 0
+        t0 = time.time()
+        for k, p in enumerate(paths):
+            name = Path(p).name
+            try:
+                data = Path(p).read_bytes()
+            except OSError as e:
+                failed.append(f"{name}: {e}")
+                continue
+            last_ui = [0.0]
+
+            def progress(done, k=k, name=name, size=len(data)):
+                now = time.time()
+                if now - last_ui[0] < 0.25:
+                    return
+                last_ui[0] = now
+                rate = (sent_before + done) / max(now - t0, 0.001) / 1024
+                self._music_ui((sent_before + done) / max(total, 1),
+                               f"[{k + 1}/{len(paths)}] {name}  {done // 1024:,} / {size // 1024:,} KB  •  {rate:.0f} KB/s")
+
+            err = music_upload.upload(self.link.send, self.link.music_q, name, data, progress,
+                                      lambda: self.music_cancel or not self.link.connected)
+            sent_before += len(data)
+            if err:
+                failed.append(f"{name}: {err}")
+            else:
+                saved.append(name)
+            if self.music_cancel or not self.link.connected:
+                break
+        took = time.time() - t0
+
+        def finish():
+            self.music_busy = False
+            self.music_cancel_btn.configure(state="disabled")
+            self.music_progress.configure(value=1000 if saved and not failed else 0)
+            self.music_up_label.configure(text=f"ส่งแล้ว {len(saved)} เพลง ({took:.0f} วิ)" +
+                                               (f"  •  ไม่สำเร็จ {len(failed)}" if failed else ""))
+            self.send("musiclist", echo=False)
+            if failed:
+                messagebox.showwarning(APP_TITLE, "ส่งเพลงไม่สำเร็จ:\n" + "\n".join(failed[:10]))
+            self.log_local(f"เพลงลง SD card: สำเร็จ {len(saved)}, ไม่สำเร็จ {len(failed)}", "ok" if not failed else "warn")
+        self.call_in_ui(finish)
 
     def radio_selected(self) -> int:
         sel = self.radio_tree.selection()
