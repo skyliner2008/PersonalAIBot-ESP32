@@ -21,7 +21,8 @@ for f in $(find "$LGFX/lgfx" -name "*.c"); do
 done
 g++ -std=c++17 $FLAGS -I "$HERE/stub" -I "$ROOT/src" -I "$AJSON" "$HERE/dash_preview.cpp" \
     "$ROOT/src/ui/DashScreen.cpp" "$ROOT/src/ui/NavScreen.cpp" "$ROOT/src/ui/UiManager.cpp" "$ROOT/src/vehicle/DashModel.cpp" \
-    "$ROOT/src/vehicle/SimEngine.cpp" "$ROOT/src/vehicle/HondaKline.cpp" \
+    "$ROOT/src/vehicle/SimEngine.cpp" "$ROOT/src/vehicle/HondaKline.cpp" "$ROOT/src/vehicle/Obd.cpp" \
+    "$ROOT/src/vehicle/VehicleHealth.cpp" \
     "$ROOT/src/display/fonts/ThaiFont20.cpp" "$ROOT/src/display/fonts/ThaiFont26.cpp" \
     "$BUILD"/*.o $(sdl2-config --libs) -lz -lpthread -o "$BUILD/dash_preview"
 SDL_VIDEODRIVER=dummy "$BUILD/dash_preview" "$OUT"

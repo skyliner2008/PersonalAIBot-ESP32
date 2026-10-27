@@ -20,6 +20,14 @@ constexpr int kDmaBufLen = 240;  // frames per DMA buffer = 10 ms @ 24 kHz
 constexpr size_t kOutChunkSamples = 480;  // 20 ms
 constexpr size_t kInChunkSamples = 480;   // 20 ms @ 24 kHz -> 320 samples @ 16 kHz
 
+/** A work buffer of the audio loops, in PSRAM (T113: ~13 KB of internal RAM back for TLS / Bluetooth). The I2S driver
+ *  copies between its own internal DMA buffers and these with the CPU, so they need not be DMA-capable. */
+int16_t* psramSamples(size_t n) {
+    void* p = heap_caps_malloc(n * sizeof(int16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!p) p = heap_caps_malloc(n * sizeof(int16_t), MALLOC_CAP_8BIT);
+    return (int16_t*)p;
+}
+
 // The bus runs as 16-bit STEREO frames: mono playback is duplicated to L/R, and
 // the mic channel is picked automatically (which slot the ES8311 ADC data lands
 // in differs between setups).
@@ -155,16 +163,17 @@ bool AudioManager::initI2S() {
 
 void AudioManager::startTasks() {
     xTaskCreatePinnedToCore(outTaskEntry, "audioOut", 4096, this, 6, nullptr, 0);
-    xTaskCreatePinnedToCore(inTaskEntry, "audioIn", 6144, this, 6, nullptr, 0);
+    // T113: ~0.9 KB of it was ever used (the work buffers moved to PSRAM): 3 KB of internal RAM back
+    xTaskCreatePinnedToCore(inTaskEntry, "audioIn", 3072, this, 6, nullptr, 0);
 }
 
 void AudioManager::outTaskEntry(void* self) { static_cast<AudioManager*>(self)->outLoop(); }
 void AudioManager::inTaskEntry(void* self) { static_cast<AudioManager*>(self)->inLoop(); }
 
 void AudioManager::outLoop() {
-    static int16_t chunk[kOutChunkSamples];
-    static int16_t radio[kOutChunkSamples];
-    static int16_t stereo[kOutChunkSamples * 2];
+    static int16_t* const chunk = psramSamples(kOutChunkSamples);
+    static int16_t* const radio = psramSamples(kOutChunkSamples);
+    static int16_t* const stereo = psramSamples(kOutChunkSamples * 2);
     const size_t radioPrebufferBytes = (size_t)AUDIO_I2S_RATE * 2 * AUDIO_RADIO_PREBUFFER_MS / 1000;
 
     for (;;) {
@@ -217,12 +226,12 @@ void AudioManager::outLoop() {
 
         size_t nv = 0, nr = 0;
         if (_playing) {
-            nv = _playback.read((uint8_t*)chunk, sizeof(chunk)) / 2;
+            nv = _playback.read((uint8_t*)chunk, kOutChunkSamples * sizeof(int16_t)) / 2;
             _playLevel = rms(chunk, nv);  // speaking animation: the assistant only
         } else {
             _playLevel *= 0.85f;
         }
-        if (_radioOn) nr = _radio.read((uint8_t*)radio, sizeof(radio)) / 2;
+        if (_radioOn) nr = _radio.read((uint8_t*)radio, kOutChunkSamples * sizeof(int16_t)) / 2;
         const size_t n = nv > nr ? nv : (nr ? nr : nv);
         for (size_t i = nv; i < n; i++) chunk[i] = 0;
 
@@ -256,17 +265,19 @@ void AudioManager::outLoop() {
 }
 
 void AudioManager::inLoop() {
-    static int16_t frames[kInChunkSamples * 2];  // interleaved L/R
-    static int16_t mono[kInChunkSamples];
-    static int16_t ref[kInChunkSamples];
-    static int16_t out16[Downsampler24to16::maxOutput(kInChunkSamples)];
-    static int16_t ref16[Downsampler24to16::maxOutput(kInChunkSamples)];
-    static int16_t pairs[Downsampler24to16::maxOutput(kInChunkSamples) * 2];  // capture ring: mic, ref, mic, ref ...
+    static int16_t* const frames = psramSamples(kInChunkSamples * 2);  // interleaved L/R
+    static int16_t* const mono = psramSamples(kInChunkSamples);
+    static int16_t* const ref = psramSamples(kInChunkSamples);
+    static int16_t* const out16 = psramSamples(Downsampler24to16::maxOutput(kInChunkSamples));
+    static int16_t* const ref16 = psramSamples(Downsampler24to16::maxOutput(kInChunkSamples));
+    // capture ring: mic, ref, mic, ref ...
+    static int16_t* const pairs = psramSamples(Downsampler24to16::maxOutput(kInChunkSamples) * 2);
     float energyL = 0.0f, energyR = 0.0f;  // slow averages to choose the mic slot
 
     for (;;) {
         size_t bytesRead = 0;
-        if (i2s_channel_read(_rx, frames, sizeof(frames), &bytesRead, portMAX_DELAY) != ESP_OK || bytesRead == 0) {
+        if (i2s_channel_read(_rx, frames, kInChunkSamples * 2 * sizeof(int16_t), &bytesRead, portMAX_DELAY) != ESP_OK ||
+            bytesRead == 0) {
             vTaskDelay(pdMS_TO_TICKS(5));
             continue;
         }
@@ -311,7 +322,7 @@ void AudioManager::inLoop() {
 
 size_t AudioManager::readCapture(int16_t* mic, size_t n, float& refRms, int16_t* refOut) {
     constexpr size_t kMax = AUDIO_UPLOAD_RATE * AUDIO_MIC_CHUNK_MS / 1000;  // one agent chunk (640): internal RAM is scarce
-    static int16_t pairs[2 * kMax];
+    static int16_t* const pairs = psramSamples(2 * kMax);
     if (n > kMax) n = kMax;
     const size_t got = _capture.read((uint8_t*)pairs, n * 4) / 4;
     float acc = 0.0f;

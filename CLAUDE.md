@@ -8,6 +8,7 @@
 - Build เฟิร์มแวร์: `pio run` · แฟลช: `pio run -t upload` · serial: `pio device monitor`
 - Host unit tests (ต้อง `pio run` ก่อน 1 ครั้ง): `host_tests\run_tests.bat` (MSVC) หรือ `bash host_tests/run_tests.sh` (g++/clang++)
 - PC Studio: `python tools/pc_app/esp32_ai_studio.py`
+- log OBD จากรถ (SD card `agent/obdlog`, T115): `python tools/obd_log.py pull latest` → `summary` / `replay` (เล่นผ่านตัวคุยกับ ELM327 บน PC)
 - แอปมือถือ (Android, wiki 17 — Jarvis + หน้าบอร์ด ESP32): `python tools/build_mobile_apk.py` (ไม่ต้องมี keystore: เซ็นด้วย debug key ของ SDK · `--create-keystore` เป็นทางเลือก
   ห้ามสร้างแทนผู้ใช้) → `dist/PersonalAIBot-Mobile.apk` (publish_release build + แนบให้เองเมื่อมี Android SDK) · tests: `cd tools/mobile_app && ./gradlew :esp32:testDebugUnitTest`
 - ออก Release (GitHub Actions ใช้ไม่ได้ — บัญชีติด billing): แก้ `FIRMWARE_VERSION` ใน `src/app/AppConfig.h` → commit → push →
@@ -19,7 +20,7 @@
   `AgentTools.*` (function declarations), `WebTools*.*` (tools ข้อมูล, HTTPS เท่านั้น)
 - `src/ai/` Gemini Live client · `src/audio/` I2S/ES8311/วิทยุ · `src/ui/` ดวงตา/การ์ด/เมนู/หน้าปัด · `src/memory/` ความจำ · `src/app/` Settings + SecretBox
 - `src/phone/` เชื่อมแอปมือถือ: GPS + นำทาง Google Maps + AI พูดเตือนก่อนเลี้ยว (USB / Wi-Fi, จับคู่ด้วย USB, handshake HMAC — wiki 18)
-- `src/vehicle/` หน้าปัดรถ (ตัวจำลอง, ELM327 UART (BLE เฉพาะ -DVEHICLE_BLE=1: กิน IRAM 22 KB, T078), Honda K-Line — wiki 16; เขียนเองทั้งหมด ห้ามคัดลอกโค้ด redline-gauge: license PolyForm NC)
+- `src/vehicle/` หน้าปัดรถ (ตัวจำลอง, ELM327 UART (BLE เฉพาะ `pio run -e esp32s3-ble`: IRAM +22 KB, ใช้พร้อม AI ได้ตั้งแต่ T113), Honda K-Line — wiki 16; เขียนเองทั้งหมด ห้ามคัดลอกโค้ด redline-gauge: license PolyForm NC)
 - `tools/pc_app/` ESP32-AI Studio · `tools/mobile_app/` แอปมือถือ: `composeApp` = Jarvis (จากโปรเจค PersonalAIBot) + `esp32` = หน้าบอร์ด (แฟลช USB OTG + สถานะ/log/ตั้งค่า/แชท ใช้ protocol เดียวกับ Studio + นำทาง) · `host_tests/` unit tests · `wiki/` Obsidian vault
 
 ## กติกาการทำงาน

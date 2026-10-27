@@ -45,6 +45,22 @@ enum Channel : uint8_t {
     kThrottle,  // throttle position, %
     kMap,       // manifold absolute pressure, kPa
     kGear,      // gear reported by the source (0 = neutral); otherwise the dash estimates it
+    // OBD-II extras (T112): read when the car supports them, slower ones less often
+    kLoad,       // calculated engine load, %
+    kStftB1,     // short term fuel trim bank 1, % (+ = the ECU adds fuel: lean)
+    kLtftB1,     // long term fuel trim bank 1, %
+    kStftB2,
+    kLtftB2,
+    kTiming,     // ignition timing advance, deg before TDC
+    kMaf,        // mass air flow, g/s
+    kFuelLevel,  // fuel tank level, %
+    kAmbient,    // outside air, deg C
+    kBaro,       // barometric pressure, kPa
+    kOilTemp,    // engine oil, deg C
+    kFuelRate,   // fuel used, l/h (PID 5E; otherwise worked out from MAF / MAP by VehicleHealth)
+    kRunTime,    // seconds since the engine started
+    kDistMil,    // km driven with the check-engine light on
+    kDistClear,  // km since the trouble codes were cleared
     kChannelCount
 };
 
@@ -52,30 +68,44 @@ constexpr uint32_t kStaleMs = 2500;
 
 /** JSON / console key of a channel ("rpm", "speed_kmh", ...). */
 inline const char* channelKey(Channel c) {
-    static const char* const kKeys[kChannelCount] = {"rpm",       "speed_kmh",    "coolant_c", "intake_c",
-                                                     "battery_v", "throttle_pct", "map_kpa",   "gear"};
+    static const char* const kKeys[kChannelCount] = {
+        "rpm",         "speed_kmh",   "coolant_c",   "intake_c",   "battery_v", "throttle_pct", "map_kpa",
+        "gear",        "load_pct",    "stft_b1_pct", "ltft_b1_pct", "stft_b2_pct", "ltft_b2_pct", "timing_deg",
+        "maf_gs",      "fuel_pct",    "ambient_c",   "baro_kpa",   "oil_c",     "fuel_lph",     "run_s",
+        "km_with_mil", "km_since_clear"};
     return c < kChannelCount ? kKeys[c] : "?";
+}
+
+/** Decimals a channel is worth (the tool's numbers, voice-first: exact but not noise). */
+inline int channelDecimals(Channel c) {
+    switch (c) {
+        case kBattery: case kStftB1: case kLtftB1: case kStftB2: case kLtftB2: case kMaf: case kFuelRate: return 1;
+        default: return 0;
+    }
 }
 
 struct Reading {
     float value = 0;
-    uint32_t at = 0;  // millis() of the last update
+    uint32_t at = 0;    // millis() of the last update
+    uint16_t ttl = 0;   // fresh for this long after `at`, in 10 ms (kStaleMs unless the source polls it slower)
     bool valid = false;
 };
 
 struct Snapshot {
     Reading ch[kChannelCount];
 
-    void set(Channel c, float v, uint32_t now) {
+    /** `ttlMs`: how long the value stays fresh - a slow PID (fuel level every 20 s) must not blink "--". */
+    void set(Channel c, float v, uint32_t now, uint32_t ttlMs = kStaleMs) {
         if (c >= kChannelCount) return;
         ch[c].value = v;
         ch[c].at = now;
+        ch[c].ttl = (uint16_t)(ttlMs / 10 > 65535 ? 65535 : ttlMs / 10);
         ch[c].valid = true;
     }
-    /** Updated within kStaleMs (millis() wrap safe). A reading newer than `now` is fresh: the UI takes its `now`
+    /** Updated within its ttl (millis() wrap safe). A reading newer than `now` is fresh: the UI takes its `now`
      *  at the start of a frame and the vehicle task (the other core) may publish a few ms after that. */
     bool fresh(Channel c, uint32_t now) const {
-        return c < kChannelCount && ch[c].valid && (int32_t)(now - ch[c].at) <= (int32_t)kStaleMs;
+        return c < kChannelCount && ch[c].valid && (int32_t)(now - ch[c].at) <= (int32_t)ch[c].ttl * 10;
     }
     float value(Channel c) const { return c < kChannelCount ? ch[c].value : 0.0f; }
     bool anyFresh(uint32_t now) const {
@@ -92,16 +122,17 @@ enum class DashStyle : uint8_t {
     Race,     // rpm bar across the top + big digits (racing dash)
     Digital,  // one round LED ring for the rpm, digital speed inside (sport)
     Classic,  // two round dials with needles: tachometer + speedometer
+    Info,     // T112: a page of values (trims, load, fuel, economy) + trouble codes + health
     Count
 };
 
 inline const char* styleKey(DashStyle s) {
-    static const char* const kKeys[] = {"race", "digital", "classic"};
+    static const char* const kKeys[] = {"race", "digital", "classic", "info"};
     return (uint8_t)s < (uint8_t)DashStyle::Count ? kKeys[(uint8_t)s] : "race";
 }
 
 inline const char* styleNameTh(DashStyle s) {
-    static const char* const kNames[] = {"รถแข่ง", "วงกลมดิจิทัล สปอร์ต", "เข็มวงกลม คลาสสิก"};
+    static const char* const kNames[] = {"รถแข่ง", "วงกลมดิจิทัล สปอร์ต", "เข็มวงกลม คลาสสิก", "ข้อมูลรถ + วิเคราะห์"};
     return (uint8_t)s < (uint8_t)DashStyle::Count ? kNames[(uint8_t)s] : kNames[0];
 }
 
@@ -116,6 +147,7 @@ inline bool parseStyle(const char* text, DashStyle& out) {
     if (ieq(text, "sport") || ieq(text, "ring")) return (out = DashStyle::Digital), true;
     if (ieq(text, "needle") || ieq(text, "analog")) return (out = DashStyle::Classic), true;
     if (ieq(text, "racing") || ieq(text, "bar")) return (out = DashStyle::Race), true;
+    if (ieq(text, "diag") || ieq(text, "data")) return (out = DashStyle::Info), true;
     return false;
 }
 
@@ -132,18 +164,19 @@ enum class SourceId : uint8_t {
     ObdUart,     // OBD-II through a wired ELM327 / STN on the UART pins
     SerialText,  // "rpm=3200 spd=86 ..." lines from another board on the UART pins
     PhoneGps,    // speed from the phone's GPS (the phone app over USB / Wi-Fi, wiki 18): any vehicle, no adapter
+    Replay,      // T115: a drive recorded on the SD card (agent/obdlog), played back through the same driver
     Count
 };
 
 inline const char* sourceKey(SourceId s) {
-    static const char* const kKeys[] = {"off", "sim", "touch", "kline", "obd_ble", "obd_uart", "serial", "phone"};
+    static const char* const kKeys[] = {"off", "sim", "touch", "kline", "obd_ble", "obd_uart", "serial", "phone", "replay"};
     return (uint8_t)s < (uint8_t)SourceId::Count ? kKeys[(uint8_t)s] : "off";
 }
 
 inline const char* sourceNameTh(SourceId s) {
     static const char* const kNames[] = {"ปิด",          "จำลอง (ขับเอง)", "จำลอง (แตะเป็นคันเร่ง)",
                                          "Honda K-Line", "OBD-II Bluetooth", "OBD-II สาย UART",
-                                         "ข้อความผ่าน UART", "GPS มือถือ"};
+                                         "ข้อความผ่าน UART", "GPS มือถือ", "เล่นย้อนหลังจาก log"};
     return (uint8_t)s < (uint8_t)SourceId::Count ? kNames[(uint8_t)s] : "ปิด";
 }
 
@@ -168,7 +201,8 @@ inline bool parseSource(const char* text, SourceId& out) {
                                      {"honda", SourceId::HondaK}, {"k-line", SourceId::HondaK},
                                      {"ble", SourceId::ObdBle},   {"obd", SourceId::ObdBle},
                                      {"elm", SourceId::ObdUart},  {"uart", SourceId::SerialText},
-                                     {"gps", SourceId::PhoneGps}};
+                                     {"gps", SourceId::PhoneGps}, {"log", SourceId::Replay},
+                                     {"playback", SourceId::Replay}};
     for (const Alias& a : kAliases) {
         if (ieq(text, a.name)) {
             out = a.id;
@@ -195,6 +229,9 @@ inline int parseTextLine(const char* line, Snapshot& s, uint32_t now) {
         {"intake_c", kIntake},   {"volt", kBattery},       {"batt", kBattery},     {"battery", kBattery},
         {"battery_v", kBattery}, {"voltage", kBattery},    {"tps", kThrottle},     {"throttle", kThrottle},
         {"throttle_pct", kThrottle}, {"map", kMap},        {"map_kpa", kMap},      {"gear", kGear},
+        {"load", kLoad},         {"load_pct", kLoad},      {"fuel", kFuelLevel},   {"fuel_pct", kFuelLevel},
+        {"maf", kMaf},           {"maf_gs", kMaf},         {"amb", kAmbient},      {"ambient_c", kAmbient},
+        {"oil_c", kOilTemp},     {"lph", kFuelRate},       {"fuel_lph", kFuelRate},
     };
     if (!line) return 0;
     int set = 0;

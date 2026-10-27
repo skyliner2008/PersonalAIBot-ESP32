@@ -228,37 +228,44 @@ void OtaUpdater::begin() {
                   run ? run->label : "?", _pendingVerify ? " (pending verification)" : "",
                   kSignedUpdates ? "updates must be signed by the release key"
                                  : "no release key built in: updates are not signature-checked");
-    xTaskCreatePinnedToCore(taskEntry, "ota", 10240, this, 1, &_task, 1);  // TLS handshakes need the stack
+}
+
+// T113: the task exists only while a job runs - its 10 KB stack (TLS handshakes; flash writes cannot run on a
+// PSRAM stack) was internal RAM held all the time for a few seconds of work a day
+bool OtaUpdater::startJob(Job job) {
+    if (_running || _job != JobNone) return false;
+    _job = job;
+    _running = true;
+    TaskHandle_t t = nullptr;
+    if (xTaskCreatePinnedToCore(taskEntry, "ota", 10240, this, 1, &t, 1) != pdPASS) {
+        _running = false;
+        _job = JobNone;
+        Serial.println("[OTA] no memory for the update task - try again later");
+        return false;
+    }
+    return true;
 }
 
 bool OtaUpdater::requestCheck() {
-    if (!_task || busy() || _job != JobNone) return false;
+    if (_running || busy()) return false;
     _silentCheck = false;
-    _job = JobCheck;
-    xTaskNotifyGive(_task);
-    return true;
+    return startJob(JobCheck);
 }
 
 bool OtaUpdater::requestInstall() {
-    if (!_task || _state != State::Available || _job != JobNone) return false;
-    _job = JobInstall;
-    xTaskNotifyGive(_task);
-    return true;
+    if (_state != State::Available) return false;
+    return startJob(JobInstall);
 }
 
 bool OtaUpdater::requestFetch(const char* url) {
-    if (!_task || busy() || _job != JobNone || !url || strncmp(url, "https://", 8) != 0) return false;
+    if (_running || busy() || !url || strncmp(url, "https://", 8) != 0) return false;
     strlcpy(_fetchUrl, url, sizeof(_fetchUrl));
-    _job = JobFetch;
-    xTaskNotifyGive(_task);
-    return true;
+    return startJob(JobFetch);
 }
 
 bool OtaUpdater::requestSelfTest() {
-    if (!_task || busy() || _job != JobNone || _pendingVerify) return false;
-    _job = JobSelfTest;
-    xTaskNotifyGive(_task);
-    return true;
+    if (busy() || _pendingVerify) return false;
+    return startJob(JobSelfTest);
 }
 
 bool OtaUpdater::rollbackNow(String& why) {
@@ -358,27 +365,34 @@ void OtaUpdater::notice(const char* text, uint32_t holdMs) {
 // Task
 // ============================================================
 
-void OtaUpdater::taskEntry(void* self) { static_cast<OtaUpdater*>(self)->loop(); }
+void OtaUpdater::taskEntry(void* self) {
+    OtaUpdater* o = static_cast<OtaUpdater*>(self);
+    o->runJob();
+    o->_running = false;
+    vTaskDelete(nullptr);
+}
 
-void OtaUpdater::loop() {
-    bool bootNoticeDone = false;
-    for (;;) {
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
-        confirmIfHealthy();
-        if (!bootNoticeDone && millis() > 8000) {  // after the boot screens: say what happened to an update
-            bootNoticeDone = true;
-            if (_state == State::Error && _error[0]) notice(_error, 15000);
-        }
-        const Job job = _job;
-        _job = JobNone;
-        switch (job) {
-            case JobCheck: runCheck(); break;
-            case JobInstall: runInstall(); break;
-            case JobFetch: runFetch(); break;
-            case JobSelfTest: runSelfTest(); break;
-            default: dailyCheck(); break;
-        }
+void OtaUpdater::runJob() {
+    switch (_job) {
+        case JobCheck: runCheck(); break;
+        case JobInstall: runInstall(); break;
+        case JobFetch: runFetch(); break;
+        case JobSelfTest: runSelfTest(); break;
+        default: break;
     }
+    _job = JobNone;
+}
+
+void OtaUpdater::tick() {
+    const uint32_t now = millis();
+    if ((int32_t)(now - _nextTick) < 0) return;
+    _nextTick = now + 1000;
+    confirmIfHealthy();
+    if (!_bootNoticeDone && now > 8000) {  // after the boot screens: say what happened to an update
+        _bootNoticeDone = true;
+        if (_state == State::Error && _error[0]) notice(_error, 15000);
+    }
+    dailyCheck();
 }
 
 void OtaUpdater::confirmIfHealthy() {
@@ -399,10 +413,10 @@ void OtaUpdater::confirmIfHealthy() {
 }
 
 void OtaUpdater::dailyCheck() {
-    if (busy() || _state == State::Available || WiFi.status() != WL_CONNECTED || millis() < kFirstCheckMs) return;
+    if (_running || busy() || _state == State::Available || WiFi.status() != WL_CONNECTED || millis() < kFirstCheckMs) return;
     if (_checkedOnce && deadline::elapsed(millis(), _lastCheck) < kCheckEveryMs) return;
     _silentCheck = true;
-    runCheck();
+    if (!startJob(JobCheck)) _nextTick = millis() + 60000;  // no memory for the task now: in a minute
 }
 
 bool OtaUpdater::fetchText(const char* url, String& out, int& code) {

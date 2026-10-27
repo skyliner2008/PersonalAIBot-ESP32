@@ -8,12 +8,15 @@
 #include <math.h>
 #include <string.h>
 
+#include <new>
 #include <vector>
 
+#include "../util/PsramAlloc.h"
 #include "../util/TextWrap.h"
 #include "../util/TimeFmt.h"
 
-CardScreen gCard;
+// two CardData (shown + next) = 7 KB: in PSRAM, not in the internal RAM the TLS / Bluetooth need (T113)
+CardScreen& gCard = *new (psramMalloc(sizeof(CardScreen))) CardScreen();
 
 namespace {
 

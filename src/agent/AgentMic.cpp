@@ -20,8 +20,9 @@ void AgentController::updateAgc(float level) {
     _agcGain += (want - _agcGain) * (want < _agcGain ? 0.3f : 0.06f);
 }
 
+// T113: the mic chunks below are PSRAM (made on first use): 5 KB of internal RAM back for TLS / Bluetooth
 void AgentController::sendMic(const int16_t* pcm, size_t n) {
-    static int16_t out[kChunk];
+    static int16_t* const out = (int16_t*)psramMalloc(kChunk * sizeof(int16_t));
     if (n > kChunk) n = kChunk;
     for (size_t i = 0; i < n; i++) {
         float v = pcm[i] * _agcGain;
@@ -50,7 +51,7 @@ void AgentController::sendPreroll() {
 }
 
 void AgentController::drainPreroll() {
-    static int16_t chunk[kChunk];
+    static int16_t* const chunk = (int16_t*)psramMalloc(kChunk * sizeof(int16_t));
     while (_preroll.count && _gemini.outboxSpace() > kOutboxReserve) {
         const size_t n = _preroll.pop(chunk, kChunk);
         if (!n) break;
@@ -226,8 +227,9 @@ void AgentController::handleAudioInput() {
     if (_recActive && (int32_t)(now - _recDeadline) >= 0) finishRecording();
     if (millis() - now > 300) Serial.printf("[Mic] slow gate %lu ms\n", (unsigned long)(millis() - now));
 
-    static int16_t chunk[kChunk];
-    static int16_t refChunk[kChunk];  // what the speaker played during these very samples (DAC loopback)
+    static int16_t* const chunk = (int16_t*)psramMalloc(kChunk * sizeof(int16_t));
+    // what the speaker played during these very samples (DAC loopback)
+    static int16_t* const refChunk = (int16_t*)psramMalloc(kChunk * sizeof(int16_t));
     // one chunk that takes > 300 ms says where (a steady 1.34 s "loop held (audioIn)" right after waking
     // over the radio, T065): the time to here, in the echo removal and in wake()
     struct SlowChunk {

@@ -42,6 +42,9 @@ public:
 
     /** Called by the agent loop: confirmation needs it alive. */
     void heartbeat() { _heartbeat = millis(); }
+    /** The agent loop too (an internal stack: NVS), ~1 Hz inside: confirm a fresh update, the boot notice, the
+     *  daily check. T113: no OTA task while idle - one is made per job (its 10 KB stack is internal RAM). */
+    void tick();
 
     State state() const { return _state; }
     const char* stateName() const;
@@ -62,8 +65,10 @@ public:
 private:
     enum Job : uint8_t { JobNone, JobCheck, JobInstall, JobFetch, JobSelfTest };
 
-    TaskHandle_t _task = nullptr;
+    volatile bool _running = false;  // a job's task exists (only then)
     SemaphoreHandle_t _lock = nullptr;
+    uint32_t _nextTick = 0;
+    bool _bootNoticeDone = false;
     volatile Job _job = JobNone;
     volatile State _state = State::Idle;
     volatile uint8_t _progress = 0;
@@ -77,7 +82,8 @@ private:
     char _fetchUrl[256] = "";
 
     static void taskEntry(void* self);
-    void loop();
+    bool startJob(Job job);
+    void runJob();
     void confirmIfHealthy();
     void dailyCheck();
     void runCheck();

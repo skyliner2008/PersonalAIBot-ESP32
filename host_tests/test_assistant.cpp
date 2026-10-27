@@ -305,8 +305,9 @@ TEST(tool_declarations_per_model) {
     rig.dev.vehicleOn = true;
     const size_t withVehicle = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
     CHECK_EQ(count, (size_t)45);
-    CHECK(withVehicle - bytes < 400);  // one small tool
-    CHECK(withVehicle < 16100);        // what the board really sends every session
+    // one tool for the dash, live values, health, trip and trouble codes (T112: +scan / explain / clear_codes)
+    CHECK(withVehicle - bytes < 600);
+    CHECK(withVehicle < 16300);  // what the board really sends every session
     printf("    + vehicle dash tool: %u bytes JSON\n", (unsigned)(withVehicle - bytes));
     {
         // default build (VEHICLE_BLE = 0): the model is not offered the Bluetooth source it cannot pick (T078)
@@ -326,6 +327,20 @@ TEST(tool_declarations_per_model) {
     CHECK(rig.dev.vehicleCall == "open:");
     CHECK(!callTool(rig.tools, "vehicle", "{\"action\":\"set_source\",\"source\":\"nope\"}", vr));
     CHECK(!callTool(rig.tools, "vehicle", "{\"action\":\"drive\"}", vr));
+    CHECK(callTool(rig.tools, "vehicle", "{\"action\":\"scan\"}", vr) && rig.dev.vehicleCall == "scan:");  // T112
+    CHECK(callTool(rig.tools, "vehicle", "{\"action\":\"clear_codes\"}", vr) && rig.dev.vehicleCall == "clear_codes:");
+    // "what does P0171 mean": answered from the firmware's table, no car (no device call)
+    rig.dev.vehicleCall.clear();
+    CHECK(callTool(rig.tools, "vehicle", "{\"action\":\"explain\",\"code\":\"P0171, p0302 X12\"}", vr));
+    CHECK(rig.dev.vehicleCall.empty());
+    JsonArrayConst codes = vr["result"]["codes"];
+    CHECK_EQ(codes.size(), (size_t)3);
+    CHECK(strstr(codes[0]["meaning"] | "", "lean") && codes[0]["severity"] == 2 && codes[0]["generic"] == true);
+    CHECK(!strcmp(codes[1]["code"] | "", "P0302") && strstr(codes[1]["meaning"] | "", "Cylinder 2 misfire"));
+    CHECK(codes[1]["severity"] == 3 && !codes[2]["error"].isNull() && !strcmp(codes[2]["code"] | "", "X12"));
+    CHECK(callTool(rig.tools, "vehicle", "{\"action\":\"explain\",\"code\":\"P1456\"}", vr));
+    CHECK(vr["result"]["codes"][0]["generic"] == false && vr["result"]["codes"][0]["meaning"].isNull());
+    CHECK(!callTool(rig.tools, "vehicle", "{\"action\":\"explain\"}", vr));  // which code?
     rig.dev.vehicleOn = false;
 
     // the phone app (wiki 18): `navigate` only once a phone was paired, small like the dash tool

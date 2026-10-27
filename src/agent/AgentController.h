@@ -442,6 +442,14 @@ private:
     void bargeInNow(uint32_t now);  // the wake word while the AI talks: stop the reply, listen
     void handleDevices(uint32_t now);  // inputs with "notify" -> an announcement
     void handleVehicle(uint32_t now);  // dash warnings (engine too hot, not charging) -> an announcement
+    // T112: vehicle scan / clear_codes read the car (a second or more): answered later, like a web lookup
+    struct VehicleJob {
+        bool active = false, clear = false;
+        uint32_t seq = 0, at = 0, gen = 0;
+        char id[64] = "";
+    } _vehJob;
+    bool deferVehicleCall(JsonObjectConst call);
+    void finishVehicleJob(bool done);
     void handleNavigation(uint32_t now);  // the next turn from Google Maps on the phone -> said (wiki 18)
     void markAnswered() { _replyWatchAt = 0; }
     void startRecording(uint8_t sec);

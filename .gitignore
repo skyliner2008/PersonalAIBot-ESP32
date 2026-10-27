@@ -55,3 +55,6 @@ __pycache__/
 
 # Release images (attach dist/*.bin to a GitHub Release instead of committing them)
 dist/
+
+# T115: OBD logs pulled from the board (tools/obd_log.py) - a car's VIN and drives, not for the repo
+logs/

@@ -242,7 +242,9 @@ ESP32-AI/
 │   ├── system/             I2cBus, Storage
 │   ├── util/               Utf8, Base64, TextWrap, TimeFmt, JsonFrame, PsramAlloc, JsonAlloc
 │   ├── phone/              แอปมือถือ (T083): PhoneProtocol (ข้อความ, TurnAnnouncer), PhoneLink (USB / Wi-Fi, จับคู่, handshake HMAC)
-│   └── vehicle/            หน้าปัดรถ (T076): VehicleData, DashModel, SimEngine, Elm327, HondaKline, Vehicle (task), VehicleLink (UART; BLE เฉพาะ -DVEHICLE_BLE=1, T078)
+│   └── vehicle/            หน้าปัดรถ (T076): VehicleData, DashModel, SimEngine, Elm327, HondaKline, Vehicle (task), VehicleLink (UART; BLE เฉพาะ env `esp32s3-ble`, T078 / T113)
+│                           + T112: Obd (PID 0100→01C0, รหัสปัญหา + ความหมาย, VIN, freeze frame, หลายเฟรม), VehicleHealth (สุขภาพรถ + ทริป กม./ลิตร)
+│                           + T115: ObdLog (รูปแบบ log + เล่นย้อนหลัง), VehicleLog (log ลง SD card agent/obdlog)
 ├── host_tests/     test_main.cpp, run_tests.bat
 ├── tools/          gen_thai_font.py, gen_root_ca.py
 │   ├── pc_app/     esp32_ai_studio.py (ESP32-AI Studio), run_studio.bat, requirements.txt

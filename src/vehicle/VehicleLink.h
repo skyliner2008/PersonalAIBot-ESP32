@@ -10,6 +10,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/stream_buffer.h>
 
+#include "ObdLog.h"
 #include "VehicleData.h"  // VEHICLE_BLE
 
 /** The saved source was OBD over BLE at boot, so the BLE controller memory was kept (bleInUse()). False when
@@ -41,6 +42,13 @@ public:
     const char* status() override { return _open ? "UART" : "UART OFF"; }
     /** K-Line wake-up: TX low `lowMs`, high `highMs`, then the UART again. Blocks for both. */
     void wakePulse(uint32_t lowMs, uint32_t highMs);
+    /** Another speed: closes the port, the next open() uses it (the ELM327 baud search, T112). */
+    void setBaud(uint32_t baud) {
+        if (baud == _baud) return;
+        close();
+        _baud = baud;
+    }
+    uint32_t baud() const { return _baud; }
 
 private:
     uint32_t _baud;
@@ -48,7 +56,39 @@ private:
     bool _open = false;
 };
 
+/** T115: a drive recorded on the SD card, played back as an ELM327 (vehicle::obdlog::ReplayAdapter). */
+class ReplayLink : public VehicleLink {
+public:
+    ReplayLink(const vehicle::obdlog::Replay* r, float speed) : _r(r), _speed(speed) {}
+    bool open() override {
+        if (!_open) _ad.begin(_r, millis(), _speed);
+        _open = true;
+        return true;
+    }
+    void close() override { _open = false; }
+    bool isOpen() override { return _open; }
+    size_t read(uint8_t* buf, size_t cap) override { return _ad.read((char*)buf, cap, millis()); }
+    bool write(const uint8_t* data, size_t n) override {
+        _ad.write((const char*)data, n, millis());
+        return true;
+    }
+    const char* status() override { return "REPLAY"; }
+    /** Milliseconds into the recording. */
+    uint32_t position() { return _open ? _ad.logTime(millis()) - _r->start() : 0; }
+
+private:
+    const vehicle::obdlog::Replay* _r;
+    float _speed;
+    bool _open = false;
+    vehicle::obdlog::ReplayAdapter _ad;
+};
+
 #if VEHICLE_BLE
+
+/** Bluetooth (controller + NimBLE host) is up. */
+bool vehicleBleRunning();
+/** Stop Bluetooth to give its internal RAM back (T114: the dash closed); it can start again. Close the link first. */
+void vehicleBleShutdown();
 
 /**
  * ELM327 Bluetooth LE adapter (Vgate iCar Pro BLE, Veepeak BLE, Konnwei, "V-LINK", most "OBDII" BLE

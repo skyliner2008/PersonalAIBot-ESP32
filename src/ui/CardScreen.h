@@ -106,7 +106,7 @@ private:
     int drawWrapped(LGFX_Sprite& c, const char* text, int x, int y, int w, int maxLines, int lineH, uint16_t color);
 };
 
-extern CardScreen gCard;
+extern CardScreen& gCard;  // the object lives in PSRAM (T113)
 
 namespace wx {
 /** WMO weather code -> Thai description. */

@@ -29,6 +29,12 @@ void Vehicle::setStyle(vehicle::DashStyle s) { gStyle = s; }
 vehicle::Snapshot Vehicle::snapshot() { return gSnap; }
 String Vehicle::status() { return String(gStatus); }
 bool Vehicle::needsRestart() { return gRestart; }
+// T112: the diagnosis (the simulator's codes) and the health analysis the info page shows
+static vehicle::obd::Diag gDiag;
+static vehicle::HealthMonitor gHealth;
+vehicle::obd::Diag Vehicle::diag() { return gDiag; }
+vehicle::Health Vehicle::health() { return gHealth.health(); }
+uint32_t Vehicle::requestScan() { return 0; }
 
 // ---- the PhoneLink API the screens use (wiki 18) ----
 PhoneLink gPhone;
@@ -106,7 +112,12 @@ int main(int argc, char** argv) {
     vehicle::SimEngine sim;
     sim.reset(gKind);
     sim.setAutoDrive(true);
-    for (int i = 0; i < 9 * 50; i++) { sim.step(0.02f); gNow += 20; sim.write(gSnap, gNow); if (i % 5 == 0) gDashUi.tick(gNow, 0.02f); }
+    sim.diag(gDiag);
+    gHealth.reset(vehicle::HealthConfig());
+    for (int i = 0; i < 9 * 50; i++) {
+        sim.step(0.02f); gNow += 20; sim.write(gSnap, gNow); gHealth.update(gSnap, &gDiag, gNow);
+        if (i % 5 == 0) gDashUi.tick(gNow, 0.02f);
+    }
     scene("car_city");
     for (int i = 0; i < 1000 && sim.rpm() < vehicle::defaultConfig(gKind).shiftRpm + 20; i++) { sim.step(0.02f); gNow += 20; sim.write(gSnap, gNow); if (i % 5 == 0) gDashUi.tick(gNow, 0.02f); }
     gNow = (gNow / 140) * 140;  // the "on" phase of the shift flash
@@ -119,7 +130,8 @@ int main(int argc, char** argv) {
     gSnap.set(vehicle::kRpm, 2400, gNow); gSnap.set(vehicle::kSpeed, 62, gNow);
     gSnap.set(vehicle::kCoolant, 114, gNow); gSnap.set(vehicle::kBattery, 11.3f, gNow);
     scene("car_warnings");
-    // motorcycle on Honda K-Line: no speed from the ECU, no gear
+    // motorcycle on Honda K-Line: no speed from the ECU, no gear (and no trouble codes)
+    gDiag = vehicle::obd::Diag();
     gKind = vehicle::Kind::Motorcycle;
     gSrc = vehicle::SourceId::HondaK;
     gStatus = "LIVE";

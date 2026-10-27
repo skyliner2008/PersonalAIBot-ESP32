@@ -30,6 +30,7 @@ cl /nologo /std:c++17 /EHsc /utf-8 /O2 /W3 /D_CRT_SECURE_NO_WARNINGS ^
   "%~dp0test_main.cpp" ^
   "%~dp0test_assistant.cpp" ^
   "%~dp0test_vehicle.cpp" ^
+  "%~dp0test_obd.cpp" ^
   "%~dp0test_phone.cpp" ^
   "%ROOT%\src\util\Base64.cpp" ^
   "%ROOT%\src\memory\TextFeatures.cpp" ^
@@ -46,6 +47,9 @@ cl /nologo /std:c++17 /EHsc /utf-8 /O2 /W3 /D_CRT_SECURE_NO_WARNINGS ^
   "%ROOT%\src\vehicle\SimEngine.cpp" ^
   "%ROOT%\src\vehicle\Elm327.cpp" ^
   "%ROOT%\src\vehicle\HondaKline.cpp" ^
+  "%ROOT%\src\vehicle\Obd.cpp" ^
+  "%ROOT%\src\vehicle\VehicleHealth.cpp" ^
+  "%ROOT%\src\vehicle\ObdLog.cpp" ^
   /Fo"%OUT%\\" /Fe"%OUT%\host_tests.exe"
 if errorlevel 1 exit /b 1
 

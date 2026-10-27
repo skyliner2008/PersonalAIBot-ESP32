@@ -7,6 +7,7 @@
 
 #include <string.h>
 
+#include "../util/PsramAlloc.h"
 #include "../util/Utf8.h"
 
 KeyboardScreen gKeyboard;
@@ -63,7 +64,8 @@ void KeyboardScreen::onEnter() {
 
 void KeyboardScreen::buildKeys() {
     _keyCount = 0;
-    static char tokens[7][3][10][8];  // split once per build (labels must outlive the keys)
+    // split once per build (labels must outlive the keys); PSRAM: internal RAM is for TLS / Bluetooth (T113)
+    static auto* const tokens = (char(*)[3][10][8])psramMalloc(sizeof(char[7][3][10][8]));
     const int cellW = ui::W / 10;
     for (int r = 0; r < 3; r++) {
         // tokenize the row

@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include <string>
+#include <vector>
 
 #include "test_framework.h"
 #include "vehicle/DashModel.h"
@@ -233,14 +234,18 @@ TEST(vehicle_elm327) {
     elm.restart(now);
     int sent = 0;
     std::string order;
+    std::vector<std::string> polled;  // the live PIDs, in order
     bool sawAtrv = false;
-    for (int i = 0; i < 400 && sent < 40; i++) {
+    for (int i = 0; i < 1200 && sent < 120; i++) {
         now += 10;
         if (const char* cmd = elm.poll(now)) {
             const std::string r = car.reply(cmd);
             sent++;
             if (!strcmp(cmd, "ATRV")) sawAtrv = true;
-            if (!strncmp(cmd, "01", 2) && strcmp(cmd, "0100")) order += std::string(cmd + 2) + " ";
+            if (!strncmp(cmd, "01", 2) && strlen(cmd) == 4 && strcmp(cmd, "0100") && strcmp(cmd, "0120")) {
+                order += std::string(cmd + 2) + " ";
+                polled.push_back(cmd + 2);
+            }
             // the adapter answers in pieces, like a BLE notification stream
             for (size_t k = 0; k < r.size(); k += 7) elm.feed(r.data() + k, r.size() - k < 7 ? r.size() - k : 7, s, now);
         }
@@ -253,8 +258,12 @@ TEST(vehicle_elm327) {
     CHECK(s.fresh(kRpm, now) && s.fresh(kSpeed, now) && s.fresh(kCoolant, now) && s.fresh(kIntake, now));
     CHECK(s.fresh(kThrottle, now) && s.fresh(kMap, now) && s.fresh(kBattery, now));
     CHECK(sawAtrv);
-    CHECK(order.find("0C 0D 0C 05 0C 0F") != std::string::npos);  // rpm every other request
-    printf("    elm327 poll order: %.60s\n", order.c_str());
+    CHECK(elm.diag().codesValid && elm.diag().stored.n == 0);  // codes read at connect (this one has none)
+    for (const char* p : {"0D", "05", "0F", "11", "0B"}) CHECK(order.find(p) != std::string::npos);  // every supported PID
+    int rpmLast = 0;  // a gauge on screen (the default): rpm every other request once the jobs are done
+    for (size_t k = polled.size() > 30 ? polled.size() - 30 : 0; k < polled.size(); k++) rpmLast += polled[k] == "0C";
+    CHECK(rpmLast >= 12);
+    printf("    elm327 poll order: %.60s (rpm %d of the last 30)\n", order.c_str(), rpmLast);
 
     // silence: the same command again (twice), then the init starts over and says so
     uint32_t t = now;

@@ -5,12 +5,14 @@
 
 #include "AgentTools.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "../ui/Emotion.h"
 #include "../util/JsonAlloc.h"
 #include "../util/TimeFmt.h"
+#include "../vehicle/Obd.h"          // trouble-code meanings (vehicle explain)
 #include "../vehicle/VehicleData.h"  // VEHICLE_BLE
 #include "Personas.h"
 
@@ -323,18 +325,22 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
         declare(d, b, "device", "Read or switch the devices wired to the board (relay, dimmer, sensor).", devp, 3);
     }
     if (_device.vehicleEnabled()) {  // firmware with the dash: always, so "เปิดหน้าปัด" works before a source is set
-        static const char* const kVehActions[] = {"status", "open", "close", "set_source", nullptr};
+        // T112: one tool for "how is the car", "what does this code mean", reading / clearing the codes
+        static const char* const kVehActions[] = {"status", "scan", "explain", "clear_codes", "open", "close", "set_source", nullptr};
         static const char* const kVehSources[] = {"off", "sim", "touch", "kline",
 #if VEHICLE_BLE
                                                   "obd_ble",
 #endif
-                                                  "obd_uart", "serial", "phone", nullptr};
+                                                  "obd_uart", "serial", "phone", "replay", nullptr};
         static const Param vehp[] = {
-            {"action", "STRING", nullptr, true, kVehActions},
+            {"action", "STRING", "scan = read trouble codes; explain = what code means (no car needed); clear_codes only if asked",
+             true, kVehActions},
             {"source", "STRING", nullptr, false, kVehSources},
+            {"code", "STRING", nullptr, false, nullptr},
         };
-        declare(d, b, "vehicle", "Vehicle dash (หน้าปัด, Smart Gauge): open/close; live rpm, speed, engine temp, battery.",
-                vehp, 2);
+        declare(d, b, "vehicle",
+                "Car/motorbike dash (หน้าปัด, Smart Gauge, OBD-II): open/close; live values, health, trip km/l, trouble codes.",
+                vehp, 3);
     }
     if (_device.phonePaired()) {  // only once the phone app was paired over USB: no cost otherwise
         static const char* const kNavActions[] = {"go", "stop", "status", "where", nullptr};
@@ -871,9 +877,45 @@ bool AgentTools::device(JsonObjectConst a, JsonObject r, const char*& e) {
 
 bool AgentTools::vehicle(JsonObjectConst a, JsonObject r, const char*& e) {
     const char* action = a["action"] | "status";
-    if (strcmp(action, "status") && strcmp(action, "open") && strcmp(action, "close") && strcmp(action, "set_source")) {
-        return (e = "action must be status, open, close or set_source"), false;
+    if (!strcmp(action, "explain")) {  // the meanings are in the firmware: no car, no Internet needed
+        const char* p = a["code"] | "";
+        JsonArray list = r["codes"].to<JsonArray>();
+        int n = 0;
+        while (*p && n < 6) {
+            while (*p && !isalnum((unsigned char)*p)) p++;
+            if (!*p) break;
+            const char* tok = p;
+            while (isalnum((unsigned char)*p)) p++;
+            uint16_t raw;
+            JsonObject o = list.add<JsonObject>();
+            if (!vehicle::obd::parseDtc(tok, raw)) {
+                char word[13];
+                const size_t len = (size_t)(p - tok) < sizeof(word) - 1 ? (size_t)(p - tok) : sizeof(word) - 1;
+                memcpy(word, tok, len);
+                word[len] = '\0';
+                o["code"] = (const char*)word;  // copied (a char array would be kept by pointer)
+                o["error"] = "not a trouble code (P / C / B / U + 4 characters, e.g. P0171)";
+                n++;
+                continue;
+            }
+            char code[6];
+            vehicle::obd::formatDtc(raw, code);
+            const vehicle::obd::DtcInfo info = vehicle::obd::describeDtc(raw);
+            o["code"] = code;
+            if (info.text[0]) o["meaning"] = (const char*)info.text;
+            o["system"] = info.system;
+            o["severity"] = info.severity;
+            o["generic"] = info.generic;  // false: the carmaker's own meaning (its service manual / dealer)
+            n++;
+        }
+        if (!n) return (e = "code is required, e.g. P0171"), false;
+        r["severity_scale"] = "1 minor (emissions), 2 have it checked soon, 3 serious: stop / drive gently to a garage";
+        return true;
     }
+    static const char* const kActions[] = {"status", "scan", "clear_codes", "open", "close", "set_source"};
+    bool known = false;
+    for (const char* k : kActions) known |= !strcmp(action, k);
+    if (!known) return (e = "action must be status, scan, explain, clear_codes, open, close or set_source"), false;
     if (const char* why = _device.vehicleAction(action, a["source"] | "", r)) return (e = why), false;
     return true;
 }

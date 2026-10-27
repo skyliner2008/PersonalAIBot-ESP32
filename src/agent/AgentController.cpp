@@ -43,6 +43,12 @@ size_t AgentController::PcmRing::pop(int16_t* out, size_t n) {
 
 // Settings::wakeWord: 0 "Jarvis", 1 "Hi ESP", 2 both at once
 static bool startWakeWord(WakeWord& w, uint8_t word) {
+    // T113: OBD over Bluetooth LE keeps the BT controller (~44 KB of internal RAM with the host running): the
+    // second word's ~16 KB goes back to the Live session's TLS - "Jarvis" only, until another dash source
+    if (word == 2 && Vehicle::bleKeptAtBoot()) {
+        Serial.println("[Wake] Bluetooth OBD in use: \"Jarvis\" only (both words need ~16 KB more internal RAM)");
+        word = 0;
+    }
     if (word == 2) return w.begin("hiesp", "jarvis", WAKE_WORD_OWN_AEC);
     return w.begin(word ? "hiesp" : "jarvis", nullptr, WAKE_WORD_OWN_AEC);
 }
@@ -261,6 +267,7 @@ void AgentController::loop() {
         // blocks for longer than the jitter buffer makes the reply stutter - time each one
         const uint32_t loopStart = millis();
         gOta.heartbeat();  // a fresh firmware update is confirmed only while this loop runs
+        gOta.tick();       // ... from here (T113: the OTA task exists only during a check / install)
         uint32_t mark = loopStart, slowMs = 0;
         const char* slow = "";
         auto lap = [&](const char* name) {

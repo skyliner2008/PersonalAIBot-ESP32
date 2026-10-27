@@ -912,6 +912,7 @@ void AgentController::onToolCall(JsonArrayConst calls) {
     JsonArray responses = resp["toolResponse"]["functionResponses"].to<JsonArray>();
     for (JsonObjectConst call : calls) {
         const char* name = call["name"] | "";
+        if (!strcmp(name, "vehicle") && deferVehicleCall(call)) continue;  // reading the car's codes: answered later
         if (webtools::isWebTool(name)) {  // HTTPS in the webTools task; answered later with the same id
             String args;
             serializeJson(call["args"], args);

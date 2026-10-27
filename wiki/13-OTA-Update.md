@@ -27,6 +27,7 @@ install  (ผู้ใช้กดเท่านั้น) ปิดวิท�
                  • esp_ota_end (ตรวจ segment + hash ในตัว image)
          → esp_ota_set_boot_partition → บันทึก NVS "ota" {try: เวอร์ชัน, part: ช่อง} → รีสตาร์ทผ่าน agent (ปิด session + flush ความจำ)
 confirm  boot ใหม่ = PENDING_VERIFY → ทำงานปกติ 60 วิ และ agent loop ยังเต้นอยู่ (heartbeat) → esp_ota_mark_app_valid_cancel_rollback
+         (T113: ทำใน `gOta.tick()` จาก loop ของ agent — task "ota" (stack ภายใน 10 KB) มีเฉพาะตอนเช็ก/ดาวน์โหลด แล้วลบตัวเอง)
          รีเซ็ตก่อนนั้น (crash / watchdog / ไฟดับ / ผู้ใช้) → bootloader ทำเครื่องหมาย ABORTED แล้วบูตช่องเดิม
 report   boot ถัดไปเทียบช่องที่รันกับ NVS "part": ตรง = อัปเดตแล้ว ("อัปเดตเป็น vX เรียบร้อย") • ไม่ตรง = "อัปเดต vX ไม่สำเร็จ กลับมาใช้ vY แล้ว"
 ```

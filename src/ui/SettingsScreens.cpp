@@ -21,7 +21,9 @@
 #include "RadioScreen.h"
 #include "DashScreen.h"
 #include "../audio/RadioPlayer.h"
+#include "../util/PsramAlloc.h"
 #include "../vehicle/Vehicle.h"
+#include "../vehicle/VehicleLog.h"
 
 namespace {
 
@@ -193,12 +195,17 @@ void openNumberPicker(const char* title, int from, int to, int step, int current
 }
 
 // ---- vehicle dash (wiki 16) ----
+void openReplayFiles();
+
 void openVehicleSources() {
     gPicker.setup("แหล่งข้อมูลรถ", [](ListScreen& l) {
         const vehicle::SourceId cur = gVehicle.source();
+        // one per source (T115: the GPS one was missing - the list read past the array)
         static const char* const kHint[] = {"ไม่ใช้หน้าปัด", "ทดลองดูหน้าปัด", "นิ้วคือคันเร่ง",
                                             "มอเตอร์ไซค์ Honda หัวฉีด (GPIO 43/44)", "ELM327 รุ่น BLE (รีสตาร์ท 1 ครั้ง)",
-                                            "ELM327 ต่อสาย (GPIO 43/44)", "บอร์ดอื่นส่ง rpm=... (GPIO 43/44)"};
+                                            "ELM327 ต่อสาย (GPIO 43/44)", "บอร์ดอื่นส่ง rpm=... (GPIO 43/44)",
+                                            "ความเร็วจากแอปมือถือ", "log ล่าสุดใน SD card"};
+        static_assert(sizeof(kHint) / sizeof(kHint[0]) == (size_t)vehicle::SourceId::Count, "a hint per source");
         for (uint8_t i = 0; i < (uint8_t)vehicle::SourceId::Count; i++) {
             const vehicle::SourceId id = (vehicle::SourceId)i;
             if (id == vehicle::SourceId::ObdBle && !vehicle::kBleBuilt) continue;  // not in this firmware
@@ -225,7 +232,8 @@ void openDashStyles() {
     gPicker.setup("รูปแบบหน้าปัด", [](ListScreen& l) {
         const vehicle::DashStyle cur = gVehicle.settings().style;
         static const char* const kHint[] = {"บาร์รอบด้านบน + ตัวเลขใหญ่", "วงแหวนไฟรอบเครื่อง + ความเร็วดิจิทัล",
-                                            "เข็มวัดรอบ + เข็มความเร็ว"};
+                                            "เข็มวัดรอบ + เข็มความเร็ว", "9 ค่า + รหัสปัญหา + วิเคราะห์สุขภาพรถ"};
+        static_assert(sizeof(kHint) / sizeof(kHint[0]) == (size_t)vehicle::DashStyle::Count, "a hint per style");
         for (uint8_t i = 0; i < (uint8_t)vehicle::DashStyle::Count; i++) {
             const vehicle::DashStyle st = (vehicle::DashStyle)i;
             ListScreen::Item& it = l.add(vehicle::styleNameTh(st), kHint[i], [st]() {
@@ -249,6 +257,40 @@ void buildVehicleMenu(ListScreen& l) {
     l.addSubmenu("แหล่งข้อมูล", vehicle::sourceNameTh(vs.source), openVehicleSources);
     l.addSubmenu("รูปแบบหน้าปัด", vehicle::styleNameTh(vs.style), openDashStyles);
     l.add("สถานะ", gVehicle.status(), nullptr).valueColor = gVehicle.snapshot().anyFresh(millis()) ? ui::OK : ui::DIM;
+    const vehicle::obd::Diag diag = gVehicle.diag();
+    if (diag.available) {  // OBD-II / the simulator: trouble codes (T112)
+        static char codes[64];
+        if (!diag.codesValid) {
+            snprintf(codes, sizeof(codes), "ยังไม่ได้อ่าน");
+        } else if (!diag.stored.n && !diag.pending.n) {
+            snprintf(codes, sizeof(codes), "ไม่พบ");
+        } else {
+            int len = 0;
+            for (uint8_t i = 0; i < diag.stored.n && len < 50; i++) {
+                char c[6];
+                vehicle::obd::formatDtc(diag.stored.code[i], c);
+                len += snprintf(codes + len, sizeof(codes) - len, "%s%s", len ? " " : "", c);
+            }
+            if (diag.pending.n && len < 50) snprintf(codes + len, sizeof(codes) - len, "%s+%u รอยืนยัน", len ? " " : "", diag.pending.n);
+        }
+        ListScreen::Item& it = l.add("อ่านรหัสปัญหา (DTC)", codes, []() {
+            if (!gVehicle.requestScan()) gConfirm.ask("รหัสปัญหา", "ยังไม่ได้เชื่อมต่อกับกล่อง ECU ของรถ", "ตกลง", nullptr);
+            gVehicleMenu.rebuild();
+        });
+        it.valueColor = diag.stored.n ? ui::WARN : ui::DIM;
+        if (diag.stored.n || diag.pending.n) {
+            l.add("ล้างรหัสปัญหา", "ดับเครื่อง เปิดสวิตช์", []() {
+                gConfirm.ask("ล้างรหัสปัญหา",
+                             "ไฟเช็คเครื่องจะดับ และระบบตรวจไอเสียต้องเรียนรู้ใหม่ ถ้ายังไม่ได้ซ่อม รหัสจะกลับมา — ล้างเลยไหม?", "ล้าง",
+                             []() {
+                                 uint32_t seq;
+                                 if (const char* why = gVehicle.requestClear(seq)) {
+                                     gConfirm.ask("ล้างรหัสปัญหา", why, "ตกลง", nullptr);
+                                 }
+                             });
+            });
+        }
+    }
     l.add("ประเภทรถ (แตะ)", vs.kind == vehicle::Kind::Car ? "รถยนต์" : "มอเตอร์ไซค์", []() {
         const Vehicle::Settings now = gVehicle.settings();
         gVehicle.setKind(now.kind == vehicle::Kind::Car ? vehicle::Kind::Motorcycle : vehicle::Kind::Car);
@@ -269,6 +311,37 @@ void buildVehicleMenu(ListScreen& l) {
             gVehicleMenu.rebuild();
         });
     }
+    // T115: everything the OBD sources do, on the SD card - and playing a recorded drive back
+    if (!gVehicleLog.available()) {
+        l.add("บันทึก log OBD ลง SD", "ไม่มี SD card", nullptr).valueColor = ui::DIM;
+        return;
+    }
+    l.add("บันทึก log OBD ลง SD", vs.log ? (gVehicleLog.active() ? "กำลังบันทึก" : "เปิด") : "ปิด", []() {
+        gVehicle.setLogEnabled(!gVehicle.settings().log);
+        gVehicleMenu.rebuild();
+    }).valueColor = vs.log ? ui::OK : ui::DIM;
+    l.addSubmenu("เล่นย้อนหลังจาก log", vs.source == vehicle::SourceId::Replay ? "กำลังเล่น" : "", openReplayFiles);
+}
+
+void openReplayFiles() {
+    gPicker.setup("เล่นย้อนหลังจาก log", [](ListScreen& l) {
+        constexpr size_t kShown = 15;
+        auto* files = (VehicleLog::FileInfo*)psramMalloc(kShown * sizeof(VehicleLog::FileInfo));
+        const size_t n = files ? gVehicleLog.list(files, kShown) : 0;
+        if (!n) l.add("ยังไม่มีไฟล์ log", "ใช้หน้าปัดกับรถจริงก่อน", nullptr);
+        for (size_t i = 0; i < n; i++) {
+            const String name = files[i].name;
+            l.add(name, String(files[i].bytes / 1024) + " KB", [name]() {
+                const char* err = gVehicle.startReplay(name.c_str());
+                gUi.pop();
+                if (err) gConfirm.ask("เล่นย้อนหลัง", err, "ตกลง", nullptr);
+                else gVehicle.requestOpen();
+                gVehicleMenu.rebuild();
+            });
+        }
+        psramFree(files);
+    });
+    gUi.push(&gPicker);
 }
 
 void openVehicle() {

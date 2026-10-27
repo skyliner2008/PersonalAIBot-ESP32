@@ -11,7 +11,7 @@ namespace vehicle {
 
 namespace {
 constexpr float kPi = 3.14159265f;
-constexpr float kAmbient = 32.0f;  // a Thai afternoon
+constexpr float kAirTempC = 32.0f;  // a Thai afternoon
 constexpr float kAir = 1.18f;      // kg/m3
 
 float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -32,6 +32,15 @@ void SimEngine::reset(Kind kind) {
     _coolant = 33;
     _battery = 12.5f;
     _crank = 1.2f;  // starter first: the voltage dips, then it fires
+    _fuel = kind == Kind::Car ? 62.0f : 70.0f;
+    _cleared = false;
+}
+
+float SimEngine::intakeC() const { return kAirTempC + 10.0f * (1.0f - clampf(_v / 15.0f, 0, 1)); }  // heat soak when standing
+
+// speed-density: the cylinders fill at MAP and intake temperature (85 % volumetric efficiency)
+float SimEngine::airGs() const {
+    return mapKpa() * 1000.0f * (engineL() / 1000.0f) * (_rpm / 120.0f) * 0.85f * 28.97f / (8.314f * (intakeC() + 273.15f));
 }
 
 float SimEngine::torque(float rpm) const {
@@ -125,19 +134,68 @@ void SimEngine::step(float dt) {
     const float airflow = 1.0f + _v / 15.0f;
     const float thermostat = _coolant > _p.coolTarget ? 0.03f * airflow : 0.0f;
     _coolant += dt * (heat - thermostat * (_coolant - _p.coolTarget));
-    if (_coolant < kAmbient - 5) _coolant = kAmbient - 5;
+    if (_coolant < kAirTempC - 5) _coolant = kAirTempC - 5;
     const float charging = _rpm > _p.idle * 0.8f ? 14.2f - 0.25f * _throttle : 12.4f;
     _battery += (charging - _battery) * clampf(dt / 1.5f, 0, 1);
+
+    // ---- fuel: from the air (14.7:1, 745 g/l), a 40 l tank (motorcycle 4.2 l) ----
+    const float lph = airGs() * 3600.0f / (14.7f * 745.0f);
+    _fuel -= lph * dt / 3600.0f / (_kind == Kind::Car ? 40.0f : 4.2f) * 100.0f;
+    if (_fuel < 0) _fuel = 0;
 }
 
 void SimEngine::write(Snapshot& s, uint32_t now) const {
     s.set(kRpm, _rpm, now);
     s.set(kSpeed, _v * 3.6f, now);
     s.set(kCoolant, _coolant, now);
-    s.set(kIntake, kAmbient + 10.0f * (1.0f - clampf(_v / 15.0f, 0, 1)), now);  // heat soak when standing
+    s.set(kIntake, intakeC(), now);
     s.set(kBattery, _battery, now);
     s.set(kThrottle, _throttle * 100.0f, now);
-    s.set(kMap, 25.0f + 75.0f * _throttle, now);
+    s.set(kMap, mapKpa(), now);
+    s.set(kLoad, 18.0f + 70.0f * _throttle * clampf(_rpm / _p.redline + 0.4f, 0, 1), now);
+    s.set(kTiming, 10.0f + 18.0f * (1.0f - _throttle) + _rpm / 1000.0f * 2.0f, now);
+    s.set(kFuelLevel, _fuel, now, 60000);
+    s.set(kAmbient, kAirTempC, now, 60000);
+    s.set(kBaro, 101, now, 60000);
+    s.set(kRunTime, _t, now, 60000);
+    if (_kind == Kind::Car) {  // a car with a MAF and fuel trims that run a little lean (an older car)
+        s.set(kMaf, airGs(), now);
+        s.set(kStftB1, 2.0f + 3.0f * sinf(_t * 1.3f), now);
+        s.set(kLtftB1, _cleared ? 2.0f : 10.9f, now, 10000);
+    }
+}
+
+void SimEngine::diag(obd::Diag& d) const {
+    const uint32_t seq = d.scanSeq;
+    const uint8_t clear = d.clearResult;
+    d = obd::Diag();
+    d.scanSeq = seq;
+    d.clearResult = clear;
+    if (_kind != Kind::Car) return;  // like the bikes' K-Line: no trouble codes
+    d.available = true;
+    d.simulated = true;
+    d.supportedPids = 20;
+    d.fuelType = 1;
+    d.codesValid = true;
+    d.ready.valid = true;
+    d.ready.total = 7;
+    if (_cleared) {  // monitors start over after a clear
+        d.ready.done = 2;
+        return;
+    }
+    d.ready.mil = true;
+    d.ready.count = 1;
+    d.ready.done = 6;
+    d.stored.add(0x0420);   // catalyst efficiency below threshold (bank 1)
+    d.pending.add(0x0171);  // system too lean (bank 1): the trims above
+    d.freeze.dtc = 0x0420;
+    const uint8_t pids[] = {0x0C, 0x0D, 0x05, 0x04, 0x06, 0x07};
+    const float values[] = {2210, 72, 91, 38.5f, 1.6f, 10.9f};
+    for (int i = 0; i < 6; i++) {
+        d.freeze.pid[i] = pids[i];
+        d.freeze.value[i] = values[i];
+    }
+    d.freeze.n = 6;
 }
 
 }  // namespace vehicle

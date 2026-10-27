@@ -8,9 +8,12 @@
 #include <driver/gpio.h>
 
 #include "VehicleData.h"
+#include "VehicleLog.h"
 
 #if VEHICLE_BLE
 #include <BLEDevice.h>
+#include <stdarg.h>
+#include <esp_bt.h>
 #include <esp_heap_caps.h>
 #include <nvs.h>
 
@@ -34,6 +37,31 @@ extern "C" bool bleInUse(void) {
 }
 
 bool vehicleBleKeptAtBoot() { return gBleKept; }
+
+// T113: the prebuilt SDK gives NimBLE's host pools (msys / ACL / HCI events, ~20 KB) internal RAM only
+// (CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL). The BLE build links with -Wl,--wrap=nimble_mem_malloc,... (env
+// esp32s3-ble in platformio.ini): PSRAM first, like CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL. In IRAM like the originals.
+extern "C" {
+IRAM_ATTR void* __wrap_nimble_mem_malloc(size_t size) {
+    return heap_caps_malloc_prefer(size, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+IRAM_ATTR void* __wrap_nimble_mem_calloc(size_t n, size_t size) {
+    return heap_caps_calloc_prefer(n, size, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+IRAM_ATTR void __wrap_nimble_mem_free(void* p) { heap_caps_free(p); }
+
+// The controller is set up for 6 BLE activities and a 100-device duplicate list (the SDK defaults): the ELM327
+// needs one scan or one connection. Fewer = less of the controller's internal RAM (-Wl,--wrap=esp_bt_controller_init)
+esp_err_t __real_esp_bt_controller_init(esp_bt_controller_config_t* cfg);
+esp_err_t __wrap_esp_bt_controller_init(esp_bt_controller_config_t* cfg) {
+    if (cfg) {
+        if (cfg->ble_max_act > 3) cfg->ble_max_act = 3;
+        if (cfg->normal_adv_size > 20) cfg->normal_adv_size = 20;
+        if (cfg->ble_adv_dup_filt_max > 10) cfg->ble_adv_dup_filt_max = 10;
+    }
+    return __real_esp_bt_controller_init(cfg);
+}
+}
 #else
 // no BLE library linked: Arduino's own bleInUse() is false and releases the controller memory at boot
 bool vehicleBleKeptAtBoot() { return false; }
@@ -85,6 +113,49 @@ namespace {
 
 constexpr size_t kMinInternalHeap = 40 * 1024;  // NimBLE host + a connection need about this much
 bool gBleUp = false;
+bool gBleFailed = false;  // BLEDevice::init failed: not again until a restart (the controller is half up)
+
+/** A line on the console and in the SD card's OBD log (T115). */
+void bleNote(const char* fmt, ...) {
+    char text[200];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof(text), fmt, ap);
+    va_end(ap);
+    Serial.printf("[Vehicle] BLE: %s\n", text);
+    gVehicleLog.recordf('E', "BLE: %s", text);
+}
+
+// BLEDevice::init reads NVS (the bond store), which a task with a PSRAM stack (the vehicle task, T113) must not:
+// a short-lived task with an internal stack runs it (and deinit, T114). Static: a timed-out job still finishes into it.
+struct BleJob {
+    void (*fn)() = nullptr;
+    volatile bool done = true, ok = false;
+};
+BleJob gBleJob;
+
+void bleJobTask(void*) {
+    gBleJob.fn();
+    gBleJob.done = true;
+    vTaskDelete(nullptr);
+}
+
+bool runBleJob(void (*fn)()) {
+    if (!gBleJob.done) return false;  // the last one never finished
+    gBleJob.fn = fn;
+    gBleJob.ok = false;
+    gBleJob.done = false;
+    if (xTaskCreatePinnedToCore(bleJobTask, "blejob", 5120, nullptr, 3, nullptr, 0) != pdPASS) {
+        gBleJob.done = true;
+        return false;
+    }
+    for (int i = 0; i < 1500 && !gBleJob.done; i++) vTaskDelay(pdMS_TO_TICKS(10));  // up to 15 s
+    return gBleJob.done;
+}
+
+bool startBle() {
+    return runBleJob([]() { gBleJob.ok = BLEDevice::init("PersonalAIBot") && BLEDevice::getInitialized(); }) && gBleJob.ok;
+}
 
 bool looksLikeObd(BLEAdvertisedDevice& d) {
     String n = d.getName();
@@ -114,6 +185,19 @@ const Pair kPairs[] = {
 };
 
 }  // namespace
+
+bool vehicleBleRunning() { return gBleUp; }
+
+// T114: Bluetooth off (the dash closed): controller + NimBLE host stopped, their internal RAM back to the assistant.
+// The BT memory kept at boot stays reserved, so it can start again. Close the link first.
+void vehicleBleShutdown() {
+    if (!gBleUp) return;
+    // BLEDevice keeps a pointer to the last client it made and deletes it in deinit - BleElmLink::close() deleted that
+    // one already: a fresh client replaces the stale pointer, deinit deletes this one instead of freeing twice
+    BLEDevice::createClient();
+    runBleJob([]() { BLEDevice::deinit(false); });
+    gBleUp = false;
+}
 
 BleElmLink::BleElmLink(const char* addr, uint8_t type) {
     if (addr) snprintf(_addr, sizeof(_addr), "%s", addr);
@@ -146,27 +230,40 @@ bool BleElmLink::open() {
         _status = "BT RESTART";  // the BLE memory was given back at boot: one restart with this source
         return false;
     }
+    if (gBleFailed) {
+        _status = "BT FAIL";
+        return false;
+    }
     if (!gBleUp) {
-        if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) < kMinInternalHeap) {
+        const size_t before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+        if (before < kMinInternalHeap) {
             _status = "BT NO RAM";
-            Serial.printf("[Vehicle] BLE: only %u KB internal RAM free - not starting Bluetooth\n",
-                          (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
+            bleNote("only %u KB internal RAM free - not starting Bluetooth", (unsigned)(before / 1024));
             return false;
         }
-        BLEDevice::init("PersonalAIBot");
+        // T113: a failed init ("hci inits failed") left the stack half up and the scan below crashed the board on
+        // every boot (the source is saved): stop here, until the next boot
+        if (!startBle()) {
+            gBleFailed = true;
+            _status = "BT FAIL";
+            bleNote("Bluetooth did not start (%u KB internal RAM free before, %u KB now)", (unsigned)(before / 1024),
+                    (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
+            return false;
+        }
         gBleUp = true;
+        bleNote("Bluetooth started - %u KB internal RAM free", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
     }
     BLEClient* client = BLEDevice::createClient();
     _client = client;
     bool connected = false;
     if (_addr[0]) {
         _status = "BT CONNECT";
-        Serial.printf("[Vehicle] BLE: connecting to %s\n", _addr);
+        bleNote("connecting to %s", _addr);
         connected = client->connect(BLEAddress(String(_addr), _type), _type, 8000);
     }
     if (!connected) {
         _status = "BT SCAN";
-        Serial.println("[Vehicle] BLE: scanning 6 s for an OBD adapter...");
+        bleNote("scanning 6 s for an OBD adapter...");
         BLEScan* scan = BLEDevice::getScan();
         scan->setActiveScan(true);
         scan->setInterval(100);
@@ -176,8 +273,8 @@ bool BleElmLink::open() {
         for (int i = 0; res && i < res->getCount(); i++) {
             BLEAdvertisedDevice d = res->getDevice(i);
             const bool obd = looksLikeObd(d);
-            Serial.printf("[Vehicle]   %s  %-20s rssi %d%s\n", d.getAddress().toString().c_str(), d.getName().c_str(),
-                          d.getRSSI(), obd ? "  <- OBD?" : "");
+            bleNote("  %s  %-20s rssi %d%s", d.getAddress().toString().c_str(), d.getName().c_str(), d.getRSSI(),
+                    obd ? "  <- OBD?" : "");
             if (obd && d.getRSSI() > bestRssi) {
                 best = i;
                 bestRssi = d.getRSSI();
@@ -198,6 +295,7 @@ bool BleElmLink::open() {
     }
     if (!connected) {
         _status = "NO ADAPTER";
+        bleNote("no OBD adapter connected");
         close();
         return false;
     }
@@ -226,7 +324,7 @@ bool BleElmLink::open() {
     }
     if (!notifyC || !writeC) {
         _status = "BT NO SERIAL";
-        Serial.println("[Vehicle] BLE: connected, but no notify + write characteristic pair found");
+        bleNote("connected, but no notify + write characteristic pair found");
         close();
         return false;
     }
@@ -237,8 +335,8 @@ bool BleElmLink::open() {
     _writeChar = writeC;
     _writeWithResponse = !writeC->canWriteNoResponse();
     _status = "BT OK";
-    Serial.printf("[Vehicle] BLE: %s connected (notify %s, write %s)\n", _addr, notifyC->getUUID().toString().c_str(),
-                  writeC->getUUID().toString().c_str());
+    bleNote("%s connected (notify %s, write %s)", _addr, notifyC->getUUID().toString().c_str(),
+            writeC->getUUID().toString().c_str());
     return true;
 }
 

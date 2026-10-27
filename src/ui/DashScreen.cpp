@@ -7,7 +7,10 @@
 
 #include <math.h>
 
+#include <new>
+
 #include "../phone/PhoneLink.h"
+#include "../util/PsramAlloc.h"
 #include "../vehicle/Vehicle.h"
 #include "NavScreen.h"
 #include "SettingsScreens.h"
@@ -35,15 +38,20 @@ constexpr float kArcStart = 135.0f, kArcSweep = 270.0f;  // degrees, 0 = 3 o'clo
 constexpr int kDialR = 74, kTachX = 80, kSpeedX = 240, kDialY = 124;
 constexpr int kStripY = 204, kStripH = 32;
 
+// info: 3 x 3 values, the codes / health strip below
+constexpr int kInfoTop = 30, kInfoTileH = 46, kInfoGap = 4, kInfoStripY = 182;
+constexpr int kMilX = kSetupX - 32;  // the check-engine icon in the header
+
 // palette (RGB565)
 constexpr uint16_t kGreen = 0x47E8, kYellow = 0xFEA0, kRed = 0xF8E4, kOff = 0x18E3, kCold = 0x3D9F;
 constexpr uint16_t kRpmText = 0x5F1F, kShiftWhite = 0xFFFF;
 constexpr uint16_t kDialFace = 0x0861, kDialRim = 0x52AA, kNeedle = 0xFB40, kRedZone = 0xB000;
 
-enum Hit { kNone = 0, kBack, kSetup, kStyle, kMain };
+enum Hit { kNone = 0, kBack, kSetup, kStyle, kMain, kStrip };
 
-Hit hitTest(int x, int y) {
+Hit hitTest(int x, int y, bool info) {
     if (y < kHeaderH) return x < 48 ? kBack : (x >= kSetupX ? kSetup : kStyle);
+    if (info && y >= kInfoStripY) return kStrip;
     return kMain;
 }
 
@@ -111,14 +119,20 @@ void DashScreen::onEnter() {
 void DashScreen::cycleStyle() {
     _style = (DashStyle)(((uint8_t)_style + 1) % (uint8_t)DashStyle::Count);
     gVehicle.setStyle(_style);  // UI task: an internal stack, NVS may be written
+    toast(nullptr);
+}
+
+void DashScreen::toast(const char* text) {
+    _toastText = text;
     _toastUntil = _now + 1500;
 }
 
 void DashScreen::onTouch(const TouchEvent& e) {
     if (gUi.host()) gUi.host()->uiActivity();
+    const bool info = _style == DashStyle::Info;
     switch (e.type) {
         case TouchEvent::Down:
-            _pressed = hitTest(e.x, e.y);
+            _pressed = hitTest(e.x, e.y, info);
             _fingerDown = true;
             [[fallthrough]];
         case TouchEvent::Move:
@@ -133,18 +147,26 @@ void DashScreen::onTouch(const TouchEvent& e) {
             _pressed = kNone;
             break;
         case TouchEvent::Tap:
-            switch (hitTest(e.x, e.y)) {
+            switch (hitTest(e.x, e.y, info)) {
                 case kBack: gUi.pop(); break;
                 case kSetup: settingsui::openPage("vehicle"); break;
                 case kStyle:  // navigating: the strip opens the turn-by-turn screen
                     if (_nav.fresh(_now)) gUi.push(&gNavUi);
                     else cycleStyle();
                     break;
+                case kStrip:  // the codes strip: read them now
+                    toast(gVehicle.requestScan() ? "กำลังอ่านรหัสปัญหา..." : "อ่านรหัสปัญหาไม่ได้ตอนนี้");
+                    break;
                 default: break;
             }
             break;
         case TouchEvent::LongPress:
-            if (!_touchSource && hitTest(e.x, e.y) == kMain) _model.resetPeak();
+            if (info) {
+                gVehicle.resetTrip();
+                toast("เริ่มทริปใหม่");
+            } else if (!_touchSource && hitTest(e.x, e.y, info) == kMain) {
+                _model.resetPeak();
+            }
             break;
     }
 }
@@ -161,11 +183,25 @@ void DashScreen::tick(uint32_t now, float dt) {
         _style = s.style;
         _touchSource = _source == (uint8_t)SourceId::SimTouch;
         _needsRestart = gVehicle.needsRestart();
+        const obd::Diag d = gVehicle.diag();
+        _mil = d.available && ((d.ready.valid && d.ready.mil) || d.stored.n);
+        _codes = d.stored.n;
     }
+    gVehicle.noteDashVisible(_style == DashStyle::Info);  // what the source polls fast
     _status = gVehicle.status();
     _nav = gPhone.nav();
     const Snapshot s = gVehicle.snapshot();
     const DashView& v = _model.update(s, now);
+    if (_style == DashStyle::Info) {
+        if (!_info) {
+            if (void* m = psramMalloc(sizeof(InfoData))) _info = new (m) InfoData();
+        }
+        if (_info) {
+            _info->snap = s;
+            _info->diag = gVehicle.diag();
+            _info->health = gVehicle.health();
+        }
+    }
     // the speedometer needle glides between readings (OBD / K-Line speed comes a few times a second)
     const float target = v.speedValid ? v.speed : 0;
     const float a = dt <= 0 ? 1.0f : clamp01(dt / 0.15f);
@@ -216,9 +252,32 @@ void DashScreen::drawHeader(LGFX_Sprite& c, const DashView& v) {
     c.fillCircle(44, kHeaderH / 2, 5, dot);
     char head[96];
     snprintf(head, sizeof(head), "%s  %s", _status.c_str(), sourceNameTh((SourceId)_source));
-    gUi.drawFitted(c, head, 56, kHeaderH / 2, kSetupX - 62, gUi.thai20(),
+    gUi.drawFitted(c, head, 56, kHeaderH / 2, (_mil ? kMilX : kSetupX) - 62, gUi.thai20(),
                    _pressed == kStyle ? ui::ACCENT : (v.live ? ui::TEXT : ui::DIM));
+    if (_mil) {  // check-engine light / stored codes: an amber engine (+ how many codes)
+        drawEngineIcon(c, kMilX, 6, ui::WARN);
+        if (_codes) {
+            char n[4];
+            snprintf(n, sizeof(n), "%u", _codes);
+            c.setFont(&fonts::Font0);
+            c.setTextSize(1);
+            c.setTextColor(ui::WARN);
+            c.setTextDatum(textdatum_t::top_left);
+            c.drawString(n, kMilX + 23, 4);
+        }
+    }
     gUi.drawButton(c, kSetupX, 2, ui::W - kSetupX - 4, kHeaderH - 4, "ตั้งค่า", _pressed == kSetup ? ui::PANEL_HI : ui::PANEL);
+}
+
+// the usual check-engine symbol, drawn small: engine block, valve cover cap, intake on the left, fan on the right
+void DashScreen::drawEngineIcon(LGFX_Sprite& c, int x, int y, uint16_t col) {
+    c.fillRect(x + 5, y + 3, 12, 9, col);
+    c.fillRect(x + 8, y, 6, 3, col);
+    c.fillRect(x + 1, y + 5, 4, 5, col);
+    c.fillRect(x, y + 4, 2, 7, col);
+    c.fillRect(x + 17, y + 5, 2, 3, col);
+    c.fillRect(x + 19, y + 2, 2, 9, col);
+    c.fillRect(x + 9, y + 6, 4, 3, ui::BG);  // a window in the block: reads as an engine, not a box
 }
 
 void DashScreen::drawWaiting(LGFX_Sprite& c, int y) {
@@ -235,8 +294,9 @@ void DashScreen::drawWaiting(LGFX_Sprite& c, int y) {
 
 void DashScreen::drawToast(LGFX_Sprite& c) {
     if ((int32_t)(_now - _toastUntil) >= 0) return;
-    char t[64];
-    snprintf(t, sizeof(t), "หน้าปัด: %s", styleNameTh(_style));
+    char t[80];
+    if (_toastText) snprintf(t, sizeof(t), "%s", _toastText);
+    else snprintf(t, sizeof(t), "หน้าปัด: %s", styleNameTh(_style));
     c.setFont(gUi.thai20());
     c.setTextSize(1);
     const int w = c.textWidth(t) + 28;
@@ -276,6 +336,7 @@ void DashScreen::draw(LGFX_Sprite& c) {
     switch (_style) {
         case DashStyle::Digital: drawDigital(c, v, moto); break;
         case DashStyle::Classic: drawClassic(c, v, moto); break;
+        case DashStyle::Info: drawInfo(c, v, moto); break;
         default: drawRace(c, v, moto); break;
     }
     drawHeader(c, v);
@@ -571,4 +632,137 @@ void DashScreen::drawClassic(LGFX_Sprite& c, const DashView& v, bool moto) {
     Aux aux[3];
     auxValues(v, moto, aux);
     for (int i = 0; i < 3; i++) drawReadout(c, 6 + i * (kTileW + kTileGap), kStripY, kTileW, kStripH, aux[i]);
+}
+
+// ============================================================ info: values + trouble codes + health (T112)
+
+void DashScreen::drawInfo(LGFX_Sprite& c, const DashView& v, bool moto) {
+    (void)moto;
+    c.fillScreen(ui::BG);
+    if (!_info) return;
+    const Snapshot& s = _info->snap;
+    const obd::Diag& d = _info->diag;
+    const Health& h = _info->health;
+    const uint32_t now = _now;
+
+    // ---- nine values: the four basics always, then what this car has (the rest as "--") ----
+    struct Cand {
+        const char* label;
+        bool ok;
+        float value;
+        int decimals;
+        const char* unit;
+        Level level;
+    };
+    Cand cand[16];
+    int nc = 0;
+    auto add = [&](const char* label, bool ok, float value, int decimals, const char* unit, Level level) {
+        if (nc < 16) cand[nc++] = {label, ok, value, decimals, unit, level};
+    };
+    add("ความเร็ว", v.speedValid, v.speed, 0, "km/h", Level::Normal);
+    add("รอบเครื่อง", v.rpmValid, s.value(kRpm), 0, "rpm", v.shift ? Level::Warn : Level::Normal);
+    add("เครื่องยนต์", v.coolantLevel != Level::None, v.coolant, 0, "C", v.coolantLevel);
+    add("แบตเตอรี่", v.batteryLevel != Level::None, v.battery, 1, "V", v.batteryLevel);
+    const bool stOk = s.fresh(kStftB1, now), ltOk = s.fresh(kLtftB1, now);
+    const float trim = (stOk ? s.value(kStftB1) : 0) + (ltOk ? s.value(kLtftB1) : 0);
+    const float at = fabsf(trim);
+    add("ชดเชยน้ำมัน", stOk || ltOk, trim, 0, "%", at > 25 ? Level::Crit : at > 12 ? Level::Warn : Level::Normal);
+    add("ภาระเครื่อง", s.fresh(kLoad, now), s.value(kLoad), 0, "%", Level::Normal);
+    add("น้ำมันในถัง", s.fresh(kFuelLevel, now), s.value(kFuelLevel), 0, "%",
+        s.value(kFuelLevel) < 12 ? Level::Warn : Level::Normal);
+    const Trip& t = h.trip;
+    if (t.instKmL > 0) add("กม./ลิตร", true, t.instKmL, 1, "km/l", Level::Normal);
+    else if (t.fuelFrom && h.running) add("ใช้น้ำมัน", true, t.lph, 1, "l/h", Level::Normal);
+    else add("เฉลี่ย กม./ลิตร", t.avgKmL() > 0, t.avgKmL(), 1, "km/l", Level::Normal);
+    add("อากาศเข้า", v.intakeLevel != Level::None, v.intake, 0, "C", v.intakeLevel);
+    add("ท่อไอดี", s.fresh(kMap, now), s.value(kMap), 0, "kPa", Level::Normal);
+    add("ลมเข้า (MAF)", s.fresh(kMaf, now), s.value(kMaf), 1, "g/s", Level::Normal);
+    add("คันเร่ง", s.fresh(kThrottle, now), s.value(kThrottle), 0, "%", Level::Normal);
+    add("องศาไฟจุดระเบิด", s.fresh(kTiming, now), s.value(kTiming), 0, "deg", Level::Normal);
+    add("น้ำมันเครื่อง", s.fresh(kOilTemp, now), s.value(kOilTemp), 0, "C", Level::Normal);
+    add("อากาศภายนอก", s.fresh(kAmbient, now), s.value(kAmbient), 0, "C", Level::Normal);
+    add("ระยะทริป", t.km > 0.05f, t.km, 1, "km", Level::Normal);
+    int pick[9], np = 0;
+    for (int i = 0; i < 4; i++) pick[np++] = i;
+    for (int i = 4; i < nc && np < 9; i++) {
+        if (cand[i].ok) pick[np++] = i;
+    }
+    for (int i = 4; i < nc && np < 9; i++) {
+        if (!cand[i].ok) pick[np++] = i;
+    }
+    const int tileW = (ui::W - 12 - 2 * kInfoGap) / 3;
+    for (int k = 0; k < np; k++) {
+        const Cand& cd = cand[pick[k]];
+        Aux a = {cd.label, cd.label, "--", cd.unit, cd.ok ? cd.level : Level::None};
+        if (cd.ok) snprintf(a.value, sizeof(a.value), cd.decimals ? "%.1f" : "%.0f", cd.value);
+        drawReadout(c, 6 + (k % 3) * (tileW + kInfoGap), kInfoTop + (k / 3) * (kInfoTileH + kInfoGap), tileW, kInfoTileH, a);
+    }
+
+    // ---- the strip: trouble codes (or the trip), the most serious health finding ----
+    c.fillRoundRect(6, kInfoStripY, ui::W - 12, ui::H - kInfoStripY - 4, 8,
+                    _pressed == kStrip ? ui::PANEL_HI : ui::PANEL);
+    char line[200];
+    uint16_t col = ui::TEXT;
+    if (d.available) {
+        if (!d.codesValid) {
+            snprintf(line, sizeof(line), "กำลังอ่านรหัสปัญหา...");
+            col = ui::DIM;
+        } else if (d.stored.n || d.pending.n) {
+            int len = snprintf(line, sizeof(line), "%s", d.simulated ? "(จำลอง) รหัส:" : "รหัสปัญหา:");
+            uint8_t worst = 1;
+            for (uint8_t i = 0; i < d.stored.n && len < (int)sizeof(line) - 8; i++) {
+                char code[6];
+                obd::formatDtc(d.stored.code[i], code);
+                len += snprintf(line + len, sizeof(line) - len, " %s", code);
+                const uint8_t sv = obd::describeDtc(d.stored.code[i]).severity;
+                if (sv > worst) worst = sv;
+            }
+            if (d.pending.n && len < (int)sizeof(line) - 30) len += snprintf(line + len, sizeof(line) - len, "  รอยืนยัน:");
+            for (uint8_t i = 0; i < d.pending.n && len < (int)sizeof(line) - 8; i++) {
+                char code[6];
+                obd::formatDtc(d.pending.code[i], code);
+                len += snprintf(line + len, sizeof(line) - len, " %s", code);
+            }
+            col = d.stored.n ? (worst >= 3 ? ui::ERR : ui::WARN) : ui::DIM;
+        } else {
+            snprintf(line, sizeof(line), "ไม่พบรหัสปัญหา%s", d.ready.valid && d.ready.total ? "" : " (แตะเพื่ออ่านใหม่)");
+            if (d.ready.valid && d.ready.total) {
+                const size_t len = strlen(line);
+                snprintf(line + len, sizeof(line) - len, " • ระบบพร้อม %u/%u", d.ready.done, d.ready.total);
+            }
+            col = ui::OK;
+        }
+    } else {
+        snprintf(line, sizeof(line), "ทริป %.1f กม. • %.0f นาที", t.km, t.runMin);  // (the Thai font has • not ·)
+        if (t.avgKmL() > 0) {
+            const size_t len = strlen(line);
+            snprintf(line + len, sizeof(line) - len, " • %.1f กม./ลิตร", t.avgKmL());
+        }
+    }
+    gUi.drawFitted(c, line, 14, kInfoStripY + 14, ui::W - 28, gUi.thai20(), col);
+    if (h.n) {
+        const Issue& is = h.issue[0];
+        char num[24] = "";
+        switch (is.id) {
+            case Finding::LeanB1: case Finding::RichB1: case Finding::LeanB2: case Finding::RichB2: case Finding::LeanAtIdle:
+                snprintf(num, sizeof(num), " %+.0f%%", is.value);
+                break;
+            case Finding::Overheat: case Finding::ColdEngine: case Finding::HotIntake:
+                snprintf(num, sizeof(num), " %.0f°C", is.value);
+                break;
+            case Finding::OverheatRising: snprintf(num, sizeof(num), " +%.1f°C/นาที", is.value); break;
+            case Finding::NotCharging: case Finding::Overcharge: case Finding::LowBatteryParked: case Finding::WeakStart:
+                snprintf(num, sizeof(num), " %.1f V", is.value);
+                break;
+            case Finding::LowFuel: snprintf(num, sizeof(num), " %.0f%%", is.value); break;
+            case Finding::RoughIdle: snprintf(num, sizeof(num), " แกว่ง %.0f rpm", is.value); break;
+            default: break;
+        }
+        snprintf(line, sizeof(line), "%s%s%s", findingTh(is.id), num, h.n > 1 ? "  (+อีก)" : "");
+        col = is.sev >= kSevCrit ? ui::ERR : is.sev == kSevWarn ? ui::WARN : ui::TEXT;
+    } else {
+        snprintf(line, sizeof(line), "%s", v.live ? "ไม่พบสิ่งผิดปกติจากค่าที่อ่านได้" : "");
+        col = ui::OK;
+    }
+    gUi.drawFitted(c, line, 14, kInfoStripY + 39, ui::W - 28, gUi.thai20(), col);
 }

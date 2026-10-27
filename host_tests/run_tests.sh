@@ -17,6 +17,7 @@ mkdir -p "$OUT"
     "$ROOT/host_tests/test_main.cpp" \
     "$ROOT/host_tests/test_assistant.cpp" \
     "$ROOT/host_tests/test_vehicle.cpp" \
+    "$ROOT/host_tests/test_obd.cpp" \
     "$ROOT/host_tests/test_phone.cpp" \
     "$ROOT/src/util/Base64.cpp" \
     "$ROOT/src/memory/TextFeatures.cpp" \
@@ -33,6 +34,9 @@ mkdir -p "$OUT"
     "$ROOT/src/vehicle/SimEngine.cpp" \
     "$ROOT/src/vehicle/Elm327.cpp" \
     "$ROOT/src/vehicle/HondaKline.cpp" \
+    "$ROOT/src/vehicle/Obd.cpp" \
+    "$ROOT/src/vehicle/VehicleHealth.cpp" \
+    "$ROOT/src/vehicle/ObdLog.cpp" \
     -o "$OUT/host_tests"
 
 "$OUT/host_tests"

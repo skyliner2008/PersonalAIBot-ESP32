@@ -92,7 +92,8 @@ public:
     }
     // ---- vehicle dash (wiki 16) ----
     virtual bool vehicleEnabled() { return false; }  // the firmware has the dash (true on the board) -> `vehicle` declared
-    /** action "status" / "open" / "close" / "set_source". nullptr = ok, else why not. */
+    /** action "status" / "scan" / "clear_codes" / "open" / "close" / "set_source" ("explain" is answered by
+     *  AgentTools itself). nullptr = ok, else why not. */
     virtual const char* vehicleAction(const char* action, const char* source, JsonObject result) {
         (void)action, (void)source, (void)result;
         return "the vehicle dash is off";

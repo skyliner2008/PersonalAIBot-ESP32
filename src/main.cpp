@@ -40,8 +40,12 @@
 #include "ui/RadioScreen.h"
 #include "ui/SettingsScreens.h"
 #include "ui/UiManager.h"
+#include "util/Base64.h"
 #include "util/JsonFile.h"
+#include "util/PsramAlloc.h"
+#include "util/Sha256.h"
 #include "util/Utf8.h"
+#include "vehicle/VehicleLog.h"
 #include "phone/PhoneLink.h"
 #include "vehicle/Vehicle.h"
 
@@ -284,6 +288,59 @@ static void printTagged(const char* tag, const String& json) {
     Serial.write((const uint8_t*)line.c_str(), line.length());
 }
 
+// T115: a log file from the SD card over the console - "obdlog get <name|latest> [offset] [length]":
+//   OBDLOGFILE <name> <size> <offset> <length>, OBDLOGDATA <offset> <base64 of up to 768 bytes> ..., OBDLOGEND <name>
+//   <offset> <sent> <sha256 of the range>. Each line stands alone: a line lost on the way (other log lines, the TX
+//   timeout) shows as a gap and tools/obd_log.py asks for that range again.
+static void obdlogGet(const String& arg) {
+    String name = arg;
+    long off = 0, len = -1;
+    const int sp = arg.indexOf(' ');
+    if (sp > 0) {
+        name = arg.substring(0, sp);
+        String r = arg.substring(sp + 1);
+        r.trim();
+        off = r.toInt();
+        const int sp2 = r.indexOf(' ');
+        if (sp2 > 0) len = r.substring(sp2 + 1).toInt();
+    }
+    char path[128];
+    FILE* f = gVehicleLog.path(name.c_str(), path, sizeof(path)) ? fopen(path, "rb") : nullptr;
+    if (!f) {
+        Serial.printf("OBDLOGERR %s: no such log\n", name.c_str());
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    const long size = ftell(f);
+    if (off < 0 || off > size) off = size;
+    if (len < 0 || off + len > size) len = size - off;
+    fseek(f, off, SEEK_SET);
+    const char* base = strrchr(path, '/') + 1;
+    Serial.printf("OBDLOGFILE %s %ld %ld %ld\n", base, size, off, len);
+    sha256::Hash h;
+    uint8_t chunk[768];
+    char line[1100];
+    long pos = off;
+    while (pos < off + len) {
+        const size_t want = (size_t)(off + len - pos) < sizeof(chunk) ? (size_t)(off + len - pos) : sizeof(chunk);
+        const size_t got = fread(chunk, 1, want, f);
+        if (!got) break;
+        h.update(chunk, got);
+        int n = snprintf(line, sizeof(line), "OBDLOGDATA %ld ", pos);
+        n += (int)b64::encode(chunk, got, line + n);
+        line[n++] = '\n';
+        for (int i = 0; i < 250 && Serial.availableForWrite() < n; i++) delay(2);  // the host reads at its pace
+        Serial.write((const uint8_t*)line, (size_t)n);
+        pos += (long)got;
+    }
+    fclose(f);
+    uint8_t digest[32];
+    char hex[65];
+    h.finish(digest);
+    sha256::toHex(digest, hex);
+    Serial.printf("OBDLOGEND %s %ld %ld %s\n", base, off, pos - off, hex);
+}
+
 static void printTagged(const char* tag, const JsonDocument& doc) {
     String s;
     serializeJson(doc, s);
@@ -420,6 +477,7 @@ static void printMemory() {
     d["internal_min_kb"] = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024;
     d["internal_largest_kb"] = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024;
     d["psram_free_kb"] = heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024;
+    d["card_in_psram"] = esp_ptr_external_ram(&gCard);  // T113: made at static init - PSRAM must be up by then
     const UBaseType_t n = uxTaskGetNumberOfTasks();
     TaskStatus_t* tasks = (TaskStatus_t*)heap_caps_malloc((n + 4) * sizeof(TaskStatus_t), MALLOC_CAP_SPIRAM);
     if (tasks) {
@@ -546,7 +604,9 @@ static void handleConsoleLine(String line) {
         Serial.println("ota (status: OTA <json>) | ota check | ota install | ota rollback | ota fetch <https-url> | ota selftest");
         Serial.println("radio list: radiolist | radioadd name|url|genre | radioedit <n> name|url|genre | radiodel <n> | radiomove <from> <to> | radioreset | radio <n>");
         Serial.println("vehicle dash: dash (DASH <json>) | dash open|close | dash source <off|sim|touch|kline|obd_ble|obd_uart|serial>");
-        Serial.println("     dash style <race|digital|classic> | dash kind <car|moto> | dash shift <rpm> | dash max <rpm> | dash kdump | dash ble forget | dash baud <elm|text> <n>");
+        Serial.println("     dash style <race|digital|classic|info> | dash kind <car|moto> | dash shift <rpm> | dash max <rpm> | dash kdump | dash ble forget | dash baud <elm|text> <n>");
+        Serial.println("     dash diag (codes, VIN, readiness, health, trip) | dash scan | dash clear | dash code <P0171> | dash trip reset");
+        Serial.println("     dash replay [name|latest] [speed] | obdlog [on|off|list|get <name|latest> [off] [len]|rm <name|all>|note <text>]");
         Serial.println("phone app (wiki 18): phone (PHONEINFO <json>) | phone {json} (from the app) | phone nav <place> | phone stop | phone unpair");
     } else if (cmd == "config") {
         printConfig();
@@ -681,12 +741,72 @@ static void handleConsoleLine(String line) {
         } else if (sub == "baud") {
             const int sp3 = arg.indexOf(' ');
             gVehicle.setBaud(arg.startsWith("elm"), (uint32_t)(sp3 > 0 ? arg.substring(sp3 + 1).toInt() : 0));
-        } else if (sub.length()) {
-            d["error"] = "dash open|close|source|style|kind|shift|max|kdump|ble forget|baud";
+        } else if (sub == "scan") {  // read the trouble codes again (T112); `dash diag` a moment later shows them
+            if (!gVehicle.requestScan()) d["error"] = "no trouble codes on this source / not connected to the ECU";
+        } else if (sub == "clear") {
+            uint32_t seq;
+            if (const char* why = gVehicle.requestClear(seq)) d["error"] = why;
+        } else if (sub == "code") {  // the meaning of a trouble code, no car needed
+            uint16_t raw;
+            if (!vehicle::obd::parseDtc(arg.c_str(), raw)) {
+                d["error"] = "dash code P0171";
+            } else {
+                const vehicle::obd::DtcInfo info = vehicle::obd::describeDtc(raw);
+                d["code"] = arg;
+                d["meaning"] = (const char*)info.text;
+                d["system"] = info.system;
+                d["severity"] = info.severity;
+                d["generic"] = info.generic;
+                printTagged("DASH", d);
+                return;
+            }
+        } else if (sub == "trip" && arg == "reset") {
+            gVehicle.resetTrip();
+        } else if (sub == "replay") {  // T115: dash replay [name|latest] [speed] - a recorded drive from the SD card
+            const int sp3 = arg.indexOf(' ');
+            const String file = sp3 < 0 ? arg : arg.substring(0, sp3);
+            const float speed = sp3 < 0 ? 1.0f : arg.substring(sp3 + 1).toFloat();
+            if (const char* why = gVehicle.startReplay(file.length() ? file.c_str() : "latest", speed)) d["error"] = why;
+            else gVehicle.requestOpen();
+        } else if (sub.length() && sub != "diag") {
+            d["error"] = "dash open|close|source|style|kind|shift|max|kdump|ble forget|baud|scan|clear|code|diag|trip reset|replay";
         }
         if (!d.is<JsonObject>()) d.to<JsonObject>();  // keeps an "error" set above
-        gVehicle.describe(d.as<JsonObject>());
+        gVehicle.describe(d.as<JsonObject>(), sub == "diag" || sub == "scan");
         printTagged("DASH", d);
+    } else if (cmd == "obdlog") {  // T115: the OBD log on the SD card (wiki 16; tools/obd_log.py pulls the files)
+        const int sp2 = rest.indexOf(' ');
+        const String sub = sp2 < 0 ? rest : rest.substring(0, sp2);
+        String arg = sp2 < 0 ? String() : rest.substring(sp2 + 1);
+        arg.trim();
+        if (sub == "get") {
+            obdlogGet(arg);
+            return;
+        }
+        JsonDocument d;
+        if (sub == "on" || sub == "off") {
+            gVehicle.setLogEnabled(sub == "on");
+        } else if (sub == "note") {  // a mark in the file being written ("rough idle now")
+            if (gVehicleLog.active()) gVehicleLog.recordf('E', "note: %s", arg.c_str());
+            else d["error"] = "not recording now";
+        } else if (sub == "rm") {
+            d["removed"] = gVehicleLog.remove(arg.c_str());
+        } else if (sub.length() && sub != "list") {
+            d["error"] = "obdlog [on|off|list|get <name|latest> [offset] [length]|rm <name|all>|note <text>]";
+        }
+        if (!d.is<JsonObject>()) d.to<JsonObject>();
+        gVehicleLog.describe(d.as<JsonObject>());
+        constexpr size_t kListed = 60;
+        auto* files = (VehicleLog::FileInfo*)psramMalloc(kListed * sizeof(VehicleLog::FileInfo));
+        const size_t n = files ? gVehicleLog.list(files, kListed) : 0;
+        JsonArray fl = d["files"].to<JsonArray>();  // newest first
+        for (size_t i = 0; i < n; i++) {
+            JsonObject o = fl.add<JsonObject>();
+            o["name"] = (const char*)files[i].name;
+            o["bytes"] = files[i].bytes;
+        }
+        printTagged("OBDLOG", d);
+        psramFree(files);
     } else if (cmd == "mem") {
         printMemory();
     } else if (cmd == "ota") {  // firmware update from GitHub Releases (see system/OtaUpdater.h)
@@ -944,9 +1064,12 @@ static void pollConsole() {
 // The prebuilt Arduino SDK has CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC: every TLS link (Gemini Live, web
 // tools, REST probe, consolidation) took ~40 KB of internal RAM, and two at once failed with
 // mbedtls_ssl_setup -0x7F00 (alloc failed). Buffers go to PSRAM; small objects stay internal (fast).
+// T113: with Bluetooth OBD running (BT controller kept) internal RAM is ~25 KB and a web lookup's handshake (thousands of
+// small certificate / bignum objects) took it down to 4 KB: then everything goes to PSRAM (somewhat slower handshakes).
 static void* tlsCalloc(size_t n, size_t size) {
     const size_t bytes = n * size;
-    void* p = bytes >= 512 ? heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : nullptr;
+    static const bool allPsram = Vehicle::bleKeptAtBoot();  // decided before setup(): bleInUse() in initArduino
+    void* p = bytes >= 512 || allPsram ? heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : nullptr;
     if (!p) p = heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!p) p = heap_caps_calloc(n, size, MALLOC_CAP_8BIT);
     return p;
@@ -1035,7 +1158,8 @@ void setup() {
 
     if (audio.i2sReady()) audio.startTasks();
     agent.startTask();
-    xTaskCreatePinnedToCore(uiTask, "ui", 8192, nullptr, 3, nullptr, 1);  // 1-hour soak: 7.4 of 10 KB never used
+    // 1-hour soak: 7.4 of 10 KB never used; T113 (dash info page included): ~3 KB used of 8 -> 6 KB
+    xTaskCreatePinnedToCore(uiTask, "ui", 6144, nullptr, 3, nullptr, 1);
     xTaskCreatePinnedToCore(ledTask, "led", 3072, nullptr, 1, nullptr, 0);
 
     audio.playTone(660, 90, 3000);

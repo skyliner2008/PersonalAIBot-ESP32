@@ -490,7 +490,8 @@ void AgentController::handleDevices(uint32_t now) {
 bool AgentController::vehicleEnabled() { return true; }  // always declared: "เปิดหน้าปัด" works before a source is set
 
 const char* AgentController::vehicleAction(const char* action, const char* source, JsonObject r) {
-    bool simStarted = false;
+    bool simStarted = false, full = false;
+    const char* note = nullptr;
     if (!strcmp(action, "open")) {
         simStarted = gVehicle.openDash();
     } else if (!strcmp(action, "close")) {
@@ -500,22 +501,93 @@ const char* AgentController::vehicleAction(const char* action, const char* sourc
         if (!vehicle::parseSource(source, id)) return "unknown source";
         if (const char* why = gVehicle.setSource(id)) return why;
         gVehicle.requestOpen();
+    } else if (!strcmp(action, "scan")) {  // a fresh scan is deferred (deferVehicleCall): here = what is known
+        full = true;
+        if (!gVehicle.diag().available) {
+            note = "this source cannot read trouble codes: an OBD-II ELM327 adapter on the UART (source obd_uart) can; "
+                   "the health findings below come from the live readings";
+        } else if (!gVehicle.requestScan()) {
+            note = "not connected to the car's ECU right now (ignition off?): the last codes read are below";
+        }
+    } else if (!strcmp(action, "clear_codes")) {
+        uint32_t seq;
+        if (const char* why = gVehicle.requestClear(seq)) return why;
+        full = true;
+        note = "clearing was requested; the codes below are from before it";
     }
-    gVehicle.describe(r);
+    gVehicle.describe(r, full);
+    if (!r["replay"].isNull()) {  // T115
+        note = "a drive recorded on the SD card (replay.file), played back - not the car now; tell the user so";
+    } else if (gVehicle.status() == "BT OFF") {  // T114: Bluetooth OBD follows the dash screen
+        note = "Bluetooth to the OBD adapter is off while the dash is closed (it follows the dash screen): call vehicle "
+               "with action open, then ask again in ~10 s";
+    }
     if (simStarted) {
         r["note"] = "no data source was set up, so the dash shows the built-in simulator (not the user's vehicle); "
                     "a real car / motorcycle is chosen in Settings > หน้าปัดรถ";
+    } else if (note) {
+        r["note"] = note;
     } else if (r["simulated"] | false) {
         r["note"] = "simulated data, not the user's real vehicle";
     }
     return nullptr;
 }
 
-// a warning that holds for a few seconds (engine too hot, not charging): say it, at most every 5 minutes each
+// vehicle scan / clear_codes: the car is asked now, the answer goes with the next tool results (like a web lookup)
+bool AgentController::deferVehicleCall(JsonObjectConst call) {
+    const char* action = call["args"]["action"] | "";
+    const bool clear = !strcmp(action, "clear_codes");
+    if ((!clear && strcmp(action, "scan")) || _vehJob.active) return false;
+    uint32_t seq = 0;
+    if (clear) {
+        if (gVehicle.requestClear(seq)) return false;  // refused (engine running...): answered now with the reason
+    } else {
+        seq = gVehicle.requestScan();
+    }
+    if (!seq) return false;  // no codes on this source / not connected: answered now with what is known
+    _vehJob.active = true;
+    _vehJob.clear = clear;
+    _vehJob.seq = seq;
+    _vehJob.at = millis();
+    _vehJob.gen = _sessionGen;
+    snprintf(_vehJob.id, sizeof(_vehJob.id), "%s", call["id"] | "");
+    if (_webPending < 255) _webPending++;
+    Serial.printf("[Tool] vehicle %s -> asking the car...\n", action);
+    _face->setHint(clear ? "กำลังล้างรหัสปัญหา..." : "กำลังสแกนรถ...", 3000);
+    _toolBusy.arm(millis(), 15000);
+    return true;
+}
+
+void AgentController::finishVehicleJob(bool done) {
+    _vehJob.active = false;
+    if (_vehJob.gen != _sessionGen || !_gemini.isReady()) {  // (a new session counts its own lookups from 0)
+        Serial.println("[Tool] vehicle result dropped (session changed)");
+        return;
+    }
+    if (_webPending) _webPending--;
+    if (!_toolBatch.size()) _toolBatchAt = millis();
+    JsonObject fr = _toolBatch["toolResponse"]["functionResponses"].add<JsonObject>();
+    if (_vehJob.id[0]) fr["id"] = _vehJob.id;
+    fr["name"] = "vehicle";
+    JsonObject r = fr["response"]["result"].to<JsonObject>();
+    gVehicle.describe(r, true);
+    if (!done) r["note"] = "the car did not finish answering in time: these are the last results read";
+    else if (r["simulated"] | false) r["note"] = "simulated data, not the user's real vehicle";
+    Serial.printf("[Tool] vehicle %s -> %s (%.1f s)\n", _vehJob.clear ? "clear_codes" : "scan", done ? "ok" : "timeout",
+                  (millis() - _vehJob.at) / 1000.0f);  // sent by handleWebResults with any web results
+    _toolBusy.arm(millis(), 600);
+}
+
+// a warning that holds for a few seconds (engine too hot, not charging, new code): say it, then not again for a while
 void AgentController::handleVehicle(uint32_t now) {
+    if (_vehJob.active) {
+        const bool done = gVehicle.scanDone(_vehJob.seq);
+        if (done || now - _vehJob.at > 15000) finishVehicleJob(done);
+    }
     static uint32_t next = 0;
     if ((int32_t)(now - next) < 0) return;
     next = now + 1000;
+    gVehicle.service();  // the protocol / baud rate the ELM327 found (NVS: this task's internal stack)
     String msg;
     if (!gVehicle.takeAlert(msg, now)) return;
     Serial.printf("[Vehicle] Alert: %s\n", msg.c_str());

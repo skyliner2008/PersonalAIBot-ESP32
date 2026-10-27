@@ -451,7 +451,11 @@ TEST(resampler_24k_to_16k) {
 
 // ============================================================
 
-int main() {
+int obdReplayCli(const char* path);  // test_obd.cpp
+
+int main(int argc, char** argv) {
+    // host_tests --replay <file.log>: a drive recorded in the car (the SD card's agent/obdlog), through this driver
+    if (argc >= 3 && !strcmp(argv[1], "--replay")) return obdReplayCli(argv[2]);
     for (const TestCase& t : registry()) {
         const int before = g_failures;
         t.fn();
