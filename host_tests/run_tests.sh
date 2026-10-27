@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/host_tests/build"
 AJSON="$ROOT/.pio/libdeps/esp32s3/ArduinoJson/src"
+[ -f "$AJSON/ArduinoJson.h" ] || AJSON="$ROOT/.pio/libdeps/esp32s3-ble/ArduinoJson/src"
 CXX="${CXX:-g++}"
 
 if [ ! -f "$AJSON/ArduinoJson.h" ]; then

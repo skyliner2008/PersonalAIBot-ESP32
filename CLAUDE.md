@@ -20,7 +20,7 @@
   `AgentTools.*` (function declarations), `WebTools*.*` (tools ข้อมูล, HTTPS เท่านั้น)
 - `src/ai/` Gemini Live client · `src/audio/` I2S/ES8311/วิทยุ · `src/ui/` ดวงตา/การ์ด/เมนู/หน้าปัด · `src/memory/` ความจำ · `src/app/` Settings + SecretBox
 - `src/phone/` เชื่อมแอปมือถือ: GPS + นำทาง Google Maps + AI พูดเตือนก่อนเลี้ยว (USB / Wi-Fi, จับคู่ด้วย USB, handshake HMAC — wiki 18)
-- `src/vehicle/` หน้าปัดรถ (ตัวจำลอง, ELM327 UART (BLE เฉพาะ `pio run -e esp32s3-ble`: IRAM +22 KB, ใช้พร้อม AI ได้ตั้งแต่ T113), Honda K-Line — wiki 16; เขียนเองทั้งหมด ห้ามคัดลอกโค้ด redline-gauge: license PolyForm NC)
+- `src/vehicle/` หน้าปัดรถ (ตัวจำลอง, ELM327 UART (BLE: `pio run` / release = env `esp32s3-ble` ตั้งแต่ T118 (ไม่มี BLE: `-e esp32s3`), IRAM +22 KB, ใช้พร้อม AI ได้ตั้งแต่ T113), Honda K-Line — wiki 16; เขียนเองทั้งหมด ห้ามคัดลอกโค้ด redline-gauge: license PolyForm NC)
 - `tools/pc_app/` ESP32-AI Studio · `tools/mobile_app/` แอปมือถือ: `composeApp` = Jarvis (จากโปรเจค PersonalAIBot) + `esp32` = หน้าบอร์ด (แฟลช USB OTG + สถานะ/log/ตั้งค่า/แชท ใช้ protocol เดียวกับ Studio + นำทาง) · `host_tests/` unit tests · `wiki/` Obsidian vault
 
 ## กติกาการทำงาน

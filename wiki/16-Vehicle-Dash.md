@@ -55,7 +55,7 @@ console `dash style <race|digital|classic|info>` · จำใน NVS `veh/style`
 | จำลอง (ขับเอง) | `sim` | ไม่ต้องต่อ | ทุกค่า — ลูป 60 วิ: เดินเบา → ในเมือง → เร่งสุดผ่าน shift light → เบรก → ทางยาว |
 | จำลอง (แตะเป็นคันเร่ง) | `touch` | ไม่ต้องต่อ | กดค้างที่หน้าจอ ขวามาก = คันเร่งมาก, ปล่อย = เบรกเบาๆ |
 | **Honda K-Line** | `kline` | บอร์ดแปลง K-Line (L9637D หรือเทียบเท่า) ที่ช่อง UART | รอบ, อุณหภูมิเครื่อง, อากาศเข้า, MAP, แบต, ความเร็ว (ถ้า ECU รู้) |
-| OBD-II Bluetooth (**เฟิร์มแวร์ `esp32s3-ble`**, ดูด้านล่าง) | `obd_ble` | ELM327 **รุ่น BLE / dual-mode** เสียบช่อง OBD ของรถ | เหมือน OBD-II ต่อสาย |
+| OBD-II Bluetooth (**release ตั้งแต่ T118 / `esp32s3-ble`**, ดูด้านล่าง) | `obd_ble` | ELM327 **รุ่น BLE / dual-mode** เสียบช่อง OBD ของรถ | เหมือน OBD-II ต่อสาย |
 | OBD-II ต่อสาย | `obd_uart` | ELM327 / STN แบบ TTL ที่ช่อง UART (หา baud เอง: 38400 → 9600 → 115200 → 57600 → 230400 → 500000, T112) | **ทุก PID ที่รถรองรับ** (รอบ ความเร็ว น้ำ อากาศเข้า คันเร่ง MAP ภาระ MAF fuel trim องศาไฟ น้ำมันในถัง ...) + แบต (ATRV) + **รหัสปัญหา / VIN / freeze frame / readiness** (T112) |
 | ข้อความผ่าน UART | `serial` | บอร์ดอื่น (Arduino ฯลฯ) ส่ง `rpm=3200 spd=86 clt=87 volt=13.9 iat=42 gear=3` หรือ JSON (115200) — T112 เพิ่มคีย์ `load` `fuel` `maf` `amb` `oil_c` `lph` | ตามที่ส่ง |
 | **GPS มือถือ** (T083) | `phone` | แอป ESP32-AI Flasher ส่ง GPS ทาง Wi-Fi / USB ([[18-Phone-Link-Navigation-Plan]]) — รถทุกคัน ไม่ต้องมี adapter | ความเร็วอย่างเดียว (รอบ/อุณหภูมิ = "--") |
@@ -69,10 +69,12 @@ console `dash style <race|digital|classic|info>` · จำใน NVS `veh/style`
 **เปิดหน้าปัด:** แตะ **ปุ่มหน้าปัดมุมขวาล่าง** ของหน้าหลัก · พูด "เปิดหน้าปัด" / "เปิด Smart Gauge" · เมนู → หน้าปัดรถ → เปิดหน้าปัด ·
 ถ้ายังไม่ได้เลือกแหล่งข้อมูล ปุ่มกับเสียงจะเปิด **ตัวจำลอง (ขับเอง)** ให้ (`Vehicle::openDash`, T079) · console `dash ...` · ค่าเก็บใน NVS `veh`
 
-### Bluetooth: เฟิร์มแวร์แยก `esp32s3-ble` — ใช้พร้อมผู้ช่วยเสียงได้แล้ว (T078 → T113)
-เฟิร์มแวร์ปกติ (`pio run`, OTA, release) **ไม่มี** แหล่ง `obd_ble` (เมนูซ่อน, `dash source obd_ble` ตอบ error, ค่าเก่าใน NVS ปิดตอนบูต)
-· ใช้ BLE: **`pio run -e esp32s3-ble -t upload --upload-port COM3`** แล้ว `dash source obd_ble` (หรือเมนู) + รีสตาร์ท 1 ครั้ง
-· **อัปเดต OTA จะได้เฟิร์มแวร์ปกติ (ไม่มี BLE) — แหล่ง `obd_ble` จะถูกปิด** ต้องแฟลช `esp32s3-ble` ใหม่ทางสาย
+### Bluetooth: `esp32s3-ble` = เฟิร์มแวร์หลักตั้งแต่ T118 — ใช้พร้อมผู้ช่วยเสียงได้ (T078 → T113)
+**T118 (ผู้ใช้เลือก):** `pio run`, release และอัปเดต OTA = build ที่มี OBD Bluetooth (`default_envs = esp32s3-ble`, `make_release.py` ENV) —
+บลูทูธเริ่มเฉพาะเมื่อเลือกแหล่ง `obd_ble` และเปิดเฉพาะตอนหน้าปัดแสดง (T114); ค่าใช้จ่ายที่เหลือเมื่อไม่ใช้: โค้ด BLE ใน IRAM ~20 KB
+(RAM ภายในตอนคุยกับ AI ~49 KB แทน 69 KB) · ไม่ต้องการบลูทูธเลย: `pio run -e esp32s3 -t upload` (ไม่มีแหล่ง `obd_ble`)
+· ใช้ BLE: เลือกแหล่ง "OBD-II Bluetooth" ในเมนู (หรือ `dash source obd_ble`) + รีสตาร์ท 1 ครั้ง
+· ก่อน T118 (v4.6.0 ลงไป) release เป็น build ปกติ: อัปเดต OTA จาก v4.6.0 ไปเวอร์ชันถัดไปได้ build BLE เอง
 
 **T078 (เดิม):** แค่ลิงก์ BLE ก็เพิ่ม `.iram0.text` ~22 KB (บน S3 คือ SRAM ก้อนเดียวกับ heap ภายใน) → heap ระหว่าง session 19 KB และ TLS ของ Gemini ล้ม
 `esp-aes: Failed to allocate memory` · **T113:** หา RAM ภายในคืนจนใช้ BLE + Live session + web tools พร้อมกันได้ (วัดบนบอร์ด, adapter `OBDII` ของผู้ใช้):
@@ -190,6 +192,8 @@ ELM327 ราคาถูกส่วนใหญ่เป็น **Bluetooth Cla
 · เริ่มใหม่: เปลี่ยนแหล่งข้อมูล, กดค้างหน้า `info`, console `dash trip reset`
 
 ## Log OBD ลง SD card + เล่นย้อนหลัง (T115)
+
+> **T117 — log จากรถจริงครั้งแรก:** CAN 11 bit 500k, ทุก PID ~200 ms, 5 คำสั่ง/วิ, ไม่มี timeout · VIN ได้ `7F 09 78` (response pending) → ตอนนี้รอ 1.5 วิแล้วถามซ้ำ (สูงสุด 3 ครั้ง) · ดู [[07-Troubleshooting-Log#T117]]
 
 > ใช้กับรถไปพร้อมกับให้ Claude ดูไม่ได้ → บอร์ด**บันทึกทุกอย่างของแหล่ง OBD ลง SD card** แล้วนำไฟล์กลับมาให้ตรวจ แก้ และ**เล่นย้อนหลังเป็นแบบจำลอง**
 > โค้ด: `src/vehicle/ObdLog.*` (รูปแบบ + ตัวเล่นย้อนหลัง, host tested) · `src/vehicle/VehicleLog.*` (ตัวเขียนลง SD) · `ReplayLink` (`VehicleLink.h`) · `tools/obd_log.py`

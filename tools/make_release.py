@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ENV = "esp32s3"
+ENV = "esp32s3-ble"  # T118: the release has OBD over Bluetooth LE (the user's choice; "esp32s3" = without)
 BUILD = ROOT / ".pio" / "build" / ENV
 DIST = ROOT / "dist"
 PLACEHOLDERS = {"", "YourWiFiName", "YourWiFiPassword", "your-gemini-api-key-here"}

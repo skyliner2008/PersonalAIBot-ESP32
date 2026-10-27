@@ -8,6 +8,7 @@ setlocal
 set ROOT=%~dp0..
 set OUT=%~dp0build
 set AJSON=%ROOT%\.pio\libdeps\esp32s3\ArduinoJson\src
+if not exist "%AJSON%\ArduinoJson.h" set AJSON=%ROOT%\.pio\libdeps\esp32s3-ble\ArduinoJson\src
 
 if not exist "%AJSON%\ArduinoJson.h" (
   echo ArduinoJson not found in .pio\libdeps - run "pio run" once first.
