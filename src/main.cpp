@@ -1075,10 +1075,17 @@ static void pollConsole() {
 // mbedtls_ssl_setup -0x7F00 (alloc failed). Buffers go to PSRAM; small objects stay internal (fast).
 // T113: with Bluetooth OBD running (BT controller kept) internal RAM is ~25 KB and a web lookup's handshake (thousands of
 // small certificate / bignum objects) took it down to 4 KB: then everything goes to PSRAM (somewhat slower handshakes).
+// T119: the same holds whenever internal RAM runs low (radio + Live + a web lookup + the OTA check at once): below
+// kTlsInternalFloor every TLS object goes to PSRAM, so a handshake never eats the last KB that Wi-Fi and the
+// esp-aes DMA buffers (internal only) need.
+constexpr size_t kTlsInternalFloor = 32 * 1024;
+
 static void* tlsCalloc(size_t n, size_t size) {
+    if (size && n > SIZE_MAX / size) return nullptr;  // n * size would wrap
     const size_t bytes = n * size;
     static const bool allPsram = Vehicle::bleKeptAtBoot();  // decided before setup(): bleInUse() in initArduino
-    void* p = bytes >= 512 || allPsram ? heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : nullptr;
+    const bool toPsram = bytes >= 512 || allPsram || heap_caps_get_free_size(MALLOC_CAP_INTERNAL) < kTlsInternalFloor;
+    void* p = toPsram ? heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : nullptr;
     if (!p) p = heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!p) p = heap_caps_calloc(n, size, MALLOC_CAP_8BIT);
     return p;
@@ -1180,10 +1187,20 @@ void setup() {
 void loop() {
     pollConsole();
     static uint32_t lastReport = 0;
+    static size_t lastMin = SIZE_MAX;
     if (millis() - lastReport > 60000) {
         lastReport = millis();
-        Serial.printf("[Health] heap %u KB (min %u KB), psram %u KB, state %d\n", ESP.getFreeHeap() / 1024,
-                      ESP.getMinFreeHeap() / 1024, ESP.getFreePsram() / 1024, (int)agent.state());
+        // T119: the largest free block too - TLS / esp-aes fail on a fragmented heap long before "free" reaches 0
+        const size_t minFree = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+        Serial.printf("[Health] heap %u KB (min %u KB, largest %u KB), psram %u KB, state %d\n", ESP.getFreeHeap() / 1024,
+                      (unsigned)(minFree / 1024), (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024),
+                      ESP.getFreePsram() / 1024, (int)agent.state());
+        // a new low since boot under 16 KB: say what was running (the "min 10 KB / 15 KB" of T110 / T100 had no culprit)
+        if (minFree < 16 * 1024 && minFree < lastMin) {
+            Serial.printf("[Health] LOW internal RAM: min %u KB (state %d, radio %s, ota %s)\n", (unsigned)(minFree / 1024),
+                          (int)agent.state(), gRadio.active() ? "on" : "off", gOta.busy() ? "busy" : "idle");
+        }
+        lastMin = minFree;
     }
     vTaskDelay(pdMS_TO_TICKS(20));
 }

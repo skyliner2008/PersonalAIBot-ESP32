@@ -15,8 +15,8 @@
 #include "GoogleRootCA.h"
 
 bool TextModelClient::begin() {
-    _requests = xQueueCreate(2, sizeof(Request));
-    _results = xQueueCreate(2, sizeof(Result));
+    _requests = psramQueue(2, sizeof(Request));
+    _results = psramQueue(2, sizeof(Result));
     if (!_requests || !_results) return false;
     return startPsramTask(taskEntry, "textModel", 8192, this, 1, nullptr, 1);  // core 1: see WebTools
 }

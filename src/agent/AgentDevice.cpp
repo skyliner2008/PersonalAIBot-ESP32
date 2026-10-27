@@ -240,7 +240,10 @@ void AgentController::handleRadio(uint32_t now, bool busy) {
     _radioWasOn = true;
     _audio->setRadioGain(_sleeping ? 1.0f : RADIO_DUCK_GAIN);
     // talked to the assistant and nothing more to say: back to the radio (session closes, no tokens)
-    if (!_sleeping && !busy && !_vadOpen && !_awaitingReply && !_ringing && !_sleepPending &&
+    // T119 (seen on the board): "weather + news" with the radio on - the "let me check" reply ended, 6 s later the
+    // session closed under the lookups and both results were dropped. Wait for them, then for the answer (15 s cap).
+    const bool toolAnswerDue = _webPending || (_awaitToolAnswer && sinceMs(now, _toolAnswerAt) < 15000);
+    if (!_sleeping && !busy && !_vadOpen && !_awaitingReply && !_ringing && !_sleepPending && !toolAnswerDue &&
         sinceMs(now, _lastActivity) > RADIO_RESUME_MS) {
         enterSleep();
     }
@@ -390,6 +393,7 @@ void AgentController::fillDiagnostics(JsonObject out) {
     out["mic_level"] = _audio->micLevel();
     out["heap_kb"] = ESP.getFreeHeap() / 1024;
     out["heap_min_kb"] = ESP.getMinFreeHeap() / 1024;
+    out["heap_largest_kb"] = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024;  // T119: fragmentation
     out["psram_kb"] = ESP.getFreePsram() / 1024;
     out["storage"] = _storage->kindName();
     out["storage_free_mb"] = (uint32_t)((_storage->totalBytes() - _storage->usedBytes()) / (1024 * 1024));

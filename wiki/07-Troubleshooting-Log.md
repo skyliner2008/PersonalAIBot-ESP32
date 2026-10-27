@@ -136,6 +136,48 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T119: รีวิวการใช้ RAM ภายใน — ให้ AI + วิทยุ + web tools + OTA ทำงานพร้อมกันได้ราบรื่น ไม่ "Failed to allocate"
+
+**วันที่:** 2026-10-27 · **ผู้ใช้:** "review ตัว esp32 ตรวจสอบ และปรับปรุง และเน้นการบริหารจัดการ ram ให้ใช้งานได้อย่าง ราบรื่น เสถียร"
+**ตรวจพบ (จากโค้ด + sdkconfig ของ SDK):**
+- `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096` + `RESERVE_INTERNAL=0` → `malloc` ที่เล็กกว่า 4 KB ลง RAM ภายในเสมอ — `JsonDocument` แบบ default
+  (pool ~1 KB + ข้อความ) ที่ทำงาน**ระหว่างคุย** จึงกิน RAM ภายในและทำให้แตกกระจาย: บันทึกบทสนทนาทุกเทิร์น (`EpisodicLog`), บันทึกความจำ
+  (`MemoryStore`), ข้อความ GPS จากมือถือทุกวินาทีตอนนำทาง (`PhoneProtocol`), งาน/การแจ้งเตือน, ThaiWater filter, ผลจัดความจำ, JSON release ของ OTA
+- `tlsCalloc` ย้ายออบเจกต์เล็กของ TLS ไป PSRAM เฉพาะตอนใช้บลูทูธ OBD (T113) — กรณีอื่นที่ RAM ต่ำ (วิทยุ + Live + web tool + OTA check)
+  handshake ยังกินก้อนสุดท้ายที่ Wi-Fi / esp-aes (DMA ต้องใช้ RAM ภายใน) ต้องใช้ → ที่มาของ "ต่ำสุด 10 KB" ใน T110 และ "15 KB" ใน T100
+- `psramMalloc` / `psramRealloc` ตกไป `malloc` ภายในเมื่อ PSRAM จองไม่ได้ ไม่ว่าก้อนจะใหญ่แค่ไหน → buffer 16 KB ก้อนเดียวพอทำให้ทั้งบอร์ดต่อเน็ตไม่ได้
+- คิว FreeRTOS อายุยาว (Gemini inbox 48 / outbox 64, memWriter 64, web tools, text model) = ~4 KB ใน RAM ภายใน (`xQueueCreate` จองภายในเสมอ)
+- OTA เช็ครายวันแบบเงียบเริ่ม task stack ภายใน 10 KB + handshake GitHub ได้ทุกเวลา แม้ RAM กำลังตึง
+- log `[Health]` ไม่มีขนาดก้อนใหญ่สุด — TLS ล้มเพราะ heap แตกกระจายก่อน "free" จะถึง 0 จึงมองไม่เห็น
+
+**แก้:**
+1. `tlsCalloc` (`main.cpp`): RAM ภายในว่าง < 32 KB (`kTlsInternalFloor`) → ทุกออบเจกต์ TLS ไป PSRAM (ขยายกฎ T113 ให้ทุกสถานการณ์) + กัน `n * size` ล้น
+2. `PsramAlloc.h`: ตกไป RAM ภายในได้เฉพาะก้อน ≤ 512 B หรือเมื่อยังเหลือ ≥ 24 KB หลังจอง (`kInternalReserve`) — ไม่งั้นคืน `nullptr` ให้ผู้เรียกจัดการเอง
+3. `JsonDocument(JsonPsramAllocator::instance())` ในทุกจุดข้างบน (บทเรียน T098 ใช้กับทุกไฟล์ที่ทำงานระหว่าง session)
+4. `psramQueue()` (`PsramTask.h`, `xQueueCreateWithCaps` + fallback) สำหรับคิวที่อยู่ตลอดและไม่ใช้จาก ISR → ได้คืน ~4 KB
+5. `OtaUpdater::dailyCheck`: รอจน RAM ภายในว่าง ≥ 36 KB และก้อนใหญ่สุด ≥ 12 KB (เช็คใหม่ทุกนาที) — การเช็คที่ผู้ใช้กดเองไม่ถูกกั้น
+6. `[Health]` แสดง `largest` + บรรทัด `LOW internal RAM` เมื่อค่าต่ำสุดใหม่ < 16 KB (บอกสถานะ agent / วิทยุ / OTA ตอนนั้น) ·
+   `diag` มี `heap_largest_kb` (Studio แสดง "RAM ก้อนใหญ่สุด")
+
+**ทดสอบ:** host tests 2,986 checks ✓ · `pio run` (esp32s3-ble) RAM 25.8 %, Flash 74.3 % ✓ · `pio run -e esp32s3` ✓ ·
+✅ **วัดบนบอร์ดจริง 2026-10-28** (build `esp32s3-ble`, แหล่ง OBD-BLE = คำปลุกคำเดียว + TLS ใน PSRAM ทั้งหมด — กรณี RAM ตึงที่สุด):
+
+| สถานการณ์ | RAM ภายใน ว่าง / ต่ำสุดตั้งแต่บูต / ก้อนใหญ่สุด |
+|---|---|
+| v4.6.0 เดิม (เปิดมานาน, หลับ) | 77 / 57 / 33 KB |
+| T119 เซสชัน Live พร้อม (ว่าง) | 79 / 73 / 37–39 KB |
+| T119 วิทยุ + Live + `get_weather` + `get_news` + OTA เช็คพร้อมกัน | 58–74 / **50–52** / 30 KB — ไม่มี `LOW internal RAM` |
+
+stack ทุก task เหลือ ≥ 1.2 KB (IDLE0/1 0.2–0.3 KB เป็นของ IDF) · การแฟลชครั้งแรก "ค้างนาน" ไม่ใช่บอร์ด: `pio` พังด้วย `UnicodeEncodeError`
+(cp1252) ตอนพิมพ์แถบความคืบหน้าของ esptool v5 ลงไฟล์/pipe แล้ว esptool ค้างรอ → ใช้ `PYTHONUTF8=1 PYTHONIOENCODING=utf-8` (เสร็จใน 78 วิ)
+
+**บั๊กที่เจอระหว่างทดสอบ (แก้แล้ว):** เปิดวิทยุอยู่แล้วถาม "อากาศ + ข่าว" → AI พูด "แป๊บนะคะ" จบ 6 วิ กติกาวิทยุ (`RADIO_RESUME_MS`) ปิดเซสชันกลับไปหลับ
+ทั้งที่ web tool ยังทำงาน → `get_news result dropped` ผู้ใช้ไม่ได้คำตอบ · `handleRadio`: รอจน `_webPending == 0` และรอคำตอบหลังส่งผล
+(`_awaitToolAnswer`, สูงสุด 15 วิ) → บนบอร์ด: ทั้งสองผลกลับมา AI ตอบอากาศ + ข่าวแล้วจึงหลับ ✅
+
+**ยังเปิดอยู่ (ไม่เกี่ยวกับ RAM):** OTA เช็ค GitHub ล้ม `-29312 SSL connection indicated an EOF` / `-0x50 conn reset` ทั้ง Wi-Fi บ้านและฮอตสปอตมือถือ
+(RAM ต่ำสุดตอนนั้น 52 KB; PC ต่อ api.github.com ได้ 0.6 วิ) · log `NetworkClient connect() errno 104` ทุก ~8 วิจาก PhoneLink ตอนมือถือไม่อยู่ในเครือข่าย
+
 ## T118: release มีบลูทูธ OBD (build `esp32s3-ble` เป็นหลัก)
 
 **วันที่:** 2026-10-27 · **ผู้ใช้:** v4.6.0 ไม่มีบลูทูธในตั้งค่า ("ใส่บลูทูธในไฟล์แฟลชของ release ได้ไหม") → เลือกแบบไฟล์เดียวมี BLE ("ปิดบลูทูธได้ตอนแชทกับ AI อย่างเดียว")

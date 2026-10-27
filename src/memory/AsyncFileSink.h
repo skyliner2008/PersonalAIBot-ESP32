@@ -15,13 +15,14 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../system/PsramTask.h"
 #include "../util/PsramAlloc.h"
 #include "AppendSink.h"
 
 class AsyncFileSink : public AppendSink {
 public:
     bool begin(UBaseType_t depth = 64, BaseType_t core = 1) {
-        _queue = xQueueCreate(depth, sizeof(Item));
+        _queue = psramQueue(depth, sizeof(Item));  // T119: ~1.5 KB of internal RAM back
         if (!_queue) return false;
         return xTaskCreatePinnedToCore(taskEntry, "memWriter", 4096, this, 2, nullptr, core) == pdPASS;
     }

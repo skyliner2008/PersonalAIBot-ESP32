@@ -12,6 +12,7 @@
 
 #include <algorithm>
 
+#include "../util/JsonAlloc.h"
 #include "../util/JsonFile.h"
 #include "../util/TimeFmt.h"
 #include "../util/Utf8.h"
@@ -101,7 +102,7 @@ bool Scheduler::open(const char* path) {
     _path = path ? path : "";
     if (_path.empty()) return true;
 
-    JsonDocument doc;
+    JsonDocument doc(JsonPsramAllocator::instance());
     if (!jsonfile::load(_path.c_str(), doc)) return true;  // nothing saved yet
     _nextId = doc["next"] | 1u;
     for (JsonObjectConst o : doc["items"].as<JsonArrayConst>()) {
@@ -121,7 +122,7 @@ bool Scheduler::open(const char* path) {
 
 bool Scheduler::save() const {
     if (_path.empty()) return true;
-    JsonDocument doc;
+    JsonDocument doc(JsonPsramAllocator::instance());
     doc["next"] = _nextId;
     JsonArray arr = doc["items"].to<JsonArray>();
     for (const Reminder& r : _items) {

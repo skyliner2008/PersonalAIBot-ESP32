@@ -1896,7 +1896,7 @@ class Studio:
             "setup_mode": "setup mode", "text_model": "Text model", "tokens_per_min": "โทเคน/นาที",
             "consolidations_today": "จัดความจำวันนี้", "memories": "ความจำ (facts)", "relations": "ความสัมพันธ์ (กราฟ)",
             "open_tasks": "งานค้าง", "reminders": "การแจ้งเตือน", "volume": "ความดัง", "mic_level": "ระดับไมค์",
-            "heap_kb": "RAM ว่าง (KB)", "heap_min_kb": "RAM ต่ำสุด (KB)", "psram_kb": "PSRAM ว่าง (KB)",
+            "heap_kb": "RAM ว่าง (KB)", "heap_min_kb": "RAM ต่ำสุด (KB)", "heap_largest_kb": "RAM ก้อนใหญ่สุด (KB)", "psram_kb": "PSRAM ว่าง (KB)",
             "storage": "ที่เก็บข้อมูล", "storage_free_mb": "พื้นที่ว่าง (MB)", "battery": "แบตเตอรี่ (%)",
             "uptime_s": "เปิดมา (วิ)", "epoch": "เวลา"}
         self.diag_tree.delete(*self.diag_tree.get_children())
