@@ -136,6 +136,32 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
+## T121: เช็คอัปเดต (OTA) ต่อ GitHub ไม่ได้ "HTTP -1" ตอนเปิดวิทยุ / AI กำลังพูด — handshake ช้าจน GitHub ตัดทิ้ง
+
+**วันที่:** 2026-10-28 · เจอระหว่างทดสอบ T119 บนบอร์ด (fw 4.7.0, `esp32s3-ble`, แหล่ง OBD-BLE)
+**อาการ:** `ota check` / เช็ครายวัน ล้มเหลวแบบสุ่ม: `ssl_starttls_handshake():333: (-29312) SSL - The connection indicated an EOF`
+(บางครั้ง `-0x50` connection reset) → `[OTA] Failed: ติดต่อ GitHub ไม่ได้ (HTTP -1)` · ทั้ง Wi-Fi บ้านและ hotspot มือถือ · RAM ภายในปกติ
+(ต่ำสุด 52 KB) · open-meteo / news.google.com ผ่าน TLS ได้ · PC เปิด API เดียวกันได้ใน 0.6 วิ
+**ตัดทิ้งก่อน:** ClientHello ไม่ใช่ปัญหา — `openssl s_client -tls1_2` แบบ mbedTLS (cipher/curve/sigalg ทั้งชุด, ไม่มี/มี SNI, max fragment)
+ผ่านทุกครั้ง, 30/30 handshake จาก PC ผ่าน, GitHub ทั้ง 4 IP ผ่าน, root CA ตรง (Sectigo E46 → USERTrust ECC) · **ไม่ใช่การจอง RAM:**
+build ไม่มี BLE (`-e esp32s3`, ออบเจกต์ TLS เล็กอยู่ RAM ภายใน) ล้มแบบเดียวกัน
+**สาเหตุ (วัดบนบอร์ดด้วย log ใหม่ `[OTA] <host> (<ip>) -> <code> in <ms>`):** ล้มเฉพาะตอน CPU core 1 ไม่ว่าง — task `ota` priority **1**
+ได้แค่เศษเวลาที่เหลือจากดวงตา/คำปลุก (priority 3 บน core 1; ตอนวิทยุเล่น คำปลุกตัดเสียงสะท้อนตลอด) คำนวณ ECDHE + ตรวจ ECDSA ไม่ทัน:
+| สถานการณ์ (ก่อนแก้) | ผล |
+|---|---|
+| หลับ ไม่มีวิทยุ | 18/18 ผ่าน (~1–2 วิ) |
+| ตื่น เซสชัน Live ว่าง | 5/5 ผ่าน |
+| หลังบูต Live กำลังเชื่อม | ผ่านแต่ใช้ 6.1 วิ |
+| **เปิดวิทยุ** (หลับหรือ AI ตอบ) | **0/6 — EOF/reset หลัง 13.5–22.9 วิ** (GitHub ปิด handshake ที่ไม่จบใน ~10 วิ) |
+
+**แก้ (`OtaUpdater.cpp`):** `ConnectPriority` — ช่วง connect + TLS handshake + รอ header (`http.GET()` ใน `openGet`, ทุก hop ของ redirect)
+ยก task เป็น **priority 4** แบบเดียวกับ `JobPriority` ของ WebTools (T072) แล้วกลับเป็น 1 ตอนอ่าน body / เขียน flash ·
+log หนึ่งบรรทัดต่อ request (host, IP, เวลา, ข้อความ mbedTLS เมื่อไม่มี HTTP status) · ล้าง `error` เก่าเมื่อ GitHub ตอบแล้ว
+(เดิม `ota` แสดง `"state":"up_to_date"` คู่กับ error ของครั้งก่อน)
+**ทดสอบบนบอร์ด (`esp32s3-ble`):** วิทยุเปิด 9/9 ผ่าน **2.3–2.7 วิ** (หลับ + ตื่น) · ปิดวิทยุ 1.8 วิ · `ota fetch` ไฟล์ `-app.bin` v4.7.0 ขณะวิทยุเล่น:
+github.com → 302 (2.4 วิ) → release-assets → 200 (1.2 วิ), 3,976,800 ไบต์ 42 วิ, sha256 ตรงกับ `.sha256` ใน release · ไม่มีเสียงกระตุก/watchdog ·
+host tests 2,988 checks ✓ · `pio run` ✓ · ไม่ได้แตะลายเซ็น OTA / กุญแจ release
+
 ## T120: หน้านาฬิกา (พักหน้าจอ) เรียก "Jarvis" แล้วไม่ตื่น — ตอนหลับธรรมดาตื่น
 
 **วันที่:** 2026-10-28 · **ผู้ใช้:** "ที่เข้าโหมดพักหน้าจอ (หน้านาฬิกา) จะปลุก ai ด้วยเสียง ไม่ตื่น แต่ถ้า ai หลับอย่างเดียว จะปลุกตื่น"
