@@ -159,6 +159,7 @@ struct FakeCar {
     std::set<std::string> silent;  // PIDs that answer NO DATA although the car says it has them
     std::set<std::string> hang;    // commands the adapter never finishes (no prompt)
     std::string rpm = "410C1AF8";  // 1726 rpm
+    int vinPending = 0;            // 0902 answers "7F 09 78" (response pending) this many times first
     std::string reply(const std::string& cmd) {
         if (hang.count(cmd)) return "";
         if (cmd == "010C" && on && !asleep) return std::string(echo ? cmd + "\r" : "") + rpm + "\r\r>";
@@ -191,6 +192,10 @@ struct FakeCar {
         if (cmd == "0A") return ok("NO DATA");
         if (cmd == "020200") return ok(codes ? "4202000420" : "4202000000");
         if (cmd == "0101") return ok(codes ? "4101810761A0" : "410100076161");
+        if (cmd == "0902" && vinPending) {  // the user's car (T117): "response pending" first
+            vinPending--;
+            return ok("7F0978");
+        }
         if (cmd == "0902") return ok("014\r0:490201314434\r1:47503030523535\r2:42313233343536");
         if (cmd == "04") {
             if (refuseClear) return ok("7F0422");
@@ -229,6 +234,34 @@ bool has(const Health& h, Finding f, uint8_t sev) {
     return false;
 }
 }  // namespace
+
+TEST(vehicle_elm327_response_pending) {  // T117: the user's car answered 0902 with 7F 09 78 first
+    FakeCar car;
+    car.vinPending = 2;
+    Elm327 elm;
+    Snapshot s;
+    uint32_t now = 5000;
+    elm.restart(now);
+    std::vector<std::string> log;
+    drive(elm, car, s, now, 3000, &log);  // 30 s
+    int asked = 0;
+    for (const std::string& c : log) asked += c == "0902";
+    CHECK_EQ(asked, 3);  // 2 x pending, then the answer
+    CHECK(!strcmp(elm.diag().vin, "1D4GP00R55B123456"));
+    CHECK(elm.phase() == Elm327::Phase::Poll && elm.diag().codesValid);
+
+    FakeCar never;  // always pending: gives up after kPendingTries, the scan goes on
+    never.vinPending = 100;
+    Elm327 e2;
+    now = 5000;
+    e2.restart(now);
+    log.clear();
+    drive(e2, never, s, now, 3000, &log);
+    asked = 0;
+    for (const std::string& c : log) asked += c == "0902";
+    CHECK_EQ(asked, 1 + (int)Elm327::kPendingTries);
+    CHECK(!e2.diag().vin[0] && e2.diag().codesValid);
+}
 
 TEST(vehicle_elm327_scan) {
     FakeCar car;

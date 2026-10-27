@@ -92,6 +92,8 @@ public:
     static constexpr uint32_t kCodesEveryMs = 5 * 60 * 1000;
     static constexpr uint8_t kMaxMisses = 3;  // NO DATA in a row -> the PID is dropped
     static constexpr size_t kTable = 24;      // >= obd::pids() entries
+    static constexpr uint8_t kPendingTries = 3;       // "7F xx 78" response pending: asked again this often ...
+    static constexpr uint32_t kPendingWaitMs = 1500;  // ... after this pause (T117)
 
 private:
     enum Job : uint8_t {
@@ -109,6 +111,8 @@ private:
     uint8_t _pollIndex = 0;
     bool _waiting = false, _answered = false;
     uint32_t _sentAt = 0, _retryAt = 0, _lastVolt = 0;
+    uint32_t _resendAt = 0;      // != 0: _cmd goes out again then (response pending)
+    uint8_t _pendingTries = 0;
     uint32_t _timeouts = 0, _silentResets = 0;
     uint8_t _hint = 0;
     uint8_t _searchFails = 0, _tryProto = 0;
@@ -148,6 +152,8 @@ private:
     void handleJob(Snapshot& out, uint32_t now);
     bool handlePid(Snapshot& out, uint32_t now);
     void goNoEcu(uint32_t now);
+    /** The reply is only "7F <service> 78" (response pending). */
+    bool responsePending();
     uint32_t replyTimeout() const;
     void push(uint8_t job, uint8_t arg = 0, bool front = false);
     void queueDiscovery();

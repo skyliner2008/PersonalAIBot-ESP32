@@ -104,6 +104,8 @@ void Elm327::restart(uint32_t now) {
     _nQueue = 0;
     _job = kJobNone;
     _jobIdx = -1;
+    _resendAt = 0;
+    _pendingTries = 0;
     const uint32_t seq = _diag.scanSeq;
     _diag = obd::Diag();
     _diag.available = true;
@@ -111,6 +113,15 @@ void Elm327::restart(uint32_t now) {
     changed();
     _lineLen = _replyLen = 0;
     _line[0] = _reply[0] = '\0';
+}
+
+bool Elm327::responsePending() {
+    bool pending = false, positive = false;
+    eachLine(_reply, [&](const uint8_t* b, size_t n, const char*) {
+        if (n >= 3 && b[0] == 0x7F && b[2] == 0x78) pending = true;
+        else if (n >= 1 && b[0] != 0x7F) positive = true;  // another ECU (or the frame count) answered
+    });
+    return pending && !positive;
 }
 
 bool Elm327::supports(uint8_t pid) const {
@@ -298,6 +309,16 @@ const char* Elm327::poll(uint32_t now) {
         if (_trace) _trace->sent(now, _cmd);
         return _cmd;
     }
+    if (_resendAt) {  // the ECU said "response pending": the same request again (job and PID kept)
+        if ((int32_t)(now - _resendAt) < 0) return nullptr;
+        _resendAt = 0;
+        _waiting = true;
+        _sentAt = now;
+        _replyLen = 0;
+        _reply[0] = '\0';
+        if (_trace) _trace->sent(now, _cmd);
+        return _cmd;
+    }
     if ((int32_t)(now - _retryAt) < 0) return nullptr;
     char c[12];
     switch (_phase) {
@@ -396,6 +417,15 @@ void Elm327::feed(const char* data, size_t n, Snapshot& out, uint32_t now) {
                 _answered = true;
                 _timeouts = 0;
                 if (_trace) _trace->replied(now, _reply);
+                // T117: "7F 09 78" = response pending: the ECU answers later, but a clone gives the prompt at once and
+                // the real answer is lost (VIN in the user's car; the next two requests then got NO DATA) - ask again
+                // after a pause instead of taking it as "not supported"
+                if (responsePending() && _pendingTries < kPendingTries) {
+                    _pendingTries++;
+                    _resendAt = (now + kPendingWaitMs) | 1;
+                    continue;
+                }
+                _pendingTries = 0;
                 handleReply(out, now);
             }
             continue;
