@@ -43,6 +43,17 @@ constexpr char kUserAgent[] = "PersonalAIBot-ESP32/" FIRMWARE_VERSION;
 // a release key is built in: every update must carry a .sig that verifies against it (T074)
 constexpr bool kSignedUpdates = sizeof(OTA_SIGNING_PUBKEY_PEM) > 1;
 
+// The connect + TLS handshake runs above the eyes' animation and the wake word (priority 3 on core 1), like
+// a WebTools job (T072). At the task's 1 it got only their leftovers: with the radio on (the wake word
+// works through the echo) a handshake took 13-23 s, and GitHub closes one not done in ~10 s - EOF / reset
+// in ssl_starttls_handshake, "HTTP -1" (T120). Back to 1 for the body and the flash writes.
+constexpr UBaseType_t kConnectPriority = 4;
+struct ConnectPriority {
+    const UBaseType_t was = uxTaskPriorityGet(nullptr);
+    ConnectPriority() { vTaskPrioritySet(nullptr, kConnectPriority); }
+    ~ConnectPriority() { vTaskPrioritySet(nullptr, was); }
+};
+
 // GET with redirects (release downloads go github.com -> release-assets.githubusercontent.com),
 // TLS verified against the GitHub / Let's Encrypt roots. Returns the final HTTP status.
 int openGet(HTTPClient& http, WiFiClientSecure& tls, const char* url, bool githubJson) {
@@ -56,7 +67,22 @@ int openGet(HTTPClient& http, WiFiClientSecure& tls, const char* url, bool githu
         http.setConnectTimeout(15000);
         http.collectHeaders(kHeaders, 1);
         if (githubJson) http.addHeader("Accept", "application/vnd.github+json");
-        const int code = http.GET();
+        const uint32_t t0 = millis();
+        int code;
+        {
+            ConnectPriority boost;
+            code = http.GET();
+        }
+        {  // one line per request; no HTTP status: what the connection did (the framework logs only the TLS code)
+            char why[96] = "";
+            if (code < 0) tls.lastError(why, sizeof(why));
+            const String host = u.substring(8, u.indexOf('/', 8));
+            IPAddress ip;  // from the DNS cache the connect just filled
+            WiFi.hostByName(host.c_str(), ip);
+            Serial.printf("[OTA] %s (%s) -> %d in %lu ms%s%s%s\n", host.c_str(), ip.toString().c_str(), code,
+                          (unsigned long)(millis() - t0), code < 0 ? " (" : "",
+                          code < 0 ? (why[0] ? why : HTTPClient::errorToString(code).c_str()) : "", code < 0 ? ")" : "");
+        }
         if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
             u = http.header("Location");
             http.end();
@@ -446,6 +472,9 @@ void OtaUpdater::runCheck() {
         fail(code == 404 ? "ยังไม่มี release บน GitHub" : "ติดต่อ GitHub ไม่ได้ (HTTP %d)", code);
         return;
     }
+    xSemaphoreTake(_lock, portMAX_DELAY);
+    _error[0] = '\0';  // GitHub answered: an older failure no longer stands next to "up_to_date" in `ota`
+    xSemaphoreGive(_lock);
     ota::Release r;
     const bool complete = ota::parseRelease(body.c_str(), body.length(), r);
     if (!r.tag[0]) {
