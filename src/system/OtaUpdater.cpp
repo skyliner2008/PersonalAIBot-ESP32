@@ -37,6 +37,8 @@ const char kFirmwareMarker[] = "PAB-ESP32-FW:" FIRMWARE_VERSION;
 constexpr uint32_t kConfirmAfterMs = 60000;              // run this long (agent alive) = the update is good
 constexpr uint32_t kFirstCheckMs = 2 * 60 * 1000;        // the daily check: first one 2 min after boot
 constexpr uint32_t kCheckEveryMs = 24u * 60 * 60 * 1000;
+constexpr size_t kCheckMinInternal = 36 * 1024;  // T119: internal RAM the silent check waits for (10 KB stack + TLS)
+constexpr size_t kCheckMinBlock = 12 * 1024;     // ... and a block the stack fits in
 constexpr uint32_t kStallMs = 20000;                     // no data this long while downloading = failed
 constexpr size_t kChunk = 4096;
 constexpr char kUserAgent[] = "PersonalAIBot-ESP32/" FIRMWARE_VERSION;
@@ -441,6 +443,13 @@ void OtaUpdater::confirmIfHealthy() {
 void OtaUpdater::dailyCheck() {
     if (_running || busy() || _state == State::Available || WiFi.status() != WL_CONNECTED || millis() < kFirstCheckMs) return;
     if (_checkedOnce && deadline::elapsed(millis(), _lastCheck) < kCheckEveryMs) return;
+    // T119: the silent check is never urgent - its 10 KB internal stack + a GitHub handshake next to a busy Live
+    // session took internal RAM down to 10 KB and a web lookup failed (T110): wait for room, ask again in a minute
+    if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) < kCheckMinInternal ||
+        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) < kCheckMinBlock) {
+        _nextTick = millis() + 60000;
+        return;
+    }
     _silentCheck = true;
     if (!startJob(JobCheck)) _nextTick = millis() + 60000;  // no memory for the task now: in a minute
 }

@@ -221,14 +221,14 @@ void stationGraph(const thaiwater::WaterLevel& w, const char* provinceTh, JsonOb
     if (!thaiwater::dayBefore(w.time, 1, start, sizeof(start)) || !thaiwater::dayBefore(w.time, 0, end, sizeof(end))) return;
     String url = String(thaiwater::kBase) + "public/waterlevel_graph?station_type=tele_waterlevel&station_id=" +
                  String(w.id) + "&start_date=" + start + "&end_date=" + end + "%2023:59";
-    JsonDocument filter;
+    JsonDocument filter(JsonPsramAllocator::instance());
     filter["data"]["graph_data"][0]["datetime"] = true;
     filter["data"]["graph_data"][0]["value"] = true;
     filter["data"]["min_bank"] = true;
     filter["data"]["warning_level"] = true;
     filter["data"]["critical_level"] = true;
     JsonDocument doc(JsonPsramAllocator::instance());
-    JsonDocument err;
+    JsonDocument err(JsonPsramAllocator::instance());
     if (!fetchFiltered(url, filter, doc, err)) return;  // the list still answers
     JsonObjectConst data = doc["data"];
     CardData::Series& g = card.g;
@@ -273,7 +273,7 @@ void stationGraph(const thaiwater::WaterLevel& w, const char* provinceTh, JsonOb
 }
 
 void runLevel(const thaiplace::Province& prov, const char* query, JsonDocument& out, CardData& card) {
-    JsonDocument filter;
+    JsonDocument filter(JsonPsramAllocator::instance());
     JsonObject f = filter["data"][0].to<JsonObject>();
     for (const char* k : {"waterlevel_datetime", "waterlevel_msl", "storage_percent", "diff_wl_bank"}) f[k] = true;
     f["station"]["id"] = true;
@@ -342,7 +342,7 @@ void runRain(const thaiplace::Province& prov, const char* query, int days, JsonD
     const RainSpan span = rainSpan(days);
     const bool multiDay = span.days > 1;  // several days: ThaiWater says which dates they are
     const char* key = span.key;
-    JsonDocument filter;
+    JsonDocument filter(JsonPsramAllocator::instance());
     JsonObject f = filter["data"][0].to<JsonObject>();
     f[key] = true;
     f["rainfall_datetime"] = true;
@@ -425,7 +425,7 @@ void runRank(bool level, const char* query, int days, JsonDocument& out, CardDat
     const bool multiDay = !level && span.days > 1;
     const char* key = level ? "storage_percent" : span.key;
     // one station's filter: the array is walked element by element (see thaiwater::ProvinceRanker)
-    JsonDocument filter;
+    JsonDocument filter(JsonPsramAllocator::instance());
     filter[key] = true;
     filter[level ? "waterlevel_datetime" : "rainfall_datetime"] = true;
     if (multiDay) {
@@ -563,7 +563,7 @@ void runRank(bool level, const char* query, int days, JsonDocument& out, CardDat
 // ---------------------------------------------------------------- storms
 
 void runStorm(JsonDocument& out, CardData& card) {
-    JsonDocument filter;
+    JsonDocument filter(JsonPsramAllocator::instance());
     filter["data"][0]["storm_name"] = true;
     JsonDocument doc(JsonPsramAllocator::instance());
     if (!fetchFiltered(String(thaiwater::kBase) + "public/storm_data", filter, doc, out)) return;

@@ -698,8 +698,8 @@ bool isWebTool(const char* name) {
 
 bool WebTools::begin(const char* storageDir) {
     copyStr(_dir, sizeof(_dir), storageDir);
-    _jobs = xQueueCreate(kQueueDepth, sizeof(Job));
-    _results = xQueueCreate(kQueueDepth, sizeof(Result));
+    _jobs = psramQueue(kQueueDepth, sizeof(Job));
+    _results = psramQueue(kQueueDepth, sizeof(Result));
     if (!_jobs || !_results) return false;
     // core 1: TLS handshakes + big JSON are CPU-heavy bursts; core 0 keeps audio + radio + Wi-Fi
     // (the idle task of core 0 is watchdog-checked: a long burst there next to the radio resets the board)
@@ -763,7 +763,7 @@ void WebTools::loop() {
                     copyStr(r.name, sizeof(r.name), "_price_alert");
                     r.tag = kAlertTag;
                     r.json = new PsString();
-                    JsonDocument m;
+                    JsonDocument m(JsonPsramAllocator::instance());
                     m["message"] = msg;
                     serializeJson(m, *r.json);
                     if (xQueueSend(_results, &r, pdMS_TO_TICKS(2000)) != pdTRUE) delete r.json;

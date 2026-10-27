@@ -33,6 +33,7 @@
 #include <string.h>
 
 #include "../util/Sha256.h"
+#include "../util/JsonAlloc.h"
 #include "../util/Utf8.h"
 
 namespace phone {
@@ -116,7 +117,7 @@ inline void copyText(char* dst, size_t n, const char* src) {
 inline bool parse(const char* json, Msg& m, uint32_t now) {
     m = Msg();
     if (!json) return false;
-    JsonDocument d;
+    JsonDocument d(JsonPsramAllocator::instance());
     if (deserializeJson(d, json) || !d.is<JsonObject>()) return false;
     const char* t = d["t"] | "";
     if (!strcmp(t, "gps")) {

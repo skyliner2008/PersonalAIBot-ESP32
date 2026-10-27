@@ -12,6 +12,7 @@
 
 #include <algorithm>
 
+#include "../util/JsonAlloc.h"
 #include "../util/TimeFmt.h"
 #include "../util/Utf8.h"
 
@@ -45,7 +46,7 @@ PsString clampTurn(const char* s, size_t maxBytes) {
 }
 
 bool parseTurnLine(char* line, size_t len, Turn& out) {
-    JsonDocument doc;
+    JsonDocument doc(JsonPsramAllocator::instance());
     if (deserializeJson(doc, line, len)) return false;
     const char* text = doc["x"] | "";
     if (!*text) return false;
@@ -177,7 +178,7 @@ void EpisodicLog::append(char role, const char* text, uint32_t ts) {
     if (t.text.empty()) return;
 
     if (_sink && !_dir.empty()) {
-        JsonDocument doc;
+        JsonDocument doc(JsonPsramAllocator::instance());
         doc["t"] = t.ts;
         doc["r"] = t.role == 'a' ? "a" : "u";
         doc["x"] = t.text.c_str();

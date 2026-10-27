@@ -147,7 +147,7 @@ int PhoneLink::request(const char* what, const char* to) {
     portENTER_CRITICAL(&_mux);
     const int id = _nextId++;
     portEXIT_CRITICAL(&_mux);
-    JsonDocument d;
+    JsonDocument d(JsonPsramAllocator::instance());
     d["id"] = id;
     d["do"] = what;
     char dest[120];

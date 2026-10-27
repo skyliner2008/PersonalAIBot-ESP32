@@ -7,6 +7,7 @@
 
 #include <string.h>
 
+#include "../util/JsonAlloc.h"
 #include "../util/TimeFmt.h"
 
 namespace consolidate {
@@ -92,7 +93,7 @@ bool buildUserPrompt(const PsString& coreMemory, const std::vector<ltm::Turn>& t
 bool parseResult(const char* json, size_t len, std::vector<Fact>& facts, std::vector<Relation>& relations) {
     facts.clear();
     relations.clear();
-    JsonDocument doc;
+    JsonDocument doc(JsonPsramAllocator::instance());
     if (deserializeJson(doc, json, len)) return false;
     for (JsonObjectConst f : doc["facts"].as<JsonArrayConst>()) {
         const char* c = f["content"] | "";

@@ -122,7 +122,13 @@ AgentController คำนวณ state ใหม่ทุก 10 ms จากข�
 | WebSocket RX/TX buffers + reassembly | PSRAM | 16 KB ×2 + ตามขนาดข้อความ |
 | JSON documents (server messages) | PSRAM (`JsonPsramAllocator`) | ชั่วคราว |
 | ความจำระยะยาว (index) | PSRAM | ~0.8 KB/รายการ (สูงสุด 2,000) |
+| JSON ระหว่าง session (บทสนทนา, ความจำ, GPS มือถือ, OTA, ThaiWater) | PSRAM (`JsonPsramAllocator`, T119) | ชั่วคราว |
+| คิว FreeRTOS อายุยาว (Gemini in/outbox, memWriter, web tools, text model) | PSRAM (`psramQueue`, T119) | ~4 KB |
+| ออบเจกต์ TLS | ≥ 512 B → PSRAM; ทั้งหมด → PSRAM เมื่อใช้บลูทูธ OBD หรือ RAM ภายใน < 32 KB (T113 / T119) | ต่อการเชื่อมต่อ |
 | **คงเหลือหลังบูต** | — | heap ภายใน **~243 KB**, PSRAM **~6.9 MB** |
+
+**กติกา RAM ภายใน (T119):** `psramMalloc` ตกไป RAM ภายในได้เฉพาะก้อน ≤ 512 B หรือเมื่อยังเหลือ ≥ 24 KB · OTA เช็ครายวันรอ RAM ภายใน ≥ 36 KB
+(ก้อน ≥ 12 KB) · ดูสุขภาพด้วย `mem` และ `[Health] heap .. (min .., largest ..)` ทุกนาที (`LOW internal RAM` เมื่อต่ำสุดใหม่ < 16 KB)
 
 Flash: firmware 1.24 MB จาก app partition 6.25 MB (`default_16MB.csv`, รองรับ OTA) + LittleFS 3.4 MB สำรองเมื่อไม่มี SD
 

@@ -121,6 +121,7 @@ ESP32-AI/
 
 | Date | Activity | Related Docs |
 |------|----------|--------------|
+| 2026-10-27 | **รีวิว RAM ภายใน (T119):** TLS ไป PSRAM ทั้งหมดเมื่อ RAM ภายใน < 32 KB, `psramMalloc` ไม่ตกไป RAM ภายในจนเหลือ < 24 KB, `JsonDocument` ระหว่าง session (บทสนทนา/ความจำ/GPS มือถือ/OTA/ThaiWater) ไป PSRAM, คิวอายุยาวไป PSRAM (~4 KB), OTA เช็ครายวันรอ RAM ว่าง, `[Health]` + `diag` มีก้อนใหญ่สุด · **วัดบนบอร์ด:** วิทยุ + Live + 2 web tools + OTA พร้อมกัน RAM ภายในต่ำสุด 50 KB · แก้: เปิดวิทยุแล้วเซสชันปิดก่อนผล web tool กลับมา | [[07-Troubleshooting-Log]] · [[04-System-Architecture]] |
 | 2026-10-27 | **Release v4.7.0** — เฟิร์มแวร์ release มีบลูทูธ OBD (T118), แก้ VIN response pending (T117) · แอปมือถือไม่เปลี่ยน (2.1.2) | [[16-Vehicle-Dash]] |
 | 2026-10-27 | **release มีบลูทูธ OBD (T118):** `pio run` / release / OTA = build `esp32s3-ble` (บลูทูธเปิดเฉพาะแหล่ง OBD-BLE ตอนหน้าปัดแสดง) · ไม่ใช้บลูทูธ: `-e esp32s3` (+20 KB RAM ภายใน) | [[16-Vehicle-Dash]] · [[07-Troubleshooting-Log#T118]] |
 | 2026-10-27 | **ตรวจ log OBD จากรถจริง (T117):** CAN 11 bit, ทุก PID ~200 ms ไม่มี timeout, ไม่มีรหัสปัญหา · แก้ VIN หายเพราะรถตอบ `7F 09 78` (รอแล้วถามซ้ำ) · แฟลช build BLE กลับลงบอร์ด (release ไม่มี BLE) | [[07-Troubleshooting-Log#T117]] · [[16-Vehicle-Dash]] |

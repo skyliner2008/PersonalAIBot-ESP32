@@ -14,6 +14,7 @@
 
 #include <algorithm>
 
+#include "../util/JsonAlloc.h"
 #include "../util/Utf8.h"
 
 namespace ltm {
@@ -68,7 +69,7 @@ bool newerFirst(const Record* a, const Record* b) {
 }
 
 size_t serializeRecord(const Record& r, const char* op, char* buf, size_t cap) {
-    JsonDocument doc;
+    JsonDocument doc(JsonPsramAllocator::instance());
     doc["op"] = op;
     doc["id"] = r.id;
     doc["k"] = r.kind == Kind::Fact ? "f" : "r";
@@ -165,7 +166,7 @@ void MemoryStore::persistDelete(uint32_t id) {
 }
 
 bool MemoryStore::applyLogLine(char* line, size_t len) {
-    JsonDocument doc;
+    JsonDocument doc(JsonPsramAllocator::instance());
     if (deserializeJson(doc, line, len)) return false;
 
     const char* op = doc["op"] | "";

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 
+#include "../util/JsonAlloc.h"
 #include "../util/JsonFile.h"
 #include "../util/Utf8.h"
 
@@ -32,7 +33,7 @@ bool TaskList::open(const char* path) {
     _nextId = 1;
     _path = path ? path : "";
     if (_path.empty()) return true;
-    JsonDocument doc;
+    JsonDocument doc(JsonPsramAllocator::instance());
     if (!jsonfile::load(_path.c_str(), doc)) return true;
     _nextId = doc["next"] | 1u;
     for (JsonObjectConst o : doc["items"].as<JsonArrayConst>()) {
@@ -53,7 +54,7 @@ bool TaskList::open(const char* path) {
 
 bool TaskList::save() const {
     if (_path.empty()) return true;
-    JsonDocument doc;
+    JsonDocument doc(JsonPsramAllocator::instance());
     doc["next"] = _nextId;
     JsonArray arr = doc["items"].to<JsonArray>();
     for (const Task& t : _items) {

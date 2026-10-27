@@ -26,3 +26,11 @@ inline bool startPsramTask(TaskFunction_t fn, const char* name, uint32_t stack, 
     }
     return xTaskCreatePinnedToCore(fn, name, stack, arg, prio, handle, core) == pdPASS;
 }
+
+// T119: a queue whose storage lives in PSRAM (xQueueCreate always takes internal RAM: the Gemini in/outbox,
+// the memory writer and the web tools held ~4 KB there). Only for queues that live forever and are never used
+// from an ISR (a PSRAM queue would need vQueueDeleteWithCaps, and PSRAM is off while the flash is written).
+inline QueueHandle_t psramQueue(UBaseType_t depth, UBaseType_t itemSize) {
+    QueueHandle_t q = xQueueCreateWithCaps(depth, itemSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    return q ? q : xQueueCreate(depth, itemSize);
+}

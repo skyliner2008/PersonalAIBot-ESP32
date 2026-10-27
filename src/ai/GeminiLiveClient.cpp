@@ -55,8 +55,8 @@ __attribute__((format(printf, 4, 5))) void appendf(char* buf, size_t cap, size_t
 
 bool GeminiLiveClient::begin(GeminiListener* listener) {
     _listener = listener;
-    _inbox = xQueueCreate(kInboxDepth, sizeof(InboundMsg));
-    _outbox = xQueueCreate(kOutboxDepth, sizeof(OutboundMsg));
+    _inbox = psramQueue(kInboxDepth, sizeof(InboundMsg));  // T119: storage in PSRAM
+    _outbox = psramQueue(kOutboxDepth, sizeof(OutboundMsg));
     _cfgLock = xSemaphoreCreateMutex();
     _closed = xSemaphoreCreateBinary();
     if (!_inbox || !_outbox || !_cfgLock || !_closed) return false;

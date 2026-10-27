@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "Base64.h"
+#include "JsonAlloc.h"
 
 namespace ota {
 
@@ -77,14 +78,14 @@ struct Release {
  * missing (r.tag is still filled when the tag itself is valid: older releases have no app image).
  */
 inline bool parseRelease(const char* json, size_t len, Release& r) {
-    JsonDocument filter;
+    JsonDocument filter(JsonPsramAllocator::instance());
     filter["tag_name"] = true;
     filter["draft"] = true;
     filter["prerelease"] = true;
     filter["assets"][0]["name"] = true;
     filter["assets"][0]["browser_download_url"] = true;
     filter["assets"][0]["size"] = true;
-    JsonDocument doc;
+    JsonDocument doc(JsonPsramAllocator::instance());
     if (deserializeJson(doc, json, len, DeserializationOption::Filter(filter))) return false;
     if ((doc["draft"] | false) || (doc["prerelease"] | false)) return false;
     const char* tag = doc["tag_name"] | "";
