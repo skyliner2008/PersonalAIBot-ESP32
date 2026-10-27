@@ -176,7 +176,8 @@ void AgentController::handleAudioInput() {
     // Power save (dim clock): the mic is off - only a tap wakes it (user's choice); asleep it stays on.
     // With the wake word only (wiki 14) it stays on there too: nothing but the word can wake it, and the
     // clock is where the board spends most of its time (the user called "Jarvis" at the clock: nothing)
-    const bool wordOnly = _cfg.wakeMode == 1 && _wakeWord.ready();
+    // T120: "both" (the default) too - only the word was left out; loudness still never wakes the clock
+    const bool wordAtClock = _cfg.wakeMode != 0 && _wakeWord.ready();
     if (_wordTest && deadline::reached(now, _wordTestUntil)) {
         _wordTest = false;
         Serial.printf("[Wake] self-test over: heard %u time(s) in total\n", (unsigned)_wakeWord.detections());
@@ -187,7 +188,7 @@ void AgentController::handleAudioInput() {
     const bool bargeIn = AGENT_BARGE_IN_WORD && AGENT_HALF_DUPLEX && speaking && !_sleeping && _configOk && !_muted &&
                          !_powerSave && _cfg.wakeMode != 0 && _wakeWord.ready();
     const bool allow = wordTest || bargeIn ||
-                       (_configOk && !_muted && (!_powerSave || wordOnly) && !(AGENT_HALF_DUPLEX && speaking));
+                       (_configOk && !_muted && (!_powerSave || wordAtClock) && !(AGENT_HALF_DUPLEX && speaking));
     // the assistant just finished: users answer right away (not when it is about to sleep - e.g. after
     // play_radio, the follow-up window would stream the radio as "user speech")
     auto armFollowUp = [&]() {
@@ -385,7 +386,8 @@ void AgentController::handleAudioInput() {
             }
             // wake word mode: loudness alone no longer wakes it (the radio, the TV, a cough); "both" keeps
             // either. Without the model partition the setting falls back to loudness.
-            if (_cfg.wakeMode == 1 && _wakeWord.ready()) wakeNow = false;
+            // At the clock (power save) only the word wakes it in either mode (T120).
+            if ((_cfg.wakeMode == 1 || _powerSave) && _wakeWord.ready()) wakeNow = false;
             const bool byWord = _wordFeeding && _wakeWord.takeDetection();
             if (byWord) {
                 Serial.printf("[Mic] ปลุกด้วยคำปลุก (%s)%s\n", _wakeWord.lastWord(), radioSession ? " ขณะวิทยุเล่น" : "");
