@@ -913,6 +913,7 @@ class Studio:
         self.eye_var = tk.StringVar()
         self.model_var = tk.StringVar()
         self.thinking_var = tk.StringVar()
+        self.language_var = tk.StringVar()
         self.textmodel_var = tk.StringVar()
         self.profile_box = self._combo(af, "โปรไฟล์สำเร็จรูป", self.profile_var, 40)
         self.profile_box.bind("<<ComboboxSelected>>", lambda e: self.on_profile_selected())
@@ -928,6 +929,7 @@ class Studio:
         mf.pack(fill="x", pady=(0, 10))
         self.model_box = self._combo(mf, "Live model หลัก", self.model_var, 40)
         self.thinking_box = self._combo(mf, "ระดับการคิด (Ext.)", self.thinking_var, 40)
+        self.language_box = self._combo(mf, "ภาษาที่ AI พูด", self.language_var, 40)
         self.textmodel_box = self._combo(mf, "Text model (ความจำ)", self.textmodel_var, 40)
         self.search_var = tk.BooleanVar(value=False)
         self.consolidate_var = tk.BooleanVar(value=True)
@@ -1028,6 +1030,7 @@ class Studio:
         self.eye_box["values"] = [e["name"] for e in o.get("eyes", [])]
         self.model_box["values"] = [m["label"] for m in o.get("liveModels", [])]
         self.thinking_box["values"] = o.get("thinking", [])
+        self.language_box["values"] = o.get("languages", [])  # T116 (older firmware: none)
         self.textmodel_box["values"] = o.get("textModels", [])
 
     def _idx(self, key, field, value):
@@ -1065,6 +1068,8 @@ class Studio:
             self._set_combo(self.eye_box, self._idx("eyes", "id", c.get("eye")))
             self._set_combo(self.model_box, int(c.get("model", 0)))
             self._set_combo(self.thinking_box, int(c.get("thinking", 0)))
+            if self.language_box["values"]:
+                self._set_combo(self.language_box, int(c.get("language", 0)))
             self._set_combo(self.textmodel_box, int(c.get("textmodel", 0)))
             self.update_eye_swatch()
         self.search_var.set(bool(c.get("search", False)))
@@ -1123,6 +1128,8 @@ class Studio:
         v["eye"] = pick(self.eye_box, "eyes", "id")
         v["model"] = str(max(0, self.model_box.current()))
         v["thinking"] = str(max(0, self.thinking_box.current()))
+        if self.language_box["values"]:
+            v["language"] = str(max(0, self.language_box.current()))
         v["textmodel"] = str(max(0, self.textmodel_box.current()))
         v["search"] = "1" if self.search_var.get() else "0"
         v["consolidate"] = "1" if self.consolidate_var.get() else "0"
@@ -1248,7 +1255,7 @@ class Studio:
         cfg.update({"agent": s.get("agent", cfg.get("agent")), "user": s.get("user", cfg.get("user")),
                     "profile": s.get("profile"), "voice": s.get("voice"), "personality": s.get("personality"),
                     "gender": s.get("gender"), "eye": s.get("eye"), "model": int(s.get("model", 0)),
-                    "thinking": int(s.get("thinking", 0)), "textmodel": int(s.get("textmodel", 0)),
+                    "thinking": int(s.get("thinking", 0)), "language": int(s.get("language", cfg.get("language", 0))), "textmodel": int(s.get("textmodel", 0)),
                     "search": s.get("search") == "1", "consolidate": s.get("consolidate") == "1",
                     "volume": int(s.get("volume", 70)), "brightness": int(s.get("brightness", 80)),
                     "micgain": int(s.get("micgain", 5)), "wake": int(s.get("wake", 2)),

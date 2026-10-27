@@ -383,6 +383,21 @@ void openClockMode() {
     gUi.push(&gPicker);
 }
 
+// T116: the language the assistant speaks (Thai locked by default - a quiet sentence was taken for Spanish)
+void openLanguage() {
+    gPicker.setup("ภาษาที่ AI พูด", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        for (uint8_t i = 0; i < (uint8_t)AiLanguage::Count; i++) {
+            ListScreen::Item& it = l.add(aiLanguageLabel(i), aiLanguageId(i), [i]() {
+                gSettings.update([&](SettingsData& d) { d.language = i; });
+                gUi.pop();
+            });
+            it.checked = s.language == i;
+        }
+    });
+    gUi.push(&gPicker);
+}
+
 void openThinking() {
     gPicker.setup("ระดับการคิด", [](ListScreen& l) {
         const SettingsData s = gSettings.get();
@@ -727,6 +742,7 @@ void buildMenu(ListScreen& l) {
     if (s.model == (uint8_t)LiveModel::Live38Thinking) {
         l.addSubmenu("ระดับการคิด", thinkingLevelId(s.thinking), openThinking);
     }
+    l.addSubmenu("ภาษาที่ AI พูด", aiLanguageLabel(s.language), openLanguage);
     l.addSubmenu("วิทยุออนไลน์", gRadio.active() ? "กำลังเล่น" : "เลือกสถานี", []() { gUi.push(&gRadioUi); });
     l.addSubmenu("หน้าปัดรถ", gVehicle.enabled() ? vehicle::sourceNameTh(gVehicle.source()) : "ปิด", openVehicle);
     l.addSubmenu("เสียงวิทยุ", String(s.volume) + "%", []() {  // the voice stays at aiVolume

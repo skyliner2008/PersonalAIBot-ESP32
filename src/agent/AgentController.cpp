@@ -192,7 +192,7 @@ void AgentController::applySettings(bool initial) {
     const bool sessionChanged = strcmp(n.voice, _cfg.voice) || n.personality != _cfg.personality ||
                                 n.gender != _cfg.gender || strcmp(n.agentName, _cfg.agentName) ||
                                 strcmp(n.userName, _cfg.userName) || n.model != _cfg.model ||
-                                n.thinking != _cfg.thinking || n.googleSearch != _cfg.googleSearch ||
+                                n.thinking != _cfg.thinking || n.language != _cfg.language || n.googleSearch != _cfg.googleSearch ||
                                 n.financeTools != _cfg.financeTools || n.waterTools != _cfg.waterTools;
 
     // the voice at aiVolume (codec), the radio on its own (digital, never louder than the voice)

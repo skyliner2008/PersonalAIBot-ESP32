@@ -266,8 +266,9 @@ bool BleElmLink::open() {
         bleNote("scanning 6 s for an OBD adapter...");
         BLEScan* scan = BLEDevice::getScan();
         scan->setActiveScan(true);
+        // T116: window 99 of 100 ms left Wi-Fi (the assistant's voice) almost no airtime for 6 s - one radio for both
         scan->setInterval(100);
-        scan->setWindow(99);
+        scan->setWindow(30);
         BLEScanResults* res = scan->start(6, false);
         int best = -1, bestRssi = -999;
         for (int i = 0; res && i < res->getCount(); i++) {

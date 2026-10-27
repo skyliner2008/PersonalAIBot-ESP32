@@ -19,6 +19,9 @@
 #include "../util/WifiKnown.h"
 
 enum class LiveModel : uint8_t { Live38 = 0, Live38Thinking = 1, FlashLive31 = 2, Count };
+/** T116: the Live API takes no language code - the prompt locks it. Auto = the user's language (a short, quiet
+ *  sentence was once heard as Spanish and answered in Spanish). */
+enum class AiLanguage : uint8_t { Thai = 0, English = 1, Auto = 2, Count };
 
 struct SettingsData {
     char wifiSsid[33] = "";
@@ -33,6 +36,7 @@ struct SettingsData {
     uint8_t eyeColor = 0;          // index in persona::kEyeColors
     uint8_t model = 0;             // LiveModel
     uint8_t thinking = 0;          // extended-thinking level: 0 low, 1 medium, 2 high
+    uint8_t language = 0;          // AiLanguage: what the assistant speaks (T116)
     uint8_t volume = 70;           // the radio (menu, radio screen, Studio, set_volume) - the voice has aiVolume
     uint8_t aiVolume = 80;         // the assistant's voice + tones: locked here, the radio is turned down separately
     uint8_t brightness = 80;
@@ -67,6 +71,8 @@ const char* liveModelId(uint8_t model);      // "gemini-3.8-live", ...
 const char* liveModelLabel(uint8_t model);   // "Gemini 3.8 Live", ...
 const char* textModelId(uint8_t model);      // "gemini-3.5-flash-lite", ...
 const char* thinkingLevelId(uint8_t level);  // "low" / "medium" / "high"
+const char* aiLanguageId(uint8_t lang);      // "th" / "en" / "auto"
+const char* aiLanguageLabel(uint8_t lang);   // "ไทย (ล็อก)", ...
 
 class Settings {
 public:

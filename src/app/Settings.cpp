@@ -183,6 +183,10 @@ const char* liveModelId(uint8_t m) { return kLiveIds[m < (uint8_t)LiveModel::Cou
 const char* liveModelLabel(uint8_t m) { return kLiveLabels[m < (uint8_t)LiveModel::Count ? m : 0]; }
 const char* textModelId(uint8_t m) { return kTextIds[m < 2 ? m : 0]; }
 const char* thinkingLevelId(uint8_t l) { return kThinking[l < 3 ? l : 0]; }
+static const char* const kLangIds[] = {"th", "en", "auto"};
+static const char* const kLangLabels[] = {"ไทย (ล็อก)", "English (ล็อก)", "ตามภาษาที่ผู้ใช้พูด"};
+const char* aiLanguageId(uint8_t l) { return kLangIds[l < (uint8_t)AiLanguage::Count ? l : 0]; }
+const char* aiLanguageLabel(uint8_t l) { return kLangLabels[l < (uint8_t)AiLanguage::Count ? l : 0]; }
 
 bool Settings::applyProfile(SettingsData& d, const char* profileId) {
     const persona::Profile* p = persona::findProfile(profileId);
@@ -250,6 +254,7 @@ void Settings::load() {
     d.eyeColor = p.getUChar("eye", d.eyeColor);
     d.model = p.getUChar("model", d.model);
     d.thinking = p.getUChar("think", d.thinking);
+    d.language = p.getUChar("lang", d.language);
     const bool hasVolume = p.isKey("vol");
     d.volume = p.getUChar("vol", d.volume);
     d.aiVolume = p.getUChar("aivol", d.aiVolume);
@@ -302,6 +307,7 @@ void Settings::load() {
     if (d.eyeColor >= persona::kEyeColorCount) d.eyeColor = 0;
     if (d.model >= (uint8_t)LiveModel::Count) d.model = 0;
     if (d.thinking > 2) d.thinking = 0;
+    if (d.language >= (uint8_t)AiLanguage::Count) d.language = 0;
     if (d.volume > 100) d.volume = AUDIO_DEFAULT_VOLUME;
     if (d.brightness < 5 || d.brightness > 100) d.brightness = 80;
     if (d.rotation != 1 && d.rotation != 3) d.rotation = 1;
@@ -394,6 +400,7 @@ void Settings::save(const SettingsData& d) {
     p.putUChar("eye", d.eyeColor);
     p.putUChar("model", d.model);
     p.putUChar("think", d.thinking);
+    p.putUChar("lang", d.language);
     p.putUChar("vol", d.volume);
     p.putUChar("aivol", d.aiVolume);
     p.putUChar("bri", d.brightness);

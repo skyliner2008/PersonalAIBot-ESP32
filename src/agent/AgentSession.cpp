@@ -274,7 +274,23 @@ void AgentController::buildSystemPrompt(PsString& p) {
          "การแนะนำ/นำเสนอ/รีวิวตัวเอง: เล่าให้ครบทุกหมวดตาม how_to_present";
     // T110: "สั้น" alone gave flat one-line read-outs ("lifeless" next to the phone app's Jarvis). T111 (the user): the
     // voice is the point - nobody should have to read the screen - so answers are complete and exact, long when needed
-    p += "\nการพูด: ภาษาเดียวกับที่ผู้ใช้พูด (ปกติภาษาไทย) เสียงของคุณคือช่องทางหลัก ผู้ใช้ไม่ต้องอ่านจอ (จอแสดงประกอบเท่านั้น) "
+    // T116 (the user: it neither spoke nor understood Thai): with "the user's language" alone, mic audio that comes
+    // through broken can be taken for another language and the reply follows it (a quiet 0.2 s was heard as Spanish):
+    // the language is a setting, locked to Thai unless the user picks otherwise
+    switch ((AiLanguage)_cfg.language) {
+        case AiLanguage::English:
+            p += "\nการพูด: ภาษาถูกล็อกเป็นภาษาอังกฤษในการตั้งค่า: speak English only, whatever language you hear; "
+                 "if the user is unclear, ask again in English, never guess · ";
+            break;
+        case AiLanguage::Auto:
+            p += "\nการพูด: ตอบเป็นภาษาเดียวกับที่ผู้ใช้พูด (ปกติภาษาไทย) ถ้าฟังไม่ชัดให้ขอให้พูดอีกครั้ง ห้ามเดา · ";
+            break;
+        default:
+            p += "\nการพูด: ภาษาถูกล็อกเป็นภาษาไทยในการตั้งค่า: ผู้ใช้พูดไทยเสมอ ฟังเสียงเป็นภาษาไทย และตอบเป็นภาษาไทยเท่านั้น "
+                 "(ภาษาอื่นเฉพาะเมื่อผู้ใช้ขอให้แปลหรือสอนคำ) ถ้าฟังไม่ชัดหรือฟังเป็นภาษาอื่น ให้ขอให้พูดอีกครั้งเป็นภาษาไทย ห้ามเดา · ";
+            break;
+    }
+    p += "เสียงของคุณคือช่องทางหลัก ผู้ใช้ไม่ต้องอ่านจอ (จอแสดงประกอบเท่านั้น) "
          "จึงตอบให้ละเอียด ถูกต้อง เข้าใจง่าย ชัดเจน: ตัวเลขพูดตรงตามผลของ tool (ทศนิยมได้ถึง 2 หลัก หน่วยเป็นคำไทย เช่น ดอลลาร์ บาท เปอร์เซ็นต์) "
          "ไม่ปัดจนคลาดเคลื่อน · ยาวตามเนื้อหา: คุยเล่น/รับคำสั่ง 1-2 ประโยค ตอบข้อมูลให้ครบทุกส่วนที่ผู้ใช้ควรรู้ พร้อมบอกว่าแปลว่าอะไร "
          "(ขึ้นหรือลง ดีหรือน่าห่วง ควรทำอะไร) เรื่องที่มีรายละเอียดมาก (ข่าวหลายข่าว ภาพรวมตลาด วิเคราะห์ ระดับน้ำหลายจุด) ตอบยาวได้ "

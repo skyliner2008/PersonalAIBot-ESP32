@@ -370,6 +370,7 @@ static void printConfig() {
     d["eye"] = persona::kEyeColors[s.eyeColor % persona::kEyeColorCount].id;
     d["model"] = s.model;
     d["thinking"] = s.thinking;
+    d["language"] = s.language;  // AiLanguage (T116)
     d["textmodel"] = s.textModel;
     d["volume"] = s.volume;      // the radio
     d["aivolume"] = s.aiVolume;  // the voice (locked)
@@ -451,6 +452,8 @@ static void printOptions() {
     for (uint8_t m = 0; m < 2; m++) text.add(textModelId(m));
     JsonArray thinking = d["thinking"].to<JsonArray>();
     for (uint8_t t = 0; t < 3; t++) thinking.add(thinkingLevelId(t));
+    JsonArray langs = d["languages"].to<JsonArray>();
+    for (uint8_t i = 0; i < (uint8_t)AiLanguage::Count; i++) langs.add(aiLanguageLabel(i));
     printTagged("OPTIONS", d);
 }
 
@@ -503,7 +506,7 @@ static int indexOrFind(const String& v, int (*find)(const char*)) {
 // set <field> <value> — returns false for an unknown field / invalid value
 static bool handleSet(const String& field, const String& value) {
     static const char* const kFields[] = {"ssid", "pass", "key", "agent", "user", "voice", "profile",
-                                          "personality", "gender", "eye", "model", "thinking", "textmodel",
+                                          "personality", "gender", "eye", "model", "thinking", "language", "textmodel",
                                           "volume", "aivolume", "brightness", "sleep", "clock", "dimlevel", "rotation", "invert", "consolidate",
                                           "search", "micgain", "touch", "finance", "water", "wake", "wakeword", "wakethreshold"};
     bool known = false;
@@ -544,6 +547,12 @@ static bool handleSet(const String& field, const String& value) {
         } else if (field == "eye") d.eyeColor = (uint8_t)eye;
         else if (field == "model") d.model = (uint8_t)constrain(value.toInt(), 0, (int)LiveModel::Count - 1);
         else if (field == "thinking") d.thinking = (uint8_t)constrain(value.toInt(), 0, 2);
+        else if (field == "language") {  // 0/1/2 or th/en/auto
+            for (uint8_t i = 0; i < (uint8_t)AiLanguage::Count; i++) {
+                if (value == aiLanguageId(i)) d.language = i;
+            }
+            if (isDigit(value[0])) d.language = (uint8_t)constrain(value.toInt(), 0, (int)AiLanguage::Count - 1);
+        }
         else if (field == "textmodel") d.textModel = (uint8_t)constrain(value.toInt(), 0, 1);
         else if (field == "volume") d.volume = (uint8_t)constrain(value.toInt(), 0, 100);
         else if (field == "aivolume") d.aiVolume = (uint8_t)constrain(value.toInt(), 10, 100);
@@ -595,7 +604,7 @@ static void handleConsoleLine(String line) {
         Serial.println("recref [sec] (raw mic + echo reference, interleaved: RECPAIRS <rate> <bytes> + PCM + END)");
         Serial.println("ui tap x y | ui long x y | ui drag x0 y0 x1 y1 | ui open <menu|wifi|apikey|agent|user|profile|voice|info>");
         Serial.println("ui type <text> | ui back | ui home");
-        Serial.println("set <ssid|pass|key|agent|user|voice|profile|personality|gender|eye|model|thinking|textmodel|");
+        Serial.println("set <ssid|pass|key|agent|user|voice|profile|personality|gender|eye|model|thinking|language(th|en|auto)|textmodel|");
         Serial.println("     volume(radio)|aivolume(voice)|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|water|wake(level|word|both)|wakeword(hiesp|jarvis|both, reboot)|wakethreshold(0.40-0.99)> <value>");
         Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
         Serial.println("wifi (remembered networks: WIFIKNOWN <json>) | wifi forget <ssid>");
