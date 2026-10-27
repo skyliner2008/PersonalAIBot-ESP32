@@ -140,7 +140,7 @@ Gemini → inlineData PCM 24 kHz → Base64 decode → playback ring 1 MB
 - TLS roots: GTS Root R1/R3/R4 + GlobalSign ECC R4 (`tools/gen_root_ca.py`)
 - Setup: `responseModalities:["AUDIO"]`, voice `Aoede`, `systemInstruction` (persona + กฎการใช้ความจำ + วันเวลา + core memory + บทสนทนาล่าสุด), `tools` (8, BLOCKING), `input/outputAudioTranscription`, `contextWindowCompression.slidingWindow`, `sessionResumption{handle}`
 - จัดการ: `setupComplete`, `serverContent` (audio/transcripts/interrupted/generationComplete/turnComplete), `toolCall`, `toolCallCancellation`, `sessionResumptionUpdate`, `goAway`, close code/reason
-- gemini-3.8-live: tools default NON_BLOCKING (เราตั้ง BLOCKING; `set_expression` NON_BLOCKING + `scheduling: SILENT` ระดับ FunctionResponse — T071), ห้าม `thinkingLevel`, proactive audio เปิดถาวร
+- gemini-3.8-live: tools default NON_BLOCKING (เราตั้ง BLOCKING; `set_expression` NON_BLOCKING + `scheduling: SILENT` ระดับ FunctionResponse — T071; tool ดึงข้อมูลจากเน็ต NON_BLOCKING + `scheduling: WHEN_IDLE` ผลที่เรียกพร้อมกันส่งครั้งเดียว — T110), ห้าม `thinkingLevel`, proactive audio เปิดถาวร
 - v3.1: `googleSearch` ใส่เมื่อเปิดใช้และไม่ได้ถูกพักเพราะโควตา (โควตา Search หมด → เซิร์ฟเวอร์ปิดด้วย 1011 "exceeded your current quota"
   → ลองใหม่โดยไม่มี Search) · ไม่มี `setupComplete` ภายใน 15 วิ → reconnect · close reason ถูกตัดที่ 123 ไบต์ จึงมี `apitest` (REST) ไว้ดู QuotaFailure
 
@@ -202,7 +202,7 @@ flowchart TB
 
 Tools (v3.4.0, 42 + Google Search; ไม่มี MT5/การเทรด — ข้อมูลการเงินอ่านจาก TradingView อย่างเดียว; สั่งเครื่องด้วยเสียง: set_volume/set_brightness (level หรือ change +/-), configure_device, rest_screen (พักหน้าจอ), play_radio(station: เลข/ชื่อ/แนว จากรายการสถานีใน prompt)/stop_radio (วิทยุออนไลน์ — wiki/12), mute_microphone (เปิดไมค์ได้เฉพาะบนจอ, จำข้ามรีบูต); tools ข้อมูลแสดงการ์ดกราฟิก — `wiki/11-Data-Tools-and-Cards.md`): get_weather • get_oil_price • get_market_quote • convert_currency • get_news • calculate • convert_units • get_world_time • get_location • search_knowledge • notes • [finance] market_overview • market_analysis • market_scan • economic_calendar • position_size • price_alert • ความจำ 5 • set_timer/set_reminder/list_reminders/cancel_reminder • add_task/list_tasks/update_task •
 about_me • water (ThaiWater: ระดับน้ำ/ฝน/พายุ, T100) • get_device_status • set_expression • configure_assistant • list_assistant_options • set_volume • set_brightness • control_led • go_to_sleep
-— behavior ตามโมเดล (3.8 Live BLOCKING, Extended Thinking NON_BLOCKING, 3.1 ไม่ระบุ) — ดู `wiki/09-Assistant-Profiles-and-Tools.md`
+— behavior ตามโมเดล (3.8 Live BLOCKING ยกเว้น tool ดึงข้อมูลจากเน็ต NON_BLOCKING — T110, Extended Thinking NON_BLOCKING, 3.1 ไม่ระบุ) — ดู `wiki/09-Assistant-Profiles-and-Tools.md`
 
 ### งบโทเคนและ auto fallback (v3)
 - Live API คิดโทเคนบริบททั้งหมดทุก turn → `contextWindowCompression` trigger 12k → target 5k, local VAD ส่งเฉพาะเสียงพูด, auto-sleep ปิด session

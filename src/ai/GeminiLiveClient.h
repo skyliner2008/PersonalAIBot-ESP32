@@ -176,6 +176,8 @@ private:
     volatile bool _streamEndPending = false;  // audioStreamEnd that did not fit the queue: sent after it
     uint32_t _audioBytes = 0;
     bool _inProgress = false;
+    bool _toolSinceUsage = false;  // a toolCall came since the last usageMetadata ...
+    bool _blockingReplySinceUsage = false;  // ... and was answered BLOCKING: that turn ran the model twice
     volatile uint32_t _txBytes = 0;
     volatile bool _trace = false;
     uint32_t _traceAudioMsgs = 0;  // audio-only server messages since the last trace line

@@ -152,4 +152,14 @@ inline bool convert(double value, const char* from, const char* to, double& out,
     return true;
 }
 
+/**
+ * Thai gold bar (96.5 %) per baht weight (15.244 g) in baht, from the world price (USD / troy ounce) and the baht
+ * rate: what a Thai user asking "ราคาทอง" means (T110). The Gold Traders Association's own price differs a little
+ * (its margin, its exchange rate): an estimate, to be said as one. 0 if an input is missing.
+ */
+inline double thaiGoldPerBahtWeight(double usdPerTroyOunce, double thbPerUsd) {
+    if (usdPerTroyOunce <= 0 || thbPerUsd <= 0) return 0;
+    return usdPerTroyOunce * thbPerUsd * 15.244 * 0.965 / 31.1034768;
+}
+
 }  // namespace units

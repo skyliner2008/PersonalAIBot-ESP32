@@ -23,6 +23,7 @@
 #include "../ai/GoogleRootCA.h"
 #include "../ui/CardScreen.h"
 #include "../util/JsonAlloc.h"
+#include "../util/Units.h"
 #include "../util/Utf8.h"
 
 namespace webtools {
@@ -263,7 +264,7 @@ void runWeather(JsonObjectConst args, JsonDocument& out, CardData& card) {
     const char* when = cur["time"] | "";  // "2026-10-15T02:30" (Asia/Bangkok)
     snprintf(card.subtitle, sizeof(card.subtitle), "ข้อมูลเวลา %s น. • Open-Meteo",
              strlen(when) >= 16 ? when + 11 : "-");
-    res["note"] = "รายละเอียดแสดงบนจอแล้ว พูดสรุปสั้นๆ เป็นธรรมชาติ";
+    res["note"] = "จอแสดงประกอบ (ผู้ใช้อาจไม่ได้มอง) เล่าให้ครบเป็นธรรมชาติ: ตอนนี้ อุณหภูมิ โอกาสฝน ฝุ่น และวันที่ผู้ใช้ถาม";
 }
 
 // ---------------------------------------------------------------- fuel (Bangchak)
@@ -497,8 +498,29 @@ void runQuote(JsonObjectConst args, JsonDocument& out, CardData& card) {
         copyStr(card.title, sizeof(card.title), "ราคาตลาด");
         copyStr(card.subtitle, sizeof(card.subtitle), "TradingView • เปลี่ยนแปลงวันนี้");
     }
-    out["result"]["note"] = "กราฟแสดงบนจอแล้ว พูดสรุปราคาและการเปลี่ยนแปลงสั้นๆ ไม่ใช่คำแนะนำการลงทุน "
+    out["result"]["note"] = "จอแสดงกราฟประกอบ เล่าราคา (ตัวเลขตรงตามผล) การเปลี่ยนแปลงวันนี้ ช่วงราคา และแนวโน้มที่สำคัญ ไม่ใช่คำแนะนำการลงทุน "
                             "ถ้า market_open=false ให้บอกว่าเป็นราคาปิดล่าสุด (price_time) ไม่ใช่ราคาตอนนี้";
+    // T110: a Thai user's "ราคาทอง" is Thai gold (baht per baht weight) - estimated here, so the model needs no
+    // second lookup or arithmetic of its own (with only the news it said "no price announced yet, cannot compute")
+    float xau = 0, thb = 0;
+    for (JsonObjectConst q : arr) {
+        const char* s = q["symbol"] | "";
+        if (strstr(s, "XAUUSD")) xau = q["price"] | 0.0f;
+        if (strstr(s, "USDTHB")) thb = q["price"] | 0.0f;
+    }
+    if (xau > 0 && thb <= 0) {
+        JsonDocument q(JsonPsramAllocator::instance());
+        if (fetchQuote("FX_IDC:USDTHB", q)) thb = q["close"] | 0.0f;
+    }
+    const double est = units::thaiGoldPerBahtWeight(xau, thb);
+    if (est > 0) {
+        JsonObject g = out["result"]["thai_gold_estimate"].to<JsonObject>();
+        g["bar_baht_per_baht_weight"] = (long)(est / 10.0 + 0.5) * 10;  // the association quotes in 10s / 50s
+        g["usd_thb"] = thb;
+        // T111: once it was left out of the answer ("4,022 ดอลลาร์ต่อออนซ์" only)
+        g["note"] = "ทองคำแท่ง 96.5% บาทละ ประมาณจากทองโลก x ค่าเงินบาท - เล่าราคานี้ด้วยทุกครั้ง (คนไทยถามราคาทองมักหมายถึงราคานี้) "
+                    "บอกว่าเป็นราคาประมาณ (ราคาสมาคมค้าทองคำจริงต่างได้เล็กน้อย)";
+    }
 }
 
 void runFx(JsonObjectConst args, JsonDocument& out, CardData& card) {
@@ -635,8 +657,11 @@ void runNews(JsonObjectConst args, JsonDocument& out, CardData& card) {
         }
     }
     if (*topic) out["result"]["range"] = recent ? "7 วันล่าสุด (ใหม่สุดก่อน)" : "ทุกช่วงเวลา (ไม่พบข่าวใน 7 วัน)";
-    out["result"]["note"] = "หัวข้อข่าวแสดงบนจอแล้ว เล่าสรุป 2-3 ข่าวสั้นๆ ข่าวที่ age_hours มากกว่า 24 "
-                            "ให้บอกวันที่ (published) ด้วย อย่าเล่าเหมือนเป็นข่าววันนี้";
+    // T111: only headlines come back - "ขอรายละเอียดข่าวแรก" was answered with details that were not in them
+    out["result"]["note"] = "จอแสดงหัวข่าวประกอบ เล่าข่าวเด่นทุกข่าวที่เกี่ยวกับที่ถาม ข่าวละ 1-2 ประโยค ข่าวที่ age_hours มากกว่า 24 "
+                            "ให้บอกวันที่ (published) ด้วย อย่าเล่าเหมือนเป็นข่าววันนี้ · ผลมีแค่หัวข่าว: ผู้ใช้ขอรายละเอียดข่าวไหน "
+                            "ให้เรียก get_news อีกครั้งโดยใส่ topic เป็นคำสำคัญของข่าวนั้น (ได้หัวข่าวจากหลายสำนัก) แล้วเล่ารวม "
+                            "ห้ามแต่งรายละเอียดที่ไม่มีในหัวข่าว";
 }
 
 }  // namespace

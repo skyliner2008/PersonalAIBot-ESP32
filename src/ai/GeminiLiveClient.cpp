@@ -502,6 +502,8 @@ void GeminiLiveClient::poll(uint32_t budgetMs) {
             case MsgKind::Connected:
                 if (!_started) break;
                 Serial.println("[Gemini] Connected, sending setup");
+                _toolSinceUsage = _blockingReplySinceUsage = false;
+                _inProgress = false;
                 sendSetup();
                 break;
             case MsgKind::Disconnected: {
@@ -556,6 +558,10 @@ bool GeminiLiveClient::sendJson(const JsonDocument& doc) {
     _tx = (char*)buf;
     const size_t n = serializeJson(doc, _tx, _txCap);
     if (_trace) Serial.printf("[Trace] tx %lu ms %u B: %.*s\n", (unsigned long)millis(), (unsigned)n, n > 240 ? 240 : (int)n, _tx);
+    // a result the model waits for (BLOCKING: no "scheduling") - the same turn runs the model again (usage log, T111)
+    for (JsonObjectConst fr : doc["toolResponse"]["functionResponses"].as<JsonArrayConst>()) {
+        if (fr["scheduling"].isNull()) _blockingReplySinceUsage = true;
+    }
     return enqueue(_tx, n, 1000);
 }
 
@@ -657,7 +663,10 @@ void GeminiLiveClient::handleMessage(const char* json, size_t len) {
     }
 
     JsonObjectConst toolCall = doc["toolCall"];
-    if (!toolCall.isNull()) _listener->onToolCall(toolCall["functionCalls"]);
+    if (!toolCall.isNull()) {
+        _toolSinceUsage = true;
+        _listener->onToolCall(toolCall["functionCalls"]);
+    }
 
     JsonObjectConst cancel = doc["toolCallCancellation"];
     if (!cancel.isNull()) _listener->onToolCallCancellation(cancel["ids"]);
@@ -672,9 +681,14 @@ void GeminiLiveClient::handleMessage(const char* json, size_t len) {
     if (tokens) {
         // the context billed for this turn (system prompt + tools + conversation): what contextWindowCompression
         // is measured against (T108)
-        Serial.printf("[Gemini] usage: context %u + reply %u tokens\n",
+        // a turn with a tool round trip runs the model twice and bills the context twice (board, T109: 7.3k -> 14.7k
+        // -> 7.9k for no-tool / tool / no-tool turns) - so a lower number after it is no compression. T111: only a
+        // BLOCKING result answered inside the turn does that; a background lookup (NON_BLOCKING) is a turn of its own
+        Serial.printf("[Gemini] usage: context %u + reply %u tokens%s\n",
                       (unsigned)(doc["usageMetadata"]["promptTokenCount"] | 0u),
-                      (unsigned)(doc["usageMetadata"]["responseTokenCount"] | 0u));
+                      (unsigned)(doc["usageMetadata"]["responseTokenCount"] | 0u),
+                      _toolSinceUsage && _blockingReplySinceUsage ? " (tool round trip: context counted twice)" : "");
+        _toolSinceUsage = _blockingReplySinceUsage = false;
         _listener->onUsage(tokens);
     }
 }

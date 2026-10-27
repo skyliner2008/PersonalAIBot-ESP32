@@ -124,11 +124,20 @@ public:
     static bool isSilentTool(const char* name);
 
     /**
+     * Internet lookups that take seconds (weather, news, quotes, water, ...): on gemini-3.8-live declared NON_BLOCKING,
+     * so the model says "let me check" and keeps the conversation going instead of waiting in silence (T110 - BLOCKING
+     * left 2-10 s of dead air per question). Quick ones (calculate, notes, alerts) and memory stay BLOCKING: an answer
+     * about the user must wait for recall_memory (T019).
+     */
+    static bool isBackgroundTool(const char* name);
+
+    /**
      * FunctionResponse "scheduling" for a call of `name` declared with `behavior` (nullptr = leave it out).
      * It belongs NEXT TO "response", not inside it: inside, the server read it as part of the result and
      * used the default WHEN_IDLE - set_expression called beside get_weather made gemini-3.8-live say the
      * whole answer a second time once it was done (T071). Only NON_BLOCKING calls take it: BLOCKING
-     * ignores it and the extended-thinking model does not support it.
+     * ignores it and the extended-thinking model does not support it. Background tools get WHEN_IDLE: the
+     * result waits for the "let me check" to finish, then the model tells it.
      */
     static const char* responseScheduling(const char* name, ToolBehavior behavior);
 

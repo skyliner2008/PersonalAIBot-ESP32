@@ -69,7 +69,8 @@ void declare(JsonArray decls, ToolBehavior behavior, const char* name, const cha
     f["name"] = name;
     f["description"] = description;
     if (behavior == ToolBehavior::Blocking) {
-        f["behavior"] = AgentTools::isSilentTool(name) ? "NON_BLOCKING" : "BLOCKING";
+        const bool async = AgentTools::isSilentTool(name) || AgentTools::isBackgroundTool(name);
+        f["behavior"] = async ? "NON_BLOCKING" : "BLOCKING";
     } else if (behavior == ToolBehavior::NonBlocking) {
         f["behavior"] = "NON_BLOCKING";
     }
@@ -160,9 +161,21 @@ AgentTools::AgentTools(ltm::MemoryStore& memory, ltm::EpisodicLog& episodes, sch
 
 bool AgentTools::isSilentTool(const char* name) { return name && strcmp(name, "set_expression") == 0; }
 
-// Blocking = gemini-3.8-live, where the silent tools alone are declared NON_BLOCKING (see declare())
+bool AgentTools::isBackgroundTool(const char* name) {
+    static const char* const kBackground[] = {"get_weather",      "get_oil_price",   "get_market_quote", "convert_currency",
+                                              "get_news",         "search_knowledge", "get_location",    "market_overview",
+                                              "market_analysis",  "market_scan",     "economic_calendar", "water"};
+    if (!name) return false;
+    for (const char* t : kBackground) {
+        if (!strcmp(name, t)) return true;
+    }
+    return false;
+}
+
+// Blocking = gemini-3.8-live, where the silent and background tools are declared NON_BLOCKING (see declare())
 const char* AgentTools::responseScheduling(const char* name, ToolBehavior behavior) {
-    return behavior == ToolBehavior::Blocking && isSilentTool(name) ? "SILENT" : nullptr;
+    if (behavior != ToolBehavior::Blocking) return nullptr;
+    return isSilentTool(name) ? "SILENT" : isBackgroundTool(name) ? "WHEN_IDLE" : nullptr;
 }
 
 // ============================================================
@@ -932,8 +945,7 @@ bool AgentTools::aboutMe(JsonObjectConst, JsonObject r, const char*&) {
 
     // narration: the session's "answer briefly" rule made the introduction a few sentences long (T098)
     r["how_to_present"] =
-        "Introducing / presenting / reviewing yourself is the exception to answering briefly: narrate it fully in the "
-        "user's language, 2-3 minutes. Start with who you are (name, personality, this device and what makes it "
+        "Introducing / presenting / reviewing yourself: narrate it fully in the user's language, 2-3 minutes. Start with who you are (name, personality, this device and what makes it "
         "yours, firmware version), then go through EVERY ability group in order, each with 2-3 sentences and a "
         "concrete example the user could say, then what is connected right now. Speak in natural sentences, never "
         "read tool names, ids or symbols, do not stop half way. End by asking which part to explain or try. "

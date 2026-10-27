@@ -241,6 +241,7 @@ void AgentController::startFreshSession(const char* hint) {
     _awaitingReply = false;
     _awaitToolAnswer = false;
     _reasoningAt = 0;
+    _nudgeAt = 0;
     if (hint) _face->setHint(hint, 2000);
     if (_gemini.started()) _gemini.restart();
 }
@@ -251,10 +252,10 @@ void AgentController::buildSystemPrompt(PsString& p) {
     p = "คุณคือ \"";
     p += _cfg.agentName;
     p += "\" ผู้ช่วยส่วนตัว AI บนอุปกรณ์ตั้งโต๊ะของผู้ใช้";
-    if (_cfg.userName[0]) {
-        p += " ผู้ใช้ชื่อ \"";
+    if (_cfg.userName[0]) {  // T110: "ผู้ใช้ชื่อ" alone - the model never used it
+        p += " เรียกผู้ใช้ว่า \"";
         p += _cfg.userName;
-        p += "\"";
+        p += "\" (บ้างเป็นครั้งคราว ไม่ต้องทุกประโยค)";
     }
     // waking it = calling its name: "จาวิส" alone was taken for a question (search_knowledge "jawit") or
     // replayed an old request (it opened the radio)
@@ -263,35 +264,50 @@ void AgentController::buildSystemPrompt(PsString& p) {
         if (_cfg.wakeWord != 0) p += " หรือคำปลุก \"Hi ESP\" (อาจถอดเป็น ไฮอีเอสพี, Hi ISP ฯลฯ)";
         if (_cfg.wakeWord != 1) p += " หรือคำปลุก \"Jarvis\"";
     }
-    p += " ถ้าประโยคมีแค่ชื่อคุณ คำปลุก หรือคำทักทาย ให้ขานรับสั้นๆ แล้วรอฟัง ห้ามเรียก tool ห้ามค้นหาคำนั้น "
+    p += " ถ้าประโยคมีแค่ชื่อคุณ คำปลุก หรือคำทักทาย ให้ขานรับสั้นๆ อย่างเป็นกันเอง (ไม่ซ้ำคำเดิมทุกครั้ง) แล้วรอฟัง ห้ามเรียก tool ห้ามค้นหาคำนั้น "
          "ห้ามเปิด/เปลี่ยนวิทยุ และห้ามทำคำสั่งเก่า ถ้ามีคำสั่งต่อท้าย ให้ทำตามคำสั่งนั้น";
     p += "\nนิสัย: ";
     p += pers.prompt;
     // what it can do changes with the firmware and what is connected: read it, never from memory (about_me)
     p += "\nตัวตน: ถ้าผู้ใช้ถามว่าคุณเป็นใคร ทำอะไรได้บ้าง ขอให้แนะนำ/นำเสนอ/รีวิวตัวเอง หรือถามว่าทำสิ่งใดได้ไหม "
          "ให้เรียก about_me แล้วตอบจากผลนั้นเท่านั้น (ความสามารถเพิ่มขึ้นเมื่ออัปเดตเฟิร์มแวร์ ห้ามตอบจากความจำ) "
-         "การแนะนำ/นำเสนอ/รีวิวตัวเองเป็นข้อยกเว้นของการตอบสั้น: เล่าให้ครบทุกหมวดตาม how_to_present";
-    p += "\nการพูด: ตอบเป็นภาษาเดียวกับที่ผู้ใช้พูด (ปกติภาษาไทย) สั้น เป็นธรรมชาติ ";
+         "การแนะนำ/นำเสนอ/รีวิวตัวเอง: เล่าให้ครบทุกหมวดตาม how_to_present";
+    // T110: "สั้น" alone gave flat one-line read-outs ("lifeless" next to the phone app's Jarvis). T111 (the user): the
+    // voice is the point - nobody should have to read the screen - so answers are complete and exact, long when needed
+    p += "\nการพูด: ภาษาเดียวกับที่ผู้ใช้พูด (ปกติภาษาไทย) เสียงของคุณคือช่องทางหลัก ผู้ใช้ไม่ต้องอ่านจอ (จอแสดงประกอบเท่านั้น) "
+         "จึงตอบให้ละเอียด ถูกต้อง เข้าใจง่าย ชัดเจน: ตัวเลขพูดตรงตามผลของ tool (ทศนิยมได้ถึง 2 หลัก หน่วยเป็นคำไทย เช่น ดอลลาร์ บาท เปอร์เซ็นต์) "
+         "ไม่ปัดจนคลาดเคลื่อน · ยาวตามเนื้อหา: คุยเล่น/รับคำสั่ง 1-2 ประโยค ตอบข้อมูลให้ครบทุกส่วนที่ผู้ใช้ควรรู้ พร้อมบอกว่าแปลว่าอะไร "
+         "(ขึ้นหรือลง ดีหรือน่าห่วง ควรทำอะไร) เรื่องที่มีรายละเอียดมาก (ข่าวหลายข่าว ภาพรวมตลาด วิเคราะห์ ระดับน้ำหลายจุด) ตอบยาวได้ "
+         "เล่าไล่ทีละเรื่องจนครบ · พูดแบบคนจริงที่มีชีวิตชีวา มีอารมณ์ร่วมกับเรื่อง (ดีใจ ตื่นเต้น ทึ่ง เห็นใจ แซวเบาๆ ตามนิสัย) "
+         "ใช้คำหลากหลาย ไม่ขึ้นต้นแบบเดิมซ้ำๆ ";
     p += persona::politeParticle((persona::Gender)_cfg.gender);
-    p += " ไม่อ่านสัญลักษณ์หรือรายการยาว\n";
+    p += " แปลงตาราง/รายการเป็นประโยคพูด ไม่อ่านสัญลักษณ์ ห้ามพูดชื่อ tool หรือคำสั่งแบบ ชื่อ(...) ออกมา (เรียก tool อย่างเงียบๆ)\n";
+    p += "การทำงานแบบเอเจนต์: คำขอชัดเจนให้ลงมือเรียก tool ทันทีใน turn นั้น ไม่ต้องถามยืนยันเรื่องเล็ก ห้ามพูดว่าเดี๋ยวดูให้แล้วไม่เรียก "
+         "• งานหลายขั้นให้เรียกหลาย tool ต่อกันเองจนได้คำตอบครบ (เช่น ดึงราคาแล้ว calculate) • ถามหลายเรื่องในครั้งเดียว ตอบให้ครบทุกเรื่อง "
+         "• tool ไม่ได้ผล ลอง tool อื่นหรือคำค้นอื่นก่อนบอกว่าทำไม่ได้ • คิดล่วงหน้าแทนผู้ใช้: ถ้ามีขั้นต่อไปที่ช่วยได้ชัดๆ "
+         "(ตั้งเตือน แจ้งเตือนราคา จดงาน ดูต่อ) เสนอสั้นๆ 1 ประโยคท้ายคำตอบ (ไม่ต้องทุกครั้ง และไม่ทำเองถ้าไม่ได้ขอ)\n";
     if (_activeModel != (uint8_t)LiveModel::FlashLive31) {
         // T108: 3.8 Live / Extended Thinking have proactive audio on for good (cannot be turned off): it may stay
         // silent on audio it judges not meant for it - the board only sends what its own VAD / wake word let through
         p += "การฟัง: เสียงที่ส่งมาถึงคุณผ่านการกรองของอุปกรณ์แล้ว ถ้าเป็นผู้ใช้พูดกับคุณ (คำถาม/คำสั่ง แม้สั้นหรือไม่ได้เรียกชื่อ) "
              "ให้ตอบเสมอ เงียบเฉพาะเสียงที่ชัดว่าไม่ได้พูดกับคุณ (วิทยุ ทีวี คนอื่นคุยกัน)\n";
     }
-    if (_activeModel == (uint8_t)LiveModel::Live38Thinking) {
-        // T108: here every tool runs in the background (NON_BLOCKING only) - the model keeps talking meanwhile
-        p += "เครื่องมือทำงานเบื้องหลัง: เรียกแล้วบอกผู้ใช้สั้นๆ ว่ากำลังดูให้ แล้วรอผลก่อนพูดตัวเลขหรือข้อเท็จจริง ห้ามพูดผลล่วงหน้า\n";
+    if (behaviorFor(_activeModel) != ToolBehavior::Unspecified) {
+        // T108: on Extended Thinking every tool runs in the background (NON_BLOCKING only); T110: on 3.8 Live the
+        // Internet lookups do (AgentTools::isBackgroundTool) - the model keeps talking meanwhile
+        p += _activeModel == (uint8_t)LiveModel::Live38Thinking ? "เครื่องมือทุกตัว" : "เครื่องมือดึงข้อมูลจากเน็ต (อากาศ ข่าว ราคา น้ำ ความรู้ ฯลฯ)";
+        p += " ทำงานเบื้องหลังหลายวินาที: ตอนเรียกให้พูดรับคำสั้นๆ อย่างเป็นธรรมชาติ (เช่น ขอเช็คให้แป๊บนึง) แล้วหยุดรอ "
+             "ผลมาถึงแล้วค่อยเล่า ห้ามพูดตัวเลขหรือข้อเท็จจริงก่อนได้ผล\n";
     }
     p += "ดวงตา: คุณมีดวงตาบนจอ เรียก set_expression ให้เข้ากับอารมณ์ที่กำลังพูดอย่างเงียบๆ\n"
          "ความจำ: เรียก save_memory/save_relation ทันทีที่รู้ข้อมูลสำคัญของผู้ใช้ และ recall_memory "
          "ก่อนตอบเรื่องส่วนตัว ห้ามแต่งความจำ บันทึกเฉพาะสิ่งที่ผู้ใช้พูดถึงตัวเองชัดเจน "
          "(ไม่ใช่เสียงไม่ชัด เสียงวิทยุ/ทีวี หรือคนอื่นคุยกัน)\n"
          "ผู้ช่วยส่วนตัว: ใช้ set_timer, set_reminder, add_task ฯลฯ ตามที่ผู้ใช้ขอ ";
-    p += "ข้อมูลสด (แสดงกราฟิกบนจอให้เอง แล้วคุณพูดสรุปสั้นๆ จากผลของ tool นั้นเท่านั้น ถ้า tool ตอบ error/busy "
+    p += "ข้อมูลสด (แสดงกราฟิกบนจอประกอบให้เอง แล้วคุณเล่าจากผลของ tool นั้นเท่านั้นให้ครบถ้วน ถ้า tool ตอบ error/busy "
          "หรือยังไม่ตอบ ให้บอกตรงๆ ว่ายังไม่ได้ข้อมูล ห้ามเดาหรือใช้ตัวเลขเก่า): อากาศ/ฝน/ฝุ่น PM2.5 = get_weather, "
-         "ราคาน้ำมันในไทย = get_oil_price, หุ้น/ดัชนี/ทองคำ/คริปโต/ค่าเงิน/น้ำมันดิบ = get_market_quote, "
+         "ราคาน้ำมันในไทย = get_oil_price, หุ้น/ดัชนี/ทองคำ/คริปโต/ค่าเงิน/น้ำมันดิบ = get_market_quote "
+         "(ทองคำได้ราคาทองแท่งไทยบาทละโดยประมาณมาด้วย: คนไทยถามราคาทองมักหมายถึงอันนี้ เล่าคู่กับทองโลก), "
          "แลกเงิน = convert_currency, ข่าว = get_news, คิดเลข = calculate (ห้ามคิดเลขเอง), แปลงหน่วย = convert_units, "
          "เวลาต่างประเทศ = get_world_time, ความรู้ทั่วไป/ใครคือ/คืออะไร = search_knowledge, จดโน้ตยาว = notes ";
     if (_cfg.waterTools) {  // T100: measured data, while get_weather is the forecast
@@ -305,7 +321,7 @@ void AgentController::buildSystemPrompt(PsString& p) {
              "(บอกเสมอว่าไม่ใช่คำแนะนำการลงทุน) ";
     }
     p += searchAvailable() ? "เรื่องอื่นที่ต้องใช้ข้อมูลล่าสุดใช้ Google Search "
-                           : "ไม่มีการค้นเว็บทั่วไป: เรื่องล่าสุด (ผลกีฬา หวย เหตุการณ์ ราคาทองไทย) ใช้ get_news ระบุ topic "
+                           : "ไม่มีการค้นเว็บทั่วไป: เรื่องล่าสุด (ผลกีฬา หวย เหตุการณ์ ราคาทองตามประกาศสมาคมฯ) ใช้ get_news ระบุ topic "
                              "แล้วตอบจากหัวข่าวพร้อมบอกวันที่ ข้อเท็จจริงทั่วไปใช้ search_knowledge ถ้ายังหาไม่ได้ให้บอกตรงๆ "
                              "ว่าค้นไม่ได้ ห้ามเดา ";
     p += "เปลี่ยนเสียง/นิสัย/ชื่อด้วย configure_assistant ถ้าผู้ใช้บอกลาหรือราตรีสวัสดิ์ให้เรียก go_to_sleep\n"
@@ -372,7 +388,9 @@ void AgentController::buildSystemPrompt(PsString& p) {
         // the assistant's own lines are in here too: one greeting that raised an old topic used to be
         // fed back into the next session, which raised it again (a loop - T054)
         p += "\n## บทสนทนาล่าสุดก่อนเซสชันนี้ (บริบทเท่านั้น ไม่ต้องทวน อย่ายกเรื่องเก่าขึ้นมาเองตอนทักทาย)\n";
-        p += recent;
+        PsString cleanRecent;  // T109: lines logged before the filter could still hold "set_expression(...)"
+        transcript::stripToolCallText(recent.c_str(), cleanRecent);
+        p += cleanRecent;
     }
 }
 
@@ -457,6 +475,10 @@ void AgentController::onSetupComplete() {
     _failedResumes = 0;
     _freshPending = false;  // the new session is up: its own resumption handles count from here
     _sessionGen++;  // web-tool answers from an older session are dropped
+    _webPending = 0;
+    _toolBatch.clear();
+    _textTurn.clear();
+    _nudgeAt = 0;  // a nudge for the old session's question
     _liveSel.reportSuccess(_activeModel);
     _fatalError = false;
     if (_searchInSetup) {
@@ -489,6 +511,7 @@ void AgentController::onDisconnected(bool wasReady) {
     _awaitingReply = false;
     _awaitToolAnswer = false;  // the new session never saw that result
     _reasoningAt = 0;
+    _nudgeAt = 0;
     _vadOpen = false;
     _prerollDraining = false;  // the queue was dropped with the link
     const bool closeSeen = _closeSeen;
@@ -544,8 +567,8 @@ void AgentController::onServerClose(int code, const char* reason) {
         _reconnectPending = true;
         return;
     }
-    if (f == fallback::Failure::SessionExpired) {  // stale resume handle: fresh session, same model
-        Serial.println("[Agent] Resume handle expired -> fresh session");
+    if (f == fallback::Failure::SessionExpired) {  // stale / still-held resume handle: fresh session, same model
+        Serial.println("[Agent] Resume handle expired or still held by the dropped link -> fresh session");
         _resumeHandle = "";
         _failedResumes = 0;
         _reconnectPending = true;
@@ -735,6 +758,7 @@ void AgentController::onAudio(const int16_t* pcm, size_t samples) {
     if (_dropAudio) return;
     if (!_userTurn.empty()) flushUserTurn();
     if (!_replyAudio) {  // first audio of this reply: free the uplink for it
+        cancelNudge();
         _replyAudio = true;
         _gemini.discardQueuedMic();
         _gemini.takeTurnReadMs();  // per-reply network figure starts now
@@ -753,6 +777,7 @@ void AgentController::onAudio(const int16_t* pcm, size_t samples) {
 void AgentController::onInputTranscript(const char* text) {
     if (!_agentTurn.empty()) flushAgentTurn(false);
     if (_userTurn.empty()) _userTurnTs = nowEpoch();
+    cancelNudge();  // the user said something new: that gets its own answer
     _userTurn += text;
     _lastUserSpeech = millis();
     _awaitingReply = true;
@@ -765,14 +790,26 @@ void AgentController::onOutputTranscript(const char* raw) {
     if (_dropAudio) return;
     PsString clean;  // 3.1 Flash Live leaks "functionreponsetext..." after parallel tool calls
     transcript::stripToolScaffolding(raw, clean);
+    PsString spoken;  // T109: "set_expression(emotion=neutral)" said out loud - not shown / logged
+    transcript::stripToolCallText(clean.c_str(), spoken);
+    clean = spoken;
     if (clean.empty()) return;
     const char* text = clean.c_str();
+    cancelNudge();
     if (!_userTurn.empty()) flushUserTurn();
     if (_agentTurn.empty()) _agentTurnTs = nowEpoch();
     _agentTurn += text;
     _awaitingReply = false;
     markAnswered();
     _face->pushTranscript('a', text);
+}
+
+// T111: the model went on by itself (speech, a tool call) or the user spoke again - the pending nudge is not needed
+void AgentController::cancelNudge() {
+    if (!_nudgeAt) return;
+    _nudgeAt = 0;
+    _nudgeText.clear();
+    Serial.println("[Chat] the turn went on - no nudge needed");
 }
 
 void AgentController::onInterrupted() {
@@ -793,15 +830,40 @@ void AgentController::onTurnComplete() {
     _reasoningAt = reasoning ? millis() : 0;
     // T107: gemini-3.8-live sometimes ends the turn without a word right after a web tool result that took a few
     // seconds (the same result from the cache a minute later was answered). Ask once for the answer.
+    // T110: an empty turn that started another lookup (the model chaining tools: gold price -> Thai gold news) is not
+    // a missing answer - nudging it made the model fetch the same quote again and again (69k tokens / minute)
+    // T111: none of them is sent at once - see kNudgeDelayMs
     bool nudged = false;
-    if (!reasoning && _awaitToolAnswer && !_replyAudio && _agentTurn.empty() && _gemini.isReady()) {
+    if (!reasoning && _awaitToolAnswer && _webPending == 0 && !_replyAudio && _agentTurn.empty() && _gemini.isReady()) {
         _awaitToolAnswer = false;
         nudged = true;
-        Serial.println("[Chat] empty turn after a tool result - asking for the answer");
-        _gemini.sendClientText("(ระบบ: ผลของเครื่องมือมาถึงแล้ว ตอบคำถามล่าสุดของผู้ใช้จากผลนั้นเลย)");
+        _nudgeWhy = "empty turn after a tool result - asking for the answer";
+        _nudgeText = "(ระบบ: ผลของเครื่องมือมาถึงแล้ว ตอบคำถามล่าสุดของผู้ใช้จากผลนั้นเลย)";
+        _nudgeAt = millis();
     } else if (_replyAudio || !_agentTurn.empty()) {
-        _awaitToolAnswer = false;
+        // T110: a "let me check" that began before the result went out is not the answer to it
+        if (!_replyAudio || (int32_t)(_replyT0 - _toolAnswerAt) >= 0) _awaitToolAnswer = false;
+    } else if (!reasoning && _webPending == 0 && (_userTurn.size() >= 6 || !_textTurn.empty()) && _gemini.isReady() &&
+               !gRadio.active() && !_sleepPending && !_mutePending) {
+        // T109: the user was heard (transcript) but the turn ended empty (~12 reply tokens, no audio): a user had to
+        // ask twice ("ราคาทองคำปัจจุบันเท่าไหร่" - the repeat was answered). Proactive audio judging it not meant
+        // for the model, or a glitch. Hand it over once more as text. (Not with the radio on: that is not for it.
+        // T110: not with a lookup still running in the background either - the answer is on its way. A typed message
+        // or reminder can end the same way: "ระดับน้ำที่อุบลฯ" got only a set_expression.)
+        nudged = true;
+        if (_userTurn.size() >= 6) {
+            _nudgeWhy = "heard the user but the turn ended without an answer - asking once";
+            _nudgeText = "(ระบบ: ผู้ใช้เพิ่งพูดกับคุณว่า \"";
+            _nudgeText += _userTurn;
+            _nudgeText += "\" แต่คุณยังไม่ได้ตอบ ตอบเลย)";
+        } else {
+            _nudgeWhy = "text turn ended without an answer - asking once";
+            _nudgeText = "(ระบบ: ข้อความนี้ยังไม่ได้รับคำตอบ ตอบเลย) ";
+            _nudgeText += _textTurn;
+        }
+        _nudgeAt = millis();
     }
+    _textTurn.clear();
     flushUserTurn();
     flushAgentTurn(_dropAudio);
     _audio->flushPlayback();
@@ -840,6 +902,12 @@ void AgentController::reportReply() {
 void AgentController::onToolCall(JsonArrayConst calls) {
     noteActivity();
     markAnswered();
+    for (JsonObjectConst call : calls) {  // a set_expression alone is what the empty turn already had (T111)
+        if (strcmp(call["name"] | "", "set_expression") != 0) {
+            cancelNudge();
+            break;
+        }
+    }
     JsonDocument resp(JsonPsramAllocator::instance());
     JsonArray responses = resp["toolResponse"]["functionResponses"].to<JsonArray>();
     for (JsonObjectConst call : calls) {
@@ -848,6 +916,7 @@ void AgentController::onToolCall(JsonArrayConst calls) {
             String args;
             serializeJson(call["args"], args);
             if (_web.submit(call["id"] | "", name, args.c_str(), _sessionGen)) {
+                if (_webPending < 255) _webPending++;
                 Serial.printf("[Tool] %s %s -> fetching...\n", name, args.c_str());
                 _face->setHint("กำลังดึงข้อมูล...", 2500);
                 _toolBusy.arm(millis(), 15000);
@@ -858,6 +927,9 @@ void AgentController::onToolCall(JsonArrayConst calls) {
         if (!call["id"].isNull()) fr["id"] = call["id"];
         fr["name"] = name;
         JsonObject response = fr["response"].to<JsonObject>();
+        // gemini-3.8-live: set_expression is NON_BLOCKING - answered SILENT, or the model is prompted
+        // again once its reply is done and says it a second time (T071); background lookups WHEN_IDLE (T110)
+        if (const char* s = AgentTools::responseScheduling(name, behaviorFor(_activeModel))) fr["scheduling"] = s;
         if (webtools::isWebTool(name)) {
             // its queue is full: AgentTools does not know web tools and answered "unknown function", after
             // which the model stopped using the tool for the whole session (T069)
@@ -869,9 +941,6 @@ void AgentController::onToolCall(JsonArrayConst calls) {
             continue;
         }
         const bool ok = _tools->execute(name, call["args"].as<JsonObjectConst>(), response);
-        // gemini-3.8-live: set_expression is NON_BLOCKING - answered SILENT, or the model is prompted
-        // again once its reply is done and says it a second time (T071)
-        if (const char* s = AgentTools::responseScheduling(name, behaviorFor(_activeModel))) fr["scheduling"] = s;
         if (strcmp(name, "set_expression") != 0) {
             String args;  // what the model asked for (e.g. which radio station) - memory tools stay private
             const bool privateArgs = !strncmp(name, "save_", 5) || !strcmp(name, "notes");
@@ -955,19 +1024,33 @@ void AgentController::handleWebResults() {
             line += '\n';
             Serial.write((const uint8_t*)line.data(), line.size());
         } else if (r.tag == _sessionGen && _gemini.isReady()) {
-            JsonDocument resp(JsonPsramAllocator::instance());
-            JsonObject fr = resp["toolResponse"]["functionResponses"].add<JsonObject>();
+            if (_webPending) _webPending--;
+            if (!_toolBatch.size()) _toolBatchAt = millis();
+            JsonObject fr = _toolBatch["toolResponse"]["functionResponses"].add<JsonObject>();
             if (r.id[0]) fr["id"] = r.id;
             fr["name"] = r.name;
             fr["response"] = result.as<JsonObjectConst>();
-            if (!_gemini.sendJson(resp)) Serial.println("[Tool] ERROR: failed to send toolResponse");
-            else _awaitToolAnswer = true;  // T107: an empty turn after this gets one nudge
+            // T110: a background lookup on gemini-3.8-live - told once the "let me check" has finished
+            if (const char* s = AgentTools::responseScheduling(r.name, behaviorFor(_activeModel))) fr["scheduling"] = s;
         } else {
             Serial.printf("[Tool] %s result dropped (session changed)\n", r.name);
         }
         if (!ok) _face->setHint("ดึงข้อมูลไม่สำเร็จ", 2000);
         _toolBusy.arm(millis(), 600);
         delete r.json;
+    }
+    // the last running lookup is in (or one never came back: a result the web task could not queue)
+    if (_toolBatch.size() && (_webPending == 0 || millis() - _toolBatchAt > 30000)) {
+        _webPending = 0;
+        if (!_gemini.isReady()) {
+            Serial.println("[Tool] results dropped (session closed)");
+        } else if (!_gemini.sendJson(_toolBatch)) {
+            Serial.println("[Tool] ERROR: failed to send toolResponse");
+        } else {
+            _awaitToolAnswer = true;  // T107: an empty turn after this gets one nudge
+            _toolAnswerAt = millis();
+        }
+        _toolBatch.clear();
     }
 }
 

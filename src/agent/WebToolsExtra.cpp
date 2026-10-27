@@ -328,7 +328,7 @@ void runKnowledge(JsonObjectConst a, JsonDocument& out, CardData& card) {
             r["title"] = title;
             r["summary"] = extract;
             r["source"] = String(lang) + ".wikipedia.org";
-            r["note"] = "สรุปจาก Wikipedia แสดงบนจอแล้ว ตอบสั้นๆ";
+            r["note"] = "สรุปจาก Wikipedia (จอแสดงประกอบ) เล่าสาระสำคัญให้ครบตามที่ผู้ใช้ถาม";
             card.kind = CardData::Text;
             snprintf(card.title, sizeof(card.title), "Wikipedia (%s)", lang);
             copyStr(card.big, sizeof(card.big), title);
@@ -392,7 +392,8 @@ void runMarketOverview(JsonObjectConst a, JsonDocument& out, CardData& card) {
         }
     }
     if (!card.subtitle[0]) copyStr(card.subtitle, sizeof(card.subtitle), "TradingView • เปลี่ยนแปลงวันนี้");
-    out["result"]["note"] = "ภาพรวมแสดงบนจอแล้ว สรุปเด่นๆ 2-3 อย่าง ตลาดที่ market_open=false คือราคาปิดล่าสุด";
+    out["result"]["note"] = "จอแสดงภาพรวมประกอบ เล่าครบทุกรายการพร้อมตัวเลข ตัวที่เปลี่ยนแรงสุดก่อน แล้วสรุปภาพรวมตลาด "
+                            "ตลาดที่ market_open=false คือราคาปิดล่าสุด";
 }
 
 // ============================================================ technical analysis
@@ -440,7 +441,7 @@ void runMarketAnalysis(JsonObjectConst a, JsonDocument& out, CardData& card) {
             if (!kTf[i][0]) card.gauge = v;
         }
         snprintf(card.big, sizeof(card.big), "%.5g (%+.2f%%)", q["close"] | 0.0, q["change"] | 0.0);
-        r["note"] = "แสดงบนจอแล้ว สรุปแนวโน้มแต่ละกรอบเวลาสั้นๆ ไม่ใช่คำแนะนำการลงทุน";
+        r["note"] = "จอแสดงประกอบ เล่าแนวโน้มทุกกรอบเวลาพร้อมตัวเลขสำคัญ แล้วสรุปภาพรวม ไม่ใช่คำแนะนำการลงทุน";
         return;
     }
 
@@ -536,7 +537,7 @@ void runMarketAnalysis(JsonObjectConst a, JsonDocument& out, CardData& card) {
         if (!q["earnings_per_share_basic_ttm"].isNull()) fu["eps"] = q["earnings_per_share_basic_ttm"];
         if (!q["sector"].isNull()) fu["sector"] = q["sector"];
     }
-    r["note"] = "แสดงบนจอแล้ว สรุปภาพรวมสั้นๆ ไม่ใช่คำแนะนำการลงทุน";
+    r["note"] = "จอแสดงประกอบ เล่าภาพรวมพร้อมตัวเลขสำคัญ (ราคา สัญญาณ ตัวชี้วัด) ไม่ใช่คำแนะนำการลงทุน";
 }
 
 // ============================================================ scanner
@@ -612,7 +613,7 @@ void runMarketScan(JsonObjectConst a, JsonDocument& out, CardData& card) {
         setError(out, "ไม่พบรายการตามเงื่อนไข");
         return;
     }
-    out["result"]["note"] = "รายการแสดงบนจอแล้ว เล่าเด่นๆ 2-3 ตัว ไม่ใช่คำแนะนำการลงทุน";
+    out["result"]["note"] = "จอแสดงรายการประกอบ เล่าทุกตัวในรายการพร้อมตัวเลข (อันดับต้นก่อน) ไม่ใช่คำแนะนำการลงทุน";
 }
 
 // ============================================================ economic calendar (ForexFactory feed)
@@ -703,7 +704,7 @@ void runEconomicCalendar(JsonObjectConst a, JsonDocument& out, CardData& card) {
                                            : "ไม่มีข่าวเศรษฐกิจสำคัญในช่วงที่ถาม (ข้อมูลครอบคลุมเฉพาะสัปดาห์นี้ อาทิตย์-เสาร์)";
         return;
     }
-    out["result"]["note"] = "ตารางแสดงบนจอแล้ว บอกเหตุการณ์สำคัญ 2-3 รายการพร้อมเวลาไทย ข้อมูลนี้ไม่มีตัวเลขจริง (actual) "
+    out["result"]["note"] = "จอแสดงตารางประกอบ บอกเหตุการณ์ทุกรายการที่เกี่ยวกับที่ถามพร้อมเวลาไทย (สำคัญมากก่อน) ข้อมูลนี้ไม่มีตัวเลขจริง (actual) "
                             "ของข่าวที่ประกาศแล้ว (done=true) ห้ามเดาผล ถ้าถามผลให้ใช้ Google Search";
 }
 

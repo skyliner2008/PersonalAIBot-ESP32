@@ -159,6 +159,16 @@ void AgentController::announce(const PsString& text) {
 }
 
 void AgentController::deliverAnnouncements() {
+    // T111: the empty turn's nudge, unless the model went on by itself meanwhile (cancelNudge)
+    if (_nudgeAt && (uint32_t)(millis() - _nudgeAt) >= kNudgeDelayMs) {
+        _nudgeAt = 0;
+        if (_gemini.isReady() && _gemini.sendClientText(_nudgeText.c_str())) {
+            Serial.printf("[Chat] %s\n", _nudgeWhy);
+            _awaitingReply = true;
+            _lastUserSpeech = millis();  // the thinking face counts from here
+        }
+        _nudgeText.clear();
+    }
     if (!_navSay.empty() && (uint32_t)(millis() - _navSayAt) > 15000) {
         Serial.println("[Phone] turn not said in time - dropped (the phone's Maps says it too)");
         _navSay.clear();
@@ -175,8 +185,12 @@ void AgentController::deliverAnnouncements() {
     const PsString& next = turn ? _navSay : _announcements.front().text;
     if (_gemini.sendClientText(next.c_str(), true)) {
         Serial.printf("[Chat] sent text turn (%u bytes)\n", (unsigned)next.size());
-        if (turn) _navSay.clear();
-        else _announcements.erase(_announcements.begin());
+        if (turn) {
+            _navSay.clear();  // (a turn said late is worse than none: no nudge for it)
+        } else {
+            _textTurn = next;  // T110: asked once more if the turn ends without an answer
+            _announcements.erase(_announcements.begin());
+        }
         _awaitingReply = true;
         _lastUserSpeech = millis();
     }
@@ -297,6 +311,13 @@ void AgentController::flushUserTurn() {
 }
 
 void AgentController::flushAgentTurn(bool interrupted) {
+    if (_agentTurn.empty()) return;
+    {  // T109: a tool call said out loud ("set_expression(emotion=happy)") must not reach the log - it came back
+       // through the next session's prompt and was copied again (the chunks are joined here, so a split one too)
+        PsString clean;
+        transcript::stripToolCallText(_agentTurn.c_str(), clean);
+        _agentTurn = clean;
+    }
     if (_agentTurn.empty()) return;
     if (interrupted) _agentTurn += " ...";
     Serial.printf("[Chat] ai: %s\n", _agentTurn.c_str());

@@ -28,7 +28,11 @@ Failure classifyText(const char* t) {
     if (!t || !*t) return Failure::None;
     // "BidiGenerateContent session not found or expired" (1008) = stale resumption handle, seen on the
     // device after waking from sleep. Must be checked before the generic "not found" (model) rule.
-    if ((containsNoCase(t, "session") && (containsNoCase(t, "expired") || containsNoCase(t, "not found"))) ||
+    // "... session is already connected to an existing client" (1008, T111): resuming right after a dropped link
+    // (a write timeout) while the server still holds the old one - it was retried 3 times / 13 s until the server let
+    // go. The same cure: a fresh session at once (the recent conversation is in the new prompt).
+    if ((containsNoCase(t, "session") && (containsNoCase(t, "expired") || containsNoCase(t, "not found") ||
+                                          containsNoCase(t, "already connected"))) ||
         containsNoCase(t, "resumption")) {
         return Failure::SessionExpired;
     }

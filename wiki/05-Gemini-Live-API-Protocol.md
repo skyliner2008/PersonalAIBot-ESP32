@@ -24,11 +24,13 @@ status: implemented
 | Input audio | PCM 16-bit mono **16 kHz** LE, Base64, chunk 40 ms (`audio/pcm;rate=16000`) |
 | Output audio | PCM 16-bit mono **24 kHz** LE, Base64 ใน `inlineData` |
 | Response modality | `AUDIO` เท่านั้น (ข้อความได้จาก `outputAudioTranscription`) |
-| Session | context window compression `triggerTokens 16000 → targetTokens 10000` (T108; งบ 65k TPM); session resumption เปิด |
+| Session | context window compression `triggerTokens 13000 → targetTokens 10000` (T111: setup ~7.6k ต้องเหลือที่ให้บทสนทนา; งบ 65k TPM); session resumption เปิด |
 | Input gating | Local VAD: ส่งเฉพาะช่วงที่พูด + `audioStreamEnd`; ปิด session เมื่อพัก |
 
 > [!NOTE] ข้อแตกต่างของ gemini-3.8-live ที่กระทบโค้ด
-> - Function calling เป็น **NON_BLOCKING โดย default** → เราประกาศ `behavior: "BLOCKING"` ทุก tool (ยกเว้น `set_expression`: NON_BLOCKING + `scheduling: SILENT` ระดับ FunctionResponse — T071)
+> - Function calling เป็น **NON_BLOCKING โดย default** → เราประกาศ `behavior` เองทุก tool: `BLOCKING` (ความจำ ตั้งเวลา ควบคุมเครื่อง calculate notes — T019),
+>   `set_expression` NON_BLOCKING + `scheduling: SILENT` ระดับ FunctionResponse (T071), **tool ดึงข้อมูลจากเน็ต NON_BLOCKING + `scheduling: WHEN_IDLE`** (T110:
+>   `AgentTools::isBackgroundTool` — โมเดลพูดรับคำแล้วรอผล แทนเงียบ 2–10 วิ; ผลของ tool ที่เรียกพร้อมกันส่งใน toolResponse เดียว)
 > - ห้ามส่ง `thinkingLevel` ใน setup · proactive audio เปิดถาวร (โมเดลอาจไม่ตอบเสียงที่ไม่เกี่ยว)
 > - **ตรวจกับเอกสาร 2026-09 (T108):** Affective dialog **ถูกถอดออกจาก API** (ห้ามส่ง `enableAffectiveDialog`) · Proactive audio **เปิดถาวรทั้ง 3.8 Live และ Extended Thinking** —
 >   ส่ง `proactivity.proactiveAudio: false` = error → บอร์ดไม่ส่งทั้งสองค่า (ถูกต้อง) · ไม่รับ language code (คุมภาษาใน system prompt)
@@ -96,7 +98,7 @@ sequenceDiagram
     "tools": [{ "googleSearch": {} }, { "functionDeclarations": [ /* 20 tools, ดู [[09-Assistant-Profiles-and-Tools]] */ ] }],
     "inputAudioTranscription": {},
     "outputAudioTranscription": {},
-    "contextWindowCompression": { "triggerTokens": 16000, "slidingWindow": { "targetTokens": 10000 } },
+    "contextWindowCompression": { "triggerTokens": 13000, "slidingWindow": { "targetTokens": 10000 } },
     "sessionResumption": { "handle": "<ถ้ามี>" }
   }
 }
@@ -126,13 +128,15 @@ sequenceDiagram
 ```json
 {"toolResponse":{"functionResponses":[{"id":"call-1","name":"save_memory","response":{"result":{"status":"saved","memory_id":7,"total_memories":42}}}]}}
 ```
-tool ที่ประกาศ `NON_BLOCKING` (บน 3.8 Live มีแค่ `set_expression`) ต้องบอก `scheduling` เป็น **field ของ FunctionResponse ข้าง `response`** — ไม่ใช่ใน `response`
+tool ที่ประกาศ `NON_BLOCKING` (บน 3.8 Live: `set_expression` + tool ดึงข้อมูลจากเน็ต — T110) ต้องบอก `scheduling` เป็น **field ของ FunctionResponse ข้าง `response`** — ไม่ใช่ใน `response`
 (ตัวอย่าง Python ในหน้า Live tools วางไว้ใน dict ของ response ซึ่งเซิร์ฟเวอร์อ่านเป็นข้อมูลธรรมดา):
 ```json
 {"toolResponse":{"functionResponses":[{"id":"call_5707699","name":"set_expression","response":{"result":{"shown":"happy"}},"scheduling":"SILENT"}]}}
 ```
 ไม่ใส่ = `WHEN_IDLE` (ค่าเริ่มต้น): พอโมเดลพูดจบจะถูกสั่งให้พูดอีกรอบ — `set_expression` ที่เรียกคู่กับ `get_weather` ทำให้ตอบอากาศซ้ำ 2 รอบ (T071) ·
 `INTERRUPT` = ตัดที่พูดอยู่แล้วพูดเรื่องผลนั้น · BLOCKING ไม่สนใจ field นี้ · Extended Thinking ไม่รองรับ scheduling
+· tool ดึงข้อมูลจากเน็ตใช้ `WHEN_IDLE` **ตั้งใจ** (T110): ให้พูด "ขอเช็คแป๊บนึง" จบก่อน แล้วโมเดลค่อยเล่าผล — ผลหลายตัวจากการเรียกพร้อมกัน
+ต้องรวมส่งครั้งเดียว ไม่งั้นโมเดลตอบใหม่ทุกครั้งที่ผลมา (เคยพูดค่าเงินซ้ำ)
 
 **ดูข้อความจริงบนบอร์ด:** serial `trace on` → `[Trace] rx <ms> serverContent{ out:"..." generationComplete }`, `toolCall[ name id=... ]`,
 `[Trace] tx <ms> <bytes> B: {...}` (240 ไบต์แรก) · ก้อนเสียงนับเป็น `(+N audio)` · `trace off` ปิด (ไม่บันทึกค่า)
@@ -176,6 +180,8 @@ tool ที่ประกาศ `NON_BLOCKING` (บน 3.8 Live มีแค่
 - **ปิด session ด้วย close handshake เสมอ** (ส่ง close frame 1000 แล้วรอ close ตอบ ≤1.5 วิ) — ตัดแค่ TCP ทำให้ session ค้างฝั่งเซิร์ฟเวอร์และกินโควตา (T035)
 - **task เดียวถือการเชื่อมต่อ** (`geminiIO`): task อื่นแค่เข้าคิวข้อความ — ส่งเสียงไม่ทันบน Wi-Fi อ่อนจึงไม่ทำให้ TLS session ถูกปิดจากสอง task พร้อมกัน (T039)
 - `1008 "BidiGenerateContent session not found or expired"` = resumption handle หมดอายุ → เริ่ม session ใหม่ ไม่ใช่โมเดลหาย (T034)
+- `1008 "BidiGenerateContent session is already connected to an existing client"` = resume ทันทีหลังการเชื่อมต่อหลุด (เขียนไม่ออก) ขณะ server ยังถือตัวเก่า
+  → เดิมลองซ้ำ handle เดิม 3 ครั้ง / 13 วิ · ตอนนี้จัดเป็น SessionExpired = session ใหม่ทันที (T111)
 - setup ขั้นต่ำสำหรับทดสอบ: `{"setup":{"model":"models/gemini-3.8-live","generationConfig":{"responseModalities":["AUDIO"]}}}` (96 ไบต์) — `setupmode min`
 
 ---

@@ -31,6 +31,7 @@ Everything runs on the board itself: **no server, no Raspberry Pi, no vector dat
 | | |
 |---|---|
 | 🎙️ **Real-time voice** | Full-duplex audio over a TLS-verified WebSocket (mic 16 kHz up, voice 24 kHz down). Local VAD + AGC, barge-in by tapping the screen. |
+| 🤖 **Agent behaviour** | Voice first, no need to read the screen: complete answers with the exact figures (2 decimals), long when the topic needs it. Talks like a person with feeling, explains what the numbers mean, calls its tools on its own and chains them ("will it rain tomorrow? if so remind me to take an umbrella at 7" → weather → reminder), answers every part of a question. On Gemini 3.8 Live it says "let me check" while an Internet lookup runs instead of going silent. Gold questions also get an estimated Thai gold-bar price per baht weight. |
 | 🧠 **Long-term memory** | Facts, a small knowledge graph (GraphRAG-lite, BM25 search) and a daily conversation log stored on MicroSD — or internal flash when there is no card. Background consolidation with Flash-Lite. |
 | 🧑‍💼 **Personalities** | 8 ready-made profiles, 30 voices, 7 personalities, male/female Thai politeness (ค่ะ / ครับ). Change them by touch or just by asking. |
 | 👀 **Expressive face** | Cozmo-style eyes with 14 emotions, Thai subtitles, on-screen mic button, dark theme. After a while asleep it turns into a **dim clock** (power save) and wakes up — full brightness — as soon as it hears you. |

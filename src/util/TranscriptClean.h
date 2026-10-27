@@ -60,4 +60,40 @@ void stripToolScaffolding(const char* in, Str& out) {
     }
 }
 
+/**
+ * Copy `in` to `out` without tool calls written out as text: "set_expression(emotion=happy)\nสวัสดีค่ะ" ->
+ * "สวัสดีค่ะ" (3.8 Live began saying them on 2026-10-27, T109; kept in the conversation log they were fed back into
+ * the next session's prompt and copied again). A call = identifier with an underscore ("get_weather"), then
+ * "(...)" closed on the same line; the blanks after it go too. Plain words with brackets stay ("ราคา (บาท)").
+ */
+template <class Str>
+void stripToolCallText(const char* in, Str& out) {
+    out.clear();
+    const size_t n = strlen(in);
+    size_t i = 0;
+    while (i < n) {
+        size_t j = i;
+        bool underscore = false;
+        if (isalpha((unsigned char)in[i]) && (i == 0 || !isalnum((unsigned char)in[i - 1]))) {
+            while (j < n && (isalnum((unsigned char)in[j]) || in[j] == '_')) {
+                underscore |= in[j] == '_';
+                j++;
+            }
+        }
+        if (j > i && underscore && j < n && in[j] == '(') {
+            size_t k = j + 1;
+            while (k < n && in[k] != ')' && in[k] != '\n') k++;
+            if (k < n && in[k] == ')') {
+                k++;
+                while (k < n && (in[k] == ' ' || in[k] == '\n' || in[k] == '\r')) k++;
+                i = k;
+                continue;
+            }
+        }
+        const size_t len = j > i ? j - i : 1;
+        out.append(in + i, len);
+        i += len;
+    }
+}
+
 }  // namespace transcript

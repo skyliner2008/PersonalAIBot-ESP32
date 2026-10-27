@@ -433,23 +433,40 @@ TEST(tool_response_scheduling) {
         return std::string(s ? s : "(none)");
     };
     CHECK(sched("set_expression", ToolBehavior::Blocking) == "SILENT");
-    CHECK(sched("get_weather", ToolBehavior::Blocking) == "(none)");     // BLOCKING: the server ignores it
-    CHECK(sched("recall_memory", ToolBehavior::Blocking) == "(none)");
-    CHECK(sched("set_expression", ToolBehavior::NonBlocking) == "(none)");  // extended thinking: not supported
+    CHECK(sched("get_weather", ToolBehavior::Blocking) == "WHEN_IDLE");  // T110: background lookup on 3.8 Live
+    CHECK(sched("water", ToolBehavior::Blocking) == "WHEN_IDLE");
+    CHECK(sched("recall_memory", ToolBehavior::Blocking) == "(none)");   // BLOCKING: the server ignores it
+    CHECK(sched("calculate", ToolBehavior::Blocking) == "(none)");       // a web-task tool, but instant
+    CHECK(sched("get_weather", ToolBehavior::NonBlocking) == "(none)");  // extended thinking: not supported
+    CHECK(sched("set_expression", ToolBehavior::NonBlocking) == "(none)");
     CHECK(sched("set_expression", ToolBehavior::Unspecified) == "(none)");  // 3.1: no async calls
     CHECK(sched(nullptr, ToolBehavior::Blocking) == "(none)");
+    CHECK(!AgentTools::isBackgroundTool(nullptr));
+    CHECK(!AgentTools::isBackgroundTool("save_memory"));
 
-    // 3.8 Live: every tool declared NON_BLOCKING gets a scheduling, and only those
+    // 3.8 Live: every tool declared NON_BLOCKING gets a scheduling, and only those; the async ones are the silent
+    // and background tools - memory, timers, device control and quick web-task tools stay BLOCKING
     ToolRig rig(tempDir("sched"));
     JsonDocument doc;
     rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Blocking, false);
-    size_t nonBlocking = 0;
+    size_t nonBlocking = 0, background = 0;
+    bool weatherAsync = false, recallBlocking = false, calcBlocking = false;
     for (JsonObjectConst d : doc[0]["functionDeclarations"].as<JsonArrayConst>()) {
+        const char* name = d["name"] | "";
         const bool async = !strcmp(d["behavior"] | "", "NON_BLOCKING");
         nonBlocking += async;
-        CHECK(async == (AgentTools::responseScheduling(d["name"] | "", ToolBehavior::Blocking) != nullptr));
+        background += AgentTools::isBackgroundTool(name);
+        CHECK(async == (AgentTools::responseScheduling(name, ToolBehavior::Blocking) != nullptr));
+        CHECK(async == (AgentTools::isSilentTool(name) || AgentTools::isBackgroundTool(name)));
+        if (!strcmp(name, "get_weather")) weatherAsync = async;
+        if (!strcmp(name, "recall_memory")) recallBlocking = !async;
+        if (!strcmp(name, "calculate")) calcBlocking = !async;
     }
-    CHECK_EQ(nonBlocking, (size_t)1);
+    CHECK(weatherAsync);
+    CHECK(recallBlocking);
+    CHECK(calcBlocking);
+    CHECK(background >= 10);  // the finance + water packs are on in the rig
+    CHECK_EQ(nonBlocking, background + 1);
 }
 
 TEST(tools_memory_roundtrip) {
@@ -664,6 +681,9 @@ TEST(model_fallback_key_wide_quota) {
     // to be classified NotFound and put two models on a 24-h cool-down)
     CHECK(fallback::classifyClose(1008, "BidiGenerateContent session not found or expired") ==
           Failure::SessionExpired);
+    // T111: resumed while the server still held the dropped link - a fresh session at once, no model penalty
+    CHECK(fallback::classifyClose(1008, "BidiGenerateContent session is already connected to an existing client") ==
+          Failure::SessionExpired);
     CHECK(fallback::classifyClose(1008, "models/foo is not found for API version v1beta") == Failure::NotFound);
     // bare 1008 = server hiccup, not a missing model (used to cost the model a 24-h cool-down)
     CHECK(fallback::classifyClose(1008, "The operation was aborted.") == Failure::Transient);
@@ -803,6 +823,15 @@ TEST(unit_conversion) {
     CHECK(units::convert(1, "Kg", "lb", v, a, b, err) && near(v, 2.20462262));
     CHECK(!units::convert(1, "kg", "km", v, a, b, err) && err);  // different kinds
     CHECK(!units::convert(1, "parsec", "km", v, a, b, err));
+}
+
+TEST(thai_gold_estimate) {
+    // T110: 4,016 USD/oz at 33.72 THB/USD (2026-10-27) -> ~64,047 baht per baht weight of 96.5 % bar
+    CHECK(near(units::thaiGoldPerBahtWeight(4016, 33.72), 64046.9696, 1e-6));
+    CHECK(near(units::thaiGoldPerBahtWeight(1, 1), 15.244 * 0.965 / 31.1034768));
+    CHECK_EQ(units::thaiGoldPerBahtWeight(0, 33.72), 0.0);  // a missing input -> no estimate
+    CHECK_EQ(units::thaiGoldPerBahtWeight(4016, 0), 0.0);
+    CHECK_EQ(units::thaiGoldPerBahtWeight(-1, 33.72), 0.0);
 }
 
 #include "util/SetupFile.h"
@@ -1087,6 +1116,23 @@ TEST(vad_noise_floor) {
 }
 
 #include "util/TranscriptClean.h"
+
+// tool calls the model said out loud (3.8 Live, T109) - gone from what is logged and fed back
+TEST(transcript_tool_call_text) {
+    std::string out;
+    transcript::stripToolCallText("set_expression(emotion=happy)\nยินดีเสมอค่ะ", out);
+    CHECK(out == "ยินดีเสมอค่ะ");
+    transcript::stripToolCallText("ได้เลยค่ะ get_weather(location=\"ปัตตานี\") อากาศดีค่ะ", out);
+    CHECK(out == "ได้เลยค่ะ อากาศดีค่ะ");
+    transcript::stripToolCallText("ราคา (บาท) และ f(x) = 2", out);
+    CHECK(out == "ราคา (บาท) และ f(x) = 2");  // no underscore: not a tool
+    transcript::stripToolCallText("snake_case word", out);
+    CHECK(out == "snake_case word");  // no "(": stays
+    transcript::stripToolCallText("open_radio(station=3", out);
+    CHECK(out == "open_radio(station=3");  // not closed: stays
+    transcript::stripToolCallText("ผู้ช่วย: set_expression(emotion=neutral)\nวันนี้วันอังคารค่ะ", out);
+    CHECK(out == "ผู้ช่วย: วันนี้วันอังคารค่ะ");  // inside the recent-conversation block of the prompt
+}
 
 TEST(transcript_scaffolding) {
     std::string out;

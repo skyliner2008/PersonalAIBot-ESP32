@@ -37,6 +37,7 @@
 #include "../util/Deadline.h"
 #include "../util/EchoCanceller.h"
 #include "../util/EchoWakeGate.h"
+#include "../util/JsonAlloc.h"
 #include "../util/NoiseFloor.h"
 #include "AgentTools.h"
 #include "Consolidation.h"
@@ -276,6 +277,20 @@ private:
     uint32_t _loopMaxMs = 0;
     bool _replyAudio = false;          // audio of the current reply has started
     bool _awaitToolAnswer = false;     // a web tool result was sent: the model owes an answer (T107)
+    uint32_t _toolAnswerAt = 0;        // ... sent at (a "let me check" already playing then is not that answer, T110)
+    uint8_t _webPending = 0;           // web tool calls of this session still running (T110: no "unanswered" nudge)
+    // T110: web results held until the last running one is in, then sent as one toolResponse - one at a time made
+    // the model answer once per result (the news + baht rate, then the baht rate again)
+    JsonDocument _toolBatch{JsonPsramAllocator::instance()};
+    uint32_t _toolBatchAt = 0;         // first result held at
+    PsString _textTurn;                // typed / announced text sent to the model, until its turn completes (T110)
+    // T111: a turn that ended empty is often only a set_expression - the model goes on by itself ~0.8 s later. The
+    // nudge (T107 / T109 / T110) waits this long and is dropped once the model does anything (cost a whole turn)
+    static constexpr uint32_t kNudgeDelayMs = 2000;
+    uint32_t _nudgeAt = 0;             // empty turn at, 0 = no nudge pending
+    PsString _nudgeText;
+    const char* _nudgeWhy = "";
+    void cancelNudge();
     uint32_t _reasoningAt = 0;         // turnComplete IN_PROGRESS (Extended Thinking reasoning on) at, 0 = idle (T108)
     bool _replyReportPending = false;  // print the per-reply audio line once playback ends
     uint32_t _replyT0 = 0, _replyLastMs = 0, _replyBytes0 = 0, _replyNeedMs = 0;

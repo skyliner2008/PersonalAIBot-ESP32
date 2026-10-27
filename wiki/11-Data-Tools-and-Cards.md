@@ -45,9 +45,9 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 |---|---|---|---|
 | `get_weather(location?, location_en?)` | อากาศตอนนี้, **PM2.5** + `us_aqi_pm25` (AQI ของ PM2.5 เท่านั้น — v3.4), พยากรณ์ 5 วัน | Open-Meteo forecast / air-quality / geocoding | ไอคอนวาดเอง + 5 วัน · **ไม่ระบุที่ = ตำแหน่งจาก IP** |
 | `get_oil_price()` | น้ำมันขายปลีก 8 ชนิด: `price_now`, **`price_effective_since` + `days_since_last_change`**, `change_at_last_adjustment`, `tomorrow` (ถ้าประกาศแล้ว) | `oil-price.bangchak.co.th/ApiOilPrice2/th` | ตาราง + ▲▼ |
-| `get_market_quote(symbols)` | ราคา, ช่วงวันนี้, 1W/1M/3M/1Y, RSI, สัญญาณ + **`market_open` / `price_time` / `delayed_min`** | `scanner.tradingview.com/symbol` | 1 ตัว = กราฟ · 2–6 ตัว = ตาราง |
+| `get_market_quote(symbols)` | ราคา, ช่วงวันนี้, 1W/1M/3M/1Y, RSI, สัญญาณ + **`market_open` / `price_time` / `delayed_min`** · ทองคำ: + `thai_gold_estimate.bar_baht_per_baht_weight` (ทองคำแท่ง 96.5% บาทละ โดยประมาณ = ทองโลก × USDTHB × 15.244 × 0.965 / 31.1035, T110) | `scanner.tradingview.com/symbol` | 1 ตัว = กราฟ · 2–6 ตัว = ตาราง |
 | `convert_currency(amount, from, to)` | แปลงเงิน | TradingView `FX_IDC:` | ยอดเงิน + อัตรา |
-| `get_news(topic?)` | หัวข้อข่าว 8 ข่าว + **`published` / `age_hours`** · มี topic = ค้น **7 วันล่าสุด** (`when:7d`, ไม่เจอค่อยค้นทุกช่วง) เอา 8 ข่าวที่เกี่ยวข้องสุดแล้วเรียงใหม่สุดก่อน · ใช้แทนการค้นเว็บเมื่อปิด Google Search | Google News RSS (ไทย) | หัวข้อละ 2 บรรทัด |
+| `get_news(topic?)` | หัวข้อข่าว 8 ข่าว + **`published` / `age_hours`** · มี topic = ค้น **7 วันล่าสุด** (`when:7d`, ไม่เจอค่อยค้นทุกช่วง) เอา 8 ข่าวที่เกี่ยวข้องสุดแล้วเรียงใหม่สุดก่อน · ใช้แทนการค้นเว็บเมื่อปิด Google Search · ได้แค่หัวข่าว: ขอรายละเอียดข่าวไหน AI เรียก `get_news` อีกครั้งด้วย topic ของข่าวนั้น (หัวข่าวหลายสำนัก) ห้ามแต่งเพิ่ม (T111) | Google News RSS (ไทย) | หัวข้อละ 2 บรรทัด |
 
 ![[images/card-weather.png]] ![[images/card-oil.png]]
 ![[images/card-gold.png]] ![[images/card-multi.png]]

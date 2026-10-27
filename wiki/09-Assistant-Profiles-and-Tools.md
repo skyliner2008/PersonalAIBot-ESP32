@@ -30,6 +30,12 @@ status: implemented
 - **เสียง:** ทั้ง 30 prebuilt voices ของ Gemini (Zephyr … Sulafat) ใช้ได้กับ Live native-audio ทุกตัว; "เพศ" ในตารางคือโทนเสียงที่รับรู้ (ไม่ใช่ field ของ API)
 - **เพศ/คำลงท้าย:** หญิง → "ค่ะ/คะ", ชาย → "ครับ", กลาง → สุภาพเป็นกลาง (ใส่ใน system prompt)
 - **นิสัย 7 แบบ:** friendly, secretary, caring, funny, tutor, calm, cute
+- **วิธีพูด + การทำงานแบบเอเจนต์ (T110, เทียบกับ Jarvis ในแอปมือถือ; T111 ตามที่ผู้ใช้กำหนด):** **เสียงคือช่องทางหลัก ผู้ใช้ไม่ต้องอ่านจอ** (จอแสดงประกอบ)
+  จึงตอบละเอียด ถูกต้อง เข้าใจง่าย ชัดเจน — ตัวเลขตรงตามผล tool (ทศนิยมได้ 2 หลัก หน่วยเป็นคำไทย) · คุยเล่น/รับคำสั่ง 1–2 ประโยค ตอบข้อมูลให้ครบทุกส่วน + แปลว่าอะไร
+  เรื่องรายละเอียดมาก (ข่าว ภาพรวมตลาด วิเคราะห์ น้ำหลายจุด) ตอบยาวได้ · note ในผล tool เปลี่ยนจาก "พูดสรุปสั้นๆ / 2-3 อย่าง" เป็น "เล่าให้ครบ" ·
+  พูดแบบคนจริงมีอารมณ์ร่วม ใช้คำหลากหลาย · ลงมือเรียก tool ทันที ไม่สัญญาแล้วนิ่ง · งานหลายขั้นเรียกหลาย tool ต่อกันเอง
+  (ราคาทอง → `calculate` กำไร, อากาศพรุ่งนี้ → `set_reminder` ถ้าฝนตก) · ถามหลายเรื่องตอบให้ครบ · tool พังลองทางอื่น · เสนอขั้นต่อไปสั้นๆ บางครั้ง ·
+  "เรียกผู้ใช้ว่า …" (ชื่อผู้ใช้ในตั้งค่า) · บน 3.8 Live tool ดึงข้อมูลจากเน็ตทำงานเบื้องหลัง: พูด "ขอเช็คแป๊บนึง" แล้วเล่าผลเมื่อมาถึง ([[05-Gemini-Live-API-Protocol]])
 - เปลี่ยนเสียง/นิสัย/ชื่อ → มีผล **หลังคำตอบปัจจุบันจบ** (เริ่ม session ใหม่ เพราะ voice อยู่ใน setup) ความจำระยะยาวยังอยู่ครบ
 - ตัวอย่างสั่งด้วยเสียง: "เปลี่ยนเป็นมะปรางหน่อย", "ขอเสียงผู้ชายแบบสุขุม", "เรียกฉันว่าพี่โจนะ", "เปลี่ยนสีตาเป็นชมพู"
 
@@ -109,7 +115,7 @@ status: implemented
 | `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite` | จัดระเบียบความจำเบื้องหลัง | 15 RPM • 250k TPM • 500 RPD |
 
 Live API **คิดโทเคนของบริบททั้งหมดซ้ำทุก turn** และ 3.8 มี proactive audio (นับตลอดเวลาที่ฟัง) จึงทำ:
-1. **contextWindowCompression** `triggerTokens 16000` → `slidingWindow.targetTokens 10000` (T108: setup + turn ล่าสุด ~8–9k token, 1 turn ที่มีผล tool ~14k — ค่าเดิมบีบอัดทุก 1–2 turn) · log `[Gemini] usage: context N + reply M tokens` ทุก turn
+1. **contextWindowCompression** `triggerTokens 13000` → `slidingWindow.targetTokens 10000` (T111: setup ~7.6k token หลัง T110 — target 8000 บีบเหลือ 7,910 แล้ว**ตัดคำถามล่าสุดทิ้ง** AI ตอบผลค่าเงินด้วย "สวัสดีค่ะบอส" · ต้องเหลือ ~2.4k ให้บทสนทนา · turn ที่ tool แบบ BLOCKING ตอบในตัวนับ context **2 เท่า**, tool เบื้องหลังเป็น 2 turn (รับคำ + คำตอบ)) · log `[Gemini] usage: context N + reply M tokens` ทุก turn (+ `(tool round trip: context counted twice)` เฉพาะ BLOCKING)
 2. **Local VAD (hybrid)**: ส่งเสียงเฉพาะตอนพูดจริง (เกณฑ์ noise floor ×2.5, ขั้นต่ำ RMS 0.004, pre-roll 600 ms, hangover 1.5 s) + `audioStreamEnd` เมื่อหยุดพูด
    · ฟังต่อเนื่อง 6 วิหลัง AI พูดจบ · AGC ยกเสียงเบา (≤ ×6) · server VAD start HIGH / end LOW · log `[Mic]` ทุกประโยค ([[07-Troubleshooting-Log#T036 ไอคอนไมค์ขึ้นแต่ AI เงียบ - 3.8 Live ไม่ค่อยตอบ]])
 3. **Auto-sleep** หลังเงียบ N นาที: ปิด session (ไม่เสียโทเคน) — ปลุกด้วยการ**พูด** (4 chunk ติดกัน) หรือแตะจอ; เสียงที่พูดตอนปลุก (≤2 s) ถูกส่งต่อหลังเชื่อมต่อใหม่
@@ -135,7 +141,7 @@ Live API **คิดโทเคนของบริบททั้งหมด
 ```
 close frame ──► classifyClose()
    Auth ─────────────► หยุด + "API key ใช้ไม่ได้" (แตะจอ = ลองใหม่)
-   SessionExpired (1008 session not found/expired) ─► ทิ้ง resume handle แล้วเริ่ม session ใหม่ (โมเดลเดิม)   [T034]
+   SessionExpired (1008 session not found/expired/already connected) ─► ทิ้ง resume handle แล้วเริ่ม session ใหม่ (โมเดลเดิม)   [T034, T111]
    Quota และ setup มี googleSearch ─► ลองโมเดลเดิมใหม่โดยไม่มี Search ทันที   [T028, T045, T048]
         session ไม่มี Search ใช้ได้ ─► Search เป็นต้นเหตุ ─► ปิด 6 → 12 → 24 → 48 ชม. (ล้มติดกัน)
                                      จำข้ามรีบูต (NVS "rt": srchoff, srchn) + "Google Search ใช้ไม่ได้ (โควตา)"
