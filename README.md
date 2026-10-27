@@ -97,7 +97,7 @@ See [wiki 17](wiki/17-Mobile-Flasher.md).
 
 > The factory image starts at `0x0`, so it also **clears saved settings** on that board (a clean install).
 >
-> **Already running v3.5.0 or later?** Update over Wi-Fi instead: Settings → **อัปเดตเฟิร์มแวร์** (firmware update). The board downloads the latest release's `-app.bin`, checks it (sha256, image header, version marker, and the release signature once a signing key is set up) and keeps your settings and memory; if the new version fails to start properly it goes back to the old one by itself. See [wiki 13](wiki/13-OTA-Update.md).
+> **Already running v3.5.0 or later?** Update over Wi-Fi instead: Settings → **อัปเดตเฟิร์มแวร์** (firmware update). The board downloads the latest release's `-app.bin`, checks it (sha256, image header, version marker, and the release signature once a signing key is set up) and keeps your settings and memory; if the new version fails to start properly it goes back to the old one by itself. The check also works with the radio playing or the AI talking (T120: the TLS handshake to GitHub runs at a higher priority — before, it ran too slowly and GitHub dropped it, "ติดต่อ GitHub ไม่ได้ (HTTP -1)"). See [wiki 13](wiki/13-OTA-Update.md).
 
 ### Option B — build from source
 
