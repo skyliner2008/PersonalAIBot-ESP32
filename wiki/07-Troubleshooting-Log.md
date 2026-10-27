@@ -136,7 +136,7 @@ This page documents common issues encountered during development and their solut
 พื้นดำ + ตาเหลือง (amber) = สีกลับกันพอดี → แผง ES3C28P ตัวนี้ **ต้องเปิด INVON (`invert = 1`, "แบบ 1")** · ตั้งกลับเป็น 1 แล้ว
 PC app มีปุ่ม **🌓 สลับสีจอบอร์ด** ในแท็บหน้าจอ ไว้แก้ทันทีถ้าภาพบอร์ดกับ app ไม่ตรงกัน
 
-## T120: เช็คอัปเดต (OTA) ต่อ GitHub ไม่ได้ "HTTP -1" ตอนเปิดวิทยุ / AI กำลังพูด — handshake ช้าจน GitHub ตัดทิ้ง
+## T121: เช็คอัปเดต (OTA) ต่อ GitHub ไม่ได้ "HTTP -1" ตอนเปิดวิทยุ / AI กำลังพูด — handshake ช้าจน GitHub ตัดทิ้ง
 
 **วันที่:** 2026-10-28 · เจอระหว่างทดสอบ T119 บนบอร์ด (fw 4.7.0, `esp32s3-ble`, แหล่ง OBD-BLE)
 **อาการ:** `ota check` / เช็ครายวัน ล้มเหลวแบบสุ่ม: `ssl_starttls_handshake():333: (-29312) SSL - The connection indicated an EOF`

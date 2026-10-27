@@ -121,7 +121,7 @@ ESP32-AI/
 
 | Date | Activity | Related Docs |
 |------|----------|--------------|
-| 2026-10-28 | **แก้เช็คอัปเดต "ติดต่อ GitHub ไม่ได้ (HTTP -1)" (T120):** ตอนเปิดวิทยุ task OTA (priority 1) handshake ช้า 13–23 วิ จน GitHub ตัด → ช่วง connect/TLS ยกเป็น priority 4 (แบบ WebTools T072): วิทยุเปิด 9/9 ผ่านใน ~2.5 วิ · log `[OTA] host (ip) -> code in ms` · ล้าง error เก่าเมื่อเช็คสำเร็จ | [[07-Troubleshooting-Log#T120]] · [[13-OTA-Update]] |
+| 2026-10-28 | **แก้เช็คอัปเดต "ติดต่อ GitHub ไม่ได้ (HTTP -1)" (T121):** ตอนเปิดวิทยุ task OTA (priority 1) handshake ช้า 13–23 วิ จน GitHub ตัด → ช่วง connect/TLS ยกเป็น priority 4 (แบบ WebTools T072): วิทยุเปิด 9/9 ผ่านใน ~2.5 วิ · log `[OTA] host (ip) -> code in ms` · ล้าง error เก่าเมื่อเช็คสำเร็จ | [[07-Troubleshooting-Log#T121]] · [[13-OTA-Update]] |
 | 2026-10-27 | **รีวิว RAM ภายใน (T119):** TLS ไป PSRAM ทั้งหมดเมื่อ RAM ภายใน < 32 KB, `psramMalloc` ไม่ตกไป RAM ภายในจนเหลือ < 24 KB, `JsonDocument` ระหว่าง session (บทสนทนา/ความจำ/GPS มือถือ/OTA/ThaiWater) ไป PSRAM, คิวอายุยาวไป PSRAM (~4 KB), OTA เช็ครายวันรอ RAM ว่าง, `[Health]` + `diag` มีก้อนใหญ่สุด · **วัดบนบอร์ด:** วิทยุ + Live + 2 web tools + OTA พร้อมกัน RAM ภายในต่ำสุด 50 KB · แก้: เปิดวิทยุแล้วเซสชันปิดก่อนผล web tool กลับมา | [[07-Troubleshooting-Log]] · [[04-System-Architecture]] |
 | 2026-10-27 | **Release v4.7.0** — เฟิร์มแวร์ release มีบลูทูธ OBD (T118), แก้ VIN response pending (T117) · แอปมือถือไม่เปลี่ยน (2.1.2) | [[16-Vehicle-Dash]] |
 | 2026-10-27 | **release มีบลูทูธ OBD (T118):** `pio run` / release / OTA = build `esp32s3-ble` (บลูทูธเปิดเฉพาะแหล่ง OBD-BLE ตอนหน้าปัดแสดง) · ไม่ใช้บลูทูธ: `-e esp32s3` (+20 KB RAM ภายใน) | [[16-Vehicle-Dash]] · [[07-Troubleshooting-Log#T118]] |

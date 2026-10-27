@@ -39,7 +39,7 @@ report   boot ถัดไปเทียบช่องที่รันกั
 ## TLS
 `OTA_ROOT_CA_PEM` (`tools/gen_root_ca.py`): api.github.com / github.com → **USERTrust ECC** (Sectigo E46 cross-sign) + USERTrust RSA / Sectigo R46 ·
 release-assets.githubusercontent.com → **ISRG Root X1** (+ X2) — ตรวจครบทุกขั้น ไม่มี `setInsecure`
-· **ช่วง connect + handshake รันที่ priority 4** (`ConnectPriority`, T120): ที่ priority 1 ของ task `ota` ตอนวิทยุเล่น handshake ใช้ 13–23 วิ
+· **ช่วง connect + handshake รันที่ priority 4** (`ConnectPriority`, T121): ที่ priority 1 ของ task `ota` ตอนวิทยุเล่น handshake ใช้ 13–23 วิ
 แล้ว GitHub ตัดทิ้ง (EOF / reset, "HTTP -1") · ทุก request พิมพ์ `[OTA] <host> (<ip>) -> <code> in <ms>` (+ ข้อความ mbedTLS ถ้าไม่มี HTTP status)
 
 ## วิธีใช้

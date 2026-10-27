@@ -48,7 +48,7 @@ constexpr bool kSignedUpdates = sizeof(OTA_SIGNING_PUBKEY_PEM) > 1;
 // The connect + TLS handshake runs above the eyes' animation and the wake word (priority 3 on core 1), like
 // a WebTools job (T072). At the task's 1 it got only their leftovers: with the radio on (the wake word
 // works through the echo) a handshake took 13-23 s, and GitHub closes one not done in ~10 s - EOF / reset
-// in ssl_starttls_handshake, "HTTP -1" (T120). Back to 1 for the body and the flash writes.
+// in ssl_starttls_handshake, "HTTP -1" (T121). Back to 1 for the body and the flash writes.
 constexpr UBaseType_t kConnectPriority = 4;
 struct ConnectPriority {
     const UBaseType_t was = uxTaskPriorityGet(nullptr);
