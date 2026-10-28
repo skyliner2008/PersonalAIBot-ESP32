@@ -42,7 +42,7 @@ flowchart TB
 
 | Task | Core | Prio | Stack | หน้าที่ |
 |---|---|---|---|---|
-| `audioOut` | 0 | 6 | 4 KB | อ่าน playback ring (PSRAM 1 MB) → แปลง mono→stereo → `i2s_write` (DMA เป็นตัวคุมจังหวะ), prebuffer 120 ms |
+| `audioOut` | 0 | 6 | 4 KB | อ่าน playback ring (PSRAM 3.5 MB, T128) → แปลง mono→stereo → `i2s_write` (DMA เป็นตัวคุมจังหวะ), prebuffer 120 ms |
 | `audioIn` | 0 | 6 | 6 KB | `i2s_read` 20 ms → เลือกช่อง L/R อัตโนมัติ → resample 24→16 kHz → capture ring (64 KB) |
 | `geminiIO` | any | 5 | 10 KB | เจ้าของการเชื่อมต่อคนเดียว (v3.1): `esp_transport_ws` + SSL (Google roots), ส่งจาก outbox, อ่าน/ประกอบ frame ใหญ่, ping 15 s, reconnect back-off, close handshake |
 | `agent` | 1 | 4 | 12 KB | ทุก 10 ms: settings → คำสั่ง UI → Wi-Fi/NTP/Gemini (fallback) → `poll()` → mic gate + VAD → แจ้งเตือน → พัก/ตื่น → consolidation → state |
@@ -70,7 +70,7 @@ flowchart LR
     CAP -->|"40 ms chunks\n(gate open)"| B64E["Base64 → JSON\nrealtimeInput.audio"]
     B64E --> GEM["☁️ Gemini Live"]
     GEM -->|"inlineData PCM 24 kHz"| B64D["Base64 decode"]
-    B64D --> PB["playback ring 1 MB\n(~21 s)"]
+    B64D --> PB["playback ring 3.5 MB\n(~76.5 s, T128)"]
     PB --> TX["audioOut\nmono→stereo"]
     TX -->|"I2S GPIO 8"| DAC["ES8311 DAC"] --> PA["FM8002E\nGPIO1 LOW = ON"] --> SPK["🔊"]
 ```
@@ -116,7 +116,7 @@ AgentController คำนวณ state ใหม่ทุก 10 ms จากข�
 
 | ส่วน | ตำแหน่ง | ขนาด |
 |---|---|---|
-| Playback ring | PSRAM | 1 MB |
+| Playback ring | PSRAM | 3.5 MB (~76.5 s, T128) |
 | Capture ring | PSRAM | 64 KB |
 | LCD sprite | PSRAM | 150 KB |
 | WebSocket RX/TX buffers + reassembly | PSRAM | 16 KB ×2 + ตามขนาดข้อความ |

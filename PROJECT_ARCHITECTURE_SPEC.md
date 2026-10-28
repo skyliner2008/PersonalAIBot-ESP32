@@ -79,7 +79,7 @@
 
 | ส่วน | ที่อยู่ | ขนาด |
 |---|---|---|
-| Playback ring | PSRAM | 1 MB (~21 s) |
+| Playback ring | PSRAM | 3.5 MB (~76.5 s, T128) |
 | Capture ring | PSRAM | 64 KB |
 | LCD sprite | PSRAM | 150 KB |
 | WebSocket buffers + reassembly | PSRAM | 2 × 16 KB + ตามข้อความ |
@@ -125,7 +125,7 @@ flowchart LR
 🎤 → ES8311 ADC (PGA 30 dB + 18 dB) → I2S 24 kHz (GPIO 6) → audioIn
    → Downsampler 24→16 kHz (polyphase FIR 48 taps, fc 7 kHz) → capture ring
    → [gate เปิด] 40 ms → Base64 → {"realtimeInput":{"audio":{...rate=16000}}} → Gemini
-Gemini → inlineData PCM 24 kHz → Base64 decode → playback ring 1 MB
+Gemini → inlineData PCM 24 kHz → Base64 decode → playback ring 3.5 MB (+ TCP flow-control backpressure, T128)
    → audioOut → I2S (GPIO 8) → ES8311 DAC → FM8002E (GPIO1 LOW) → 🔊
 ```
 - I2S 24 kHz ทั้งสองทางเพราะ ADC/DAC ใช้ LRCK ร่วมกัน

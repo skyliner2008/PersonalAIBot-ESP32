@@ -34,7 +34,7 @@
 #define AUDIO_I2S_RATE          24000   // one clock for mic + speaker (Gemini output rate)
 #define AUDIO_UPLOAD_RATE       16000   // Gemini Live input rate (mic is resampled 3:2)
 #define AUDIO_MIC_CHUNK_MS      40      // size of each realtimeInput audio message
-#define AUDIO_PLAYBACK_BUFFER   (1024 * 1024)   // PSRAM, ~21 s of 24 kHz speech
+#define AUDIO_PLAYBACK_BUFFER   (3584 * 1024)   // PSRAM, ~76.5 s of buffered 24 kHz speech (2.5-3.5 min reply at 1.5x arrival)
 #define AUDIO_CAPTURE_BUFFER    (512 * 1024)    // PSRAM, ~8 s of 16 kHz mic + echo reference pairs: the agent loop can stall ~1.7 s
                                                 // while the Live TLS handshake runs (wake-up = when people talk)
 #define AUDIO_RADIO_BUFFER      (192 * 1024)    // PSRAM, ~4 s of 24 kHz mono radio (absorbs network jitter)

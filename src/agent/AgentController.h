@@ -113,6 +113,9 @@ public:
     void onSessionHandle(const char* handle, bool resumable) override;
     void onGoAway(uint32_t msLeft) override;
     void onUsage(uint32_t totalTokens) override;
+    bool canAcceptAudio() const override {
+        return _dropAudio || !_audio || !_audio->isPlaying() || _audio->playbackFree() >= 32768;
+    }
 
     // ---- DeviceOps (tools) ----
     uint32_t nowEpoch() override;

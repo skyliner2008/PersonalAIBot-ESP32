@@ -13,6 +13,10 @@
 // ============================================================
 
 void AgentController::updateState(uint32_t now) {
+    if (_audio->isPlaying()) {
+        _lastAgentAudio = now;
+        noteActivity();
+    }
     AvatarState s;
     if (_sleeping) s = AVATAR_SLEEP;
     else if (!_configOk) s = AVATAR_SETUP;

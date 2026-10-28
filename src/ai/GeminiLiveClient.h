@@ -64,6 +64,8 @@ public:
     virtual void onGoAway(uint32_t msLeft) { (void)msLeft; }
     /** usageMetadata.totalTokenCount of a server message (billing / TPM tracking). */
     virtual void onUsage(uint32_t totalTokens) { (void)totalTokens; }
+    /** Flow-control backpressure: false pauses Data dispatch so the playback ring buffer never overflows. */
+    virtual bool canAcceptAudio() const { return true; }
 };
 
 enum class GeminiState : uint8_t { Idle, Connecting, SetupSent, Ready };

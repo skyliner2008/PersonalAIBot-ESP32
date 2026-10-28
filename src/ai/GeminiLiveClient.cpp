@@ -24,7 +24,7 @@
 
 namespace {
 constexpr size_t kMaxMessageBytes = 1024 * 1024;  // sanity limit for one server message
-constexpr UBaseType_t kInboxDepth = 48;
+constexpr UBaseType_t kInboxDepth = 96;
 constexpr UBaseType_t kOutboxDepth = 64;          // ~2.5 s of 40-ms audio chunks
 constexpr int kConnectTimeoutMs = 10000;
 constexpr int kWriteTimeoutMs = 5000;             // a slow link may take a while; a stalled one is dead
@@ -417,25 +417,32 @@ void GeminiLiveClient::ioLoop() {
 
         if (!flushOutbox()) continue;
 
-        const int pr = esp_transport_poll_read(_ssl, 20);  // frames are read straight from TLS (readOneFrame)
-        if (pr < 0) {
-            char why[48];
-            snprintf(why, sizeof(why), "Network error (errno %d)", esp_transport_get_errno(_wst));
-            dropLink(why);
-            continue;
-        }
-        if (pr > 0) {
-            const uint32_t t0 = millis();
-            const int r = readFrame(rbuf, kReadBuf);
-            const uint32_t took = millis() - t0;
-            if (took > _slowReadMs) _slowReadMs = took;
-            if (took > _turnReadMs) _turnReadMs = took;  // diag: a frame trickling in holds up the sends
-            if (r < 0) {
-                dropLink("Read error");
+        if (uxQueueSpacesAvailable(_inbox) == 0) {
+            // Backpressure when a very long reply fills the playback buffer: pause reading from TLS so TCP flow
+            // control throttles the server instead of dropping middle-of-sentence audio frames.
+            _lastRx = millis();
+            vTaskDelay(pdMS_TO_TICKS(10));
+        } else {
+            const int pr = esp_transport_poll_read(_ssl, 20);  // frames are read straight from TLS (readOneFrame)
+            if (pr < 0) {
+                char why[48];
+                snprintf(why, sizeof(why), "Network error (errno %d)", esp_transport_get_errno(_wst));
+                dropLink(why);
                 continue;
             }
-            _lastRx = millis();
-            if (r == 0) continue;  // server closed
+            if (pr > 0) {
+                const uint32_t t0 = millis();
+                const int r = readFrame(rbuf, kReadBuf);
+                const uint32_t took = millis() - t0;
+                if (took > _slowReadMs) _slowReadMs = took;
+                if (took > _turnReadMs) _turnReadMs = took;  // diag: a frame trickling in holds up the sends
+                if (r < 0) {
+                    dropLink("Read error");
+                    continue;
+                }
+                _lastRx = millis();
+                if (r == 0) continue;  // server closed
+            }
         }
 
         const uint32_t now = millis();
@@ -497,7 +504,9 @@ void GeminiLiveClient::poll(uint32_t budgetMs) {
         restart();  // the Disconnected event that follows counts as a transient failure
     }
     InboundMsg m;
-    while (xQueueReceive(_inbox, &m, 0) == pdTRUE) {
+    while (xQueuePeek(_inbox, &m, 0) == pdTRUE) {
+        if (m.kind == MsgKind::Data && _listener && !_listener->canAcceptAudio()) break;
+        xQueueReceive(_inbox, &m, 0);
         switch (m.kind) {
             case MsgKind::Connected:
                 if (!_started) break;

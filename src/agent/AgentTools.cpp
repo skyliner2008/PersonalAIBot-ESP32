@@ -991,12 +991,15 @@ bool AgentTools::aboutMe(JsonObjectConst, JsonObject r, const char*&) {
     c["vehicle_dash"] = _device.vehicleEnabled();
     if (_device.deviceCount() > 0) _device.listDevices(c["wired_devices"].to<JsonArray>());
 
-    // narration: the session's "answer briefly" rule made the introduction a few sentences long (T098)
+    // narration: the session's "answer briefly" rule made the introduction a few sentences long (T098);
+    // T128: 3.8 Live speeds up its speaking tempo in the second half when trying to cram 2-3 long sentences per group,
+    // so explicitly lock a calm, unhurried, steady speaking pace with breathing pauses all the way to the end.
     r["how_to_present"] =
-        "Introducing / presenting / reviewing yourself: narrate it fully in the user's language, 2-3 minutes. Start with who you are (name, personality, this device and what makes it "
-        "yours, firmware version), then go through EVERY ability group in order, each with 2-3 sentences and a "
-        "concrete example the user could say, then what is connected right now. Speak in natural sentences, never "
-        "read tool names, ids or symbols, do not stop half way. End by asking which part to explain or try. "
-        "For a 'can you ...?' question answer only that, from this list.";
+        "การแนะนำ/นำเสนอ/รีวิวตัวเอง: เล่าเป็นภาษาของผู้ใช้อย่างครบถ้วน เป็นธรรมชาติ เริ่มจากแนะนำตัว (ชื่อ นิสัย อุปกรณ์ตั้งโต๊ะตัวนี้ "
+        "และเวอร์ชันเฟิร์มแวร์) แล้วเล่าไล่ครบทุกหมวดความสามารถตามลำดับ หมวดละ 1-2 ประโยคที่กระชับเข้าใจง่ายพร้อมตัวอย่างคำสั่งสั้นๆ "
+        "ตามด้วยสิ่งที่เชื่อมต่ออยู่ตอนนี้ และจบด้วยคำถามชวนคุย ห้ามอ่านชื่อ tool/รหัส/สัญลักษณ์ ห้ามหยุดกลางคัน "
+        "สำคัญมาก (PACE LOCK): ต้องรักษาความเร็วและจังหวะการพูดให้สบายๆ สม่ำเสมอเท่ากันตั้งแต่ประโยคแรกจนถึงประโยคสุดท้าย "
+        "เว้นจังหวะหายใจระหว่างแต่ละหมวดอย่างเป็นธรรมชาติ ห้ามเร่งความเร็วการพูดหรือพูดรัวเร็วขึ้นในช่วงกลางหรือช่วงท้ายเด็ดขาด "
+        "(หากผู้ใช้ถามเฉพาะเจาะจงว่าทำเรื่องใดได้ไหม ให้ตอบเฉพาะเรื่องนั้น)";
     return true;
 }

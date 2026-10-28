@@ -298,9 +298,11 @@ void AgentController::buildSystemPrompt(PsString& p) {
         p += ")";
     }
     p += "\" ให้คงที่สม่ำเสมอเหมือนเป็นคนคนเดียวกันพูดทุกประโยคตั้งแต่ต้นจนจบเซสชัน "
+         "รักษาความเร็วและจังหวะการพูด (Speaking Tempo) ให้สบายๆ พอดีๆ เว้นวรรคหายใจระหว่างประโยคและระหว่างหัวข้ออย่างสม่ำเสมอเท่ากันตั้งแต่ประโยคแรกจนถึงประโยคสุดท้าย "
+         "ห้ามเร่งความเร็วการพูดรัวขึ้นในช่วงกลางหรือช่วงท้ายของคำตอบยาวๆ เด็ดขาด "
          "ห้ามดัดเสียง ห้ามบีบเสียงแหลมหรือกดเสียงทุ้ม ห้ามเปลี่ยนโทนเสียงไปมาตามอารมณ์ของเรื่องหรือหลังเรียกใช้ tool "
          "ใช้สำเนียงภาษาไทยมาตรฐานที่ชัดถ้อยชัดคำ เป็นธรรมชาติ ห้ามพูดติดสำเนียงต่างชาติ/สำเนียงฝรั่ง ห้ามดัดลิ้น "
-         "(การแสดงอารมณ์หรือความขี้เล่นตามนิสัยให้สื่อผ่านการเลือกใช้คำพูดและดวงตา set_expression เท่านั้น ห้ามเปลี่ยนเนื้อเสียง)";
+         "(การแสดงอารมณ์หรือความขี้เล่นตามนิสัยให้สื่อผ่านการเลือกใช้คำพูดและดวงตา set_expression เท่านั้น ห้ามเปลี่ยนเนื้อเสียงหรือเร่งจังหวะการพูด)";
     // waking it = calling its name: "จาวิส" alone was taken for a question (search_knowledge "jawit") or
     // replayed an old request (it opened the radio)
     // T124 (board logs): "Jarvis" came back as "Chaves", "¿Ya ves?", "¿Sabes?", "Jawez" - 3.8 then followed the Thai lock
@@ -317,7 +319,7 @@ void AgentController::buildSystemPrompt(PsString& p) {
     // what it can do changes with the firmware and what is connected: read it, never from memory (about_me)
     p += "\nตัวตน: ถ้าผู้ใช้ถามว่าคุณเป็นใคร ทำอะไรได้บ้าง ขอให้แนะนำ/นำเสนอ/รีวิวตัวเอง หรือถามว่าทำสิ่งใดได้ไหม "
          "ให้เรียก about_me แล้วตอบจากผลนั้นเท่านั้น (ความสามารถเพิ่มขึ้นเมื่ออัปเดตเฟิร์มแวร์ ห้ามตอบจากความจำ) "
-         "การแนะนำ/นำเสนอ/รีวิวตัวเอง: เล่าให้ครบทุกหมวดตาม how_to_present";
+         "การแนะนำ/นำเสนอ/รีวิวตัวเอง: เล่าให้ครบทุกหมวดตาม how_to_present ด้วยจังหวะการพูดที่สบายๆ สม่ำเสมอ เว้นวรรคหายใจระหว่างหมวด ห้ามเร่งสปีดการพูดในช่วงท้าย";
     // T110: "สั้น" alone gave flat one-line read-outs ("lifeless" next to the phone app's Jarvis). T111 (the user): the
     // voice is the point - nobody should have to read the screen - so answers are complete and exact, long when needed
     // T116 (the user: it neither spoke nor understood Thai): with "the user's language" alone, mic audio that comes
@@ -987,16 +989,18 @@ void AgentController::reportReply() {
     const AudioManager::ReplyStats s = _audio->takeReplyStats();
     const uint32_t netMs = _gemini.takeTurnReadMs();
     const uint32_t stale = _gemini.takeMicDiscarded();
+    const size_t dropped = _audio->takePlaybackDropped();
     // +20 % headroom: the next reply may be longer or the link a little slower
     if (_replyRate > 0.0f) _audio->tunePrebuffer(_replyNeedMs * 6 / 5, s.gaps > 0);
     char rate[48] = "-";
     if (_replyRate > 0.0f) snprintf(rate, sizeof(rate), "%d%%", (int)(_replyRate * 100.0f + 0.5f));
     Serial.printf("[Audio] จบคำตอบ: กระตุก %lu ครั้ง (นานสุด %lu ms) | บัฟเฟอร์ %lu -> %lu ms"
                   " | เน็ตส่งเสียงทัน %s ของเวลาจริง (ต่ำกว่า 100%% = เน็ตช้ากว่าเสียง)"
-                  " | ก้อนหนึ่งมาช้าสุด %lu ms | ลำโพงรอนานสุด %lu ms | ทิ้งเสียงไมค์ค้างส่ง %lu ก้อน\n",
+                  " | ก้อนหนึ่งมาช้าสุด %lu ms | ลำโพงรอนานสุด %lu ms | ทิ้งเสียงไมค์ค้างส่ง %lu ก้อน"
+                  " | เสียงล้นบัฟเฟอร์ %u KB\n",
                   (unsigned long)s.gaps, (unsigned long)s.longestGapMs, (unsigned long)s.prebufferMs,
                   (unsigned long)_audio->prebufferMs(), rate, (unsigned long)netMs, (unsigned long)s.outGapMaxMs,
-                  (unsigned long)stale);
+                  (unsigned long)stale, (unsigned)(dropped / 1024));
 }
 
 void AgentController::onToolCall(JsonArrayConst calls) {

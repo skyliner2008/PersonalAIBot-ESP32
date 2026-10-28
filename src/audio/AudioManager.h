@@ -63,9 +63,15 @@ public:
     /** No more audio for this turn: play the remaining tail even below the prebuffer. */
     void flushPlayback() { _flush = true; }
     bool isPlaying() const { return _playing || _playback.available() > 0; }
+    size_t playbackFree() const { return _playback.freeSpace(); }
     uint32_t msSincePlayback() const { return millis() - _lastPlayMs; }
     float playbackLevel() const { return _playLevel; }
     size_t playbackDropped() const { return _droppedBytes; }
+    size_t takePlaybackDropped() {
+        const size_t d = _droppedBytes;
+        _droppedBytes = 0;
+        return d;
+    }
     /** Mid-reply gaps: the voice ran dry and resumed (network / agent task late). */
     uint32_t voiceUnderruns() const { return _underruns; }
     uint32_t lastGapMs() const { return _lastGapMs; }
