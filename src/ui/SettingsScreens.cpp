@@ -6,11 +6,13 @@
 #include "SettingsScreens.h"
 
 #include <WiFi.h>
+#include <math.h>
 
 #include <algorithm>
 #include <vector>
 
 #include "../agent/Personas.h"
+#include "../agent/WebTools.h"
 #include "../agent/WifiLink.h"
 #include "../app/AppConfig.h"
 #include "../app/Settings.h"
@@ -695,148 +697,650 @@ void openMemory() {
 }
 
 // ------------------------------------------------------------
-// Main menu
+// Screensaver Clock Themes, Weather City & Battery Mode Pickers
 // ------------------------------------------------------------
 
-void buildMenu(ListScreen& l) {
-    const SettingsData s = gSettings.get();
-    const persona::Profile* prof = persona::findProfile(s.profile);
-    const persona::VoiceInfo* voice = persona::findVoice(s.voice);
-    const persona::EyeColor& eye = persona::kEyeColors[s.eyeColor < persona::kEyeColorCount ? s.eyeColor : 0];
+void openClockThemes() {
+    gPicker.setup("ธีมพักหน้าจอ", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        static const char* const kHints[] = {"เวลาใหญ่ + การ์ดสภาพอากาศ & PM2.5", "หน้าปัดวงแหวน 60 วิ + วัน & อากาศ",
+                                             "การ์ดตัวเลขพับคู่ + แถบสภาพอากาศ", "ตาหลับคลาสสิก + เวลาใหญ่ + สรุปอากาศ"};
+        for (uint8_t i = 0; i < kClockThemeCount; i++) {
+            ListScreen::Item& it = l.add(clockThemeLabel(i), kHints[i], [i]() {
+                gSettings.update([&](SettingsData& d) { d.clockTheme = i; });
+                gUi.pop();
+            });
+            it.checked = (s.clockTheme % kClockThemeCount) == i;
+        }
+    });
+    gUi.push(&gPicker);
+}
 
-    l.addSubmenu("โปรไฟล์ผู้ช่วย", prof ? prof->agentName : "กำหนดเอง", openProfiles);
-    l.addSubmenu("ชื่อผู้ช่วย", s.agentName, []() {
-        const SettingsData d = gSettings.get();
-        editText("ชื่อผู้ช่วย", d.agentName, 45, false, false, [](SettingsData& x, const String& t) {
-            if (t.length()) strncpy(x.agentName, t.c_str(), sizeof(x.agentName) - 1);
-        });
+void openBatteryModes() {
+    gPicker.setup("การแสดงแบตเตอรี่", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        static const char* const kHints[] = {"แสดง USB เมื่อไม่ต่อแบต / % เมื่อมีแบต", "แสดง % แบตจากวงจรชาร์จตลอด",
+                                             "แสดงสถานะไฟ USB ตลอด"};
+        for (uint8_t i = 0; i < kBatteryModeCount; i++) {
+            ListScreen::Item& it = l.add(batteryModeLabel(i), kHints[i], [i]() {
+                gSettings.update([&](SettingsData& d) { d.batteryMode = i; });
+                gUi.pop();
+            });
+            it.checked = (s.batteryMode % kBatteryModeCount) == i;
+        }
     });
-    l.addSubmenu("ชื่อของคุณ", s.userName[0] ? s.userName : "ยังไม่ตั้ง", []() {
-        const SettingsData d = gSettings.get();
-        editText("ชื่อของคุณ", d.userName, 45, false, false, [](SettingsData& x, const String& t) {
-            strncpy(x.userName, t.c_str(), sizeof(x.userName) - 1);
-            x.userName[sizeof(x.userName) - 1] = '\0';
-        });
-    });
-    l.addSubmenu("เสียงพูด", voice ? String(voice->name) + " • " + voice->styleTh : String(s.voice), openVoices);
-    l.addSubmenu("นิสัย", persona::kPersonalities[s.personality % persona::kPersonalityCount].nameTh,
-                 openPersonalities);
-    l.addSubmenu("เพศ / คำลงท้าย", persona::genderNameTh((persona::Gender)s.gender), openGender);
-    ListScreen::Item& eyeItem = l.addSubmenu("สีดวงตา", eye.nameTh, openEyeColors);
-    eyeItem.hasSwatch = true;
-    eyeItem.swatch = rgb565(eye.r, eye.g, eye.b);
+    gUi.push(&gPicker);
+}
 
-    // the network really joined, not the configured one (T102: a remembered network stands in when it is away)
-    const String joined = joinedSsid();
-    String wifiValue = joined.length() ? joined + (joined == s.wifiSsid ? "" : " (จำไว้)")
-                                       : String(s.wifiSsid[0] ? "ไม่ได้เชื่อมต่อ" : "ยังไม่ตั้ง");
-    l.addSubmenu("Wi-Fi", wifiValue, openWifi).valueColor = joined.length() ? ui::DIM : ui::WARN;
-    l.addSubmenu("API Key", maskKey(s.apiKey), []() {
-        const SettingsData d = gSettings.get();
-        editText("Gemini API Key", d.apiKey, 120, true, true, [](SettingsData& x, const String& t) {
-            strncpy(x.apiKey, t.c_str(), sizeof(x.apiKey) - 1);
-            x.apiKey[sizeof(x.apiKey) - 1] = '\0';
-        });
-    }).valueColor = strlen(s.apiKey) > 20 ? ui::DIM : ui::WARN;
-    l.addSubmenu("โมเดล AI", liveModelLabel(s.model), openModels);
-    if (s.model == (uint8_t)LiveModel::Live38Thinking) {
-        l.addSubmenu("ระดับการคิด", thinkingLevelId(s.thinking), openThinking);
-    }
-    l.addSubmenu("ภาษาที่ AI พูด", aiLanguageLabel(s.language), openLanguage);
-    l.addSubmenu("วิทยุออนไลน์", gRadio.active() ? "กำลังเล่น" : "เลือกสถานี", []() { gUi.push(&gRadioUi); });
-    l.addSubmenu("หน้าปัดรถ", gVehicle.enabled() ? vehicle::sourceNameTh(gVehicle.source()) : "ปิด", openVehicle);
-    l.addSubmenu("เสียงวิทยุ", String(s.volume) + "%", []() {  // the voice stays at aiVolume
-        openNumberPicker("เสียงวิทยุ", 0, 100, 10, gSettings.get().volume / 10 * 10, "%",
-                         [](int v) { gSettings.update([&](SettingsData& d) { d.volume = (uint8_t)v; }); });
+void openRegionProvinces(const char* regionTitle, const char* const* list, size_t count) {
+    gSubPicker.setup(regionTitle, [=](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        for (size_t i = 0; i < count; i++) {
+            const char* city = list[i];
+            ListScreen::Item& it = l.add(city, "", [city]() {
+                gSettings.update([&](SettingsData& d) {
+                    strncpy(d.weatherCity, city, sizeof(d.weatherCity) - 1);
+                    d.weatherCity[sizeof(d.weatherCity) - 1] = '\0';
+                });
+                webtools::requestClockWeatherRefresh();
+                gUi.pop();  // close region list
+                gUi.pop();  // close city picker
+            });
+            it.checked = !strcmp(s.weatherCity, city);
+        }
     });
-    l.addSubmenu("ความสว่างจอ", String(s.brightness) + "%", []() {
-        openNumberPicker("ความสว่างจอ", 10, 100, 10, gSettings.get().brightness / 10 * 10, "%", [](int v) {
-            gSettings.update([&](SettingsData& d) { d.brightness = (uint8_t)v; });
-            gUi.setBrightness((uint8_t)v);
+    gUi.push(&gSubPicker);
+}
+
+void openWeatherCity() {
+    gPicker.setup("เมืองสภาพอากาศ", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        ListScreen::Item& autoIt = l.add("อัตโนมัติ (ตาม IP เน็ต)", "ค้นหาตำแหน่งจากอินเทอร์เน็ต", []() {
+            gSettings.update([](SettingsData& d) { d.weatherCity[0] = '\0'; });
+            webtools::requestClockWeatherRefresh();
+            gUi.pop();
+        });
+        autoIt.checked = s.weatherCity[0] == '\0';
+
+        static const char* const kSouth[] = {"ปัตตานี", "สงขลา", "ภูเก็ต", "สุราษฎร์ธานี", "นครศรีธรรมราช", "ยะลา",
+                                             "นราธิวาส", "กระบี่", "พังงา", "ตรัง", "พัทลุง", "สตูล", "ชุมพร", "ระนอง"};
+        static const char* const kCentral[] = {"กรุงเทพมหานคร", "นนทบุรี", "ปทุมธานี", "สมุทรปราการ", "พระนครศรีอยุธยา",
+                                               "นครปฐม", "สมุทรสาคร", "สมุทรสงคราม", "สระบุรี", "ลพบุรี", "สิงห์บุรี",
+                                               "อ่างทอง", "ชัยนาท", "สุพรรณบุรี", "อุทัยธานี", "นครสวรรค์", "นครนายก"};
+        static const char* const kNorth[] = {"เชียงใหม่", "เชียงราย", "ลำปาง", "ลำพูน", "แม่ฮ่องสอน", "น่าน", "พะเยา",
+                                             "แพร่", "อุตรดิตถ์", "สุโขทัย", "พิษณุโลก", "พิจิตร", "กำแพงเพชร", "เพชรบูรณ์"};
+        static const char* const kIsan[] = {"ขอนแก่น", "นครราชสีมา", "อุดรธานี", "อุบลราชธานี", "บุรีรัมย์", "สุรินทร์",
+                                            "ศรีสะเกษ", "ร้อยเอ็ด", "มหาสารคาม", "กาฬสินธุ์", "สกลนคร", "นครพนม",
+                                            "มุกดาหาร", "เลย", "หนองคาย", "หนองบัวลำภู", "บึงกาฬ", "ชัยภูมิ", "อำนาจเจริญ",
+                                            "ยโสธร"};
+        static const char* const kEastWest[] = {"ชลบุรี", "ระยอง", "จันทบุรี", "ตราด", "ฉะเชิงเทรา", "ปราจีนบุรี",
+                                                "สระแก้ว", "กาญจนบุรี", "ราชบุรี", "เพชรบุรี", "ประจวบคีรีขันธ์", "ตาก"};
+
+        l.addSubmenu("ภาคใต้", "ปัตตานี สงขลา ภูเก็ต...", []() {
+            openRegionProvinces("ภาคใต้", kSouth, sizeof(kSouth) / sizeof(kSouth[0]));
+        });
+        l.addSubmenu("กรุงเทพฯ & ภาคกลาง", "กทม. นนทบุรี ปทุมธานี...", []() {
+            openRegionProvinces("กรุงเทพฯ & ภาคกลาง", kCentral, sizeof(kCentral) / sizeof(kCentral[0]));
+        });
+        l.addSubmenu("ภาคเหนือ", "เชียงใหม่ เชียงราย พิษณุโลก...", []() {
+            openRegionProvinces("ภาคเหนือ", kNorth, sizeof(kNorth) / sizeof(kNorth[0]));
+        });
+        l.addSubmenu("ภาคอีสาน", "ขอนแก่น โคราช อุดร อุบล...", []() {
+            openRegionProvinces("ภาคอีสาน", kIsan, sizeof(kIsan) / sizeof(kIsan[0]));
+        });
+        l.addSubmenu("ภาคตะวันออก & ตะวันตก", "ชลบุรี ระยอง หัวหิน...", []() {
+            openRegionProvinces("ตะวันออก & ตะวันตก", kEastWest, sizeof(kEastWest) / sizeof(kEastWest[0]));
+        });
+        l.add("พิมพ์ชื่อเมืองเอง...", s.weatherCity[0] ? s.weatherCity : "", []() {
+            const SettingsData d = gSettings.get();
+            KeyboardScreen::Options o;
+            o.title = "ชื่อเมือง / จังหวัด";
+            o.initial = d.weatherCity;
+            o.maxBytes = 45;
+            gKeyboard.open(o, [](const String& t) {
+                gSettings.update([&](SettingsData& x) {
+                    strncpy(x.weatherCity, t.c_str(), sizeof(x.weatherCity) - 1);
+                    x.weatherCity[sizeof(x.weatherCity) - 1] = '\0';
+                });
+                webtools::requestClockWeatherRefresh();
+                gUi.pop();
+            });
         });
     });
-    {  // tap cycles 2..7 (12-42 dB): raise it if you must speak close to the board
+    gUi.push(&gPicker);
+}
+
+// ------------------------------------------------------------
+// Smartwatch Category Submenus
+// ------------------------------------------------------------
+
+void openCatPersona() {
+    gMenu.setup("ผู้ช่วย & เสียงพูด", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        const persona::Profile* prof = persona::findProfile(s.profile);
+        const persona::VoiceInfo* voice = persona::findVoice(s.voice);
+        const persona::EyeColor& eye = persona::kEyeColors[s.eyeColor < persona::kEyeColorCount ? s.eyeColor : 0];
+
+        l.addSubmenu("โปรไฟล์ผู้ช่วย", prof ? prof->agentName : "กำหนดเอง", openProfiles);
+        l.addSubmenu("ชื่อผู้ช่วย", s.agentName, []() {
+            const SettingsData d = gSettings.get();
+            editText("ชื่อผู้ช่วย", d.agentName, 45, false, false, [](SettingsData& x, const String& t) {
+                if (t.length()) strncpy(x.agentName, t.c_str(), sizeof(x.agentName) - 1);
+            });
+        });
+        l.addSubmenu("ชื่อของคุณ", s.userName[0] ? s.userName : "ยังไม่ตั้ง", []() {
+            const SettingsData d = gSettings.get();
+            editText("ชื่อของคุณ", d.userName, 45, false, false, [](SettingsData& x, const String& t) {
+                strncpy(x.userName, t.c_str(), sizeof(x.userName) - 1);
+                x.userName[sizeof(x.userName) - 1] = '\0';
+            });
+        });
+        l.addSubmenu("เสียงพูด (30 เสียง)", voice ? String(voice->name) + " • " + voice->styleTh : String(s.voice),
+                     openVoices);
+        l.addSubmenu("นิสัย", persona::kPersonalities[s.personality % persona::kPersonalityCount].nameTh,
+                     openPersonalities);
+        l.addSubmenu("เพศ / คำลงท้าย", persona::genderNameTh((persona::Gender)s.gender), openGender);
+        ListScreen::Item& eyeItem = l.addSubmenu("สีดวงตา", eye.nameTh, openEyeColors);
+        eyeItem.hasSwatch = true;
+        eyeItem.swatch = rgb565(eye.r, eye.g, eye.b);
+    });
+    gMenu.onTick = nullptr;
+    gUi.push(&gMenu);
+}
+
+void openCatAi() {
+    gMenu.setup("สมอง AI & ภาษา", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        l.addSubmenu("โมเดล AI", liveModelLabel(s.model), openModels);
+        if (s.model == (uint8_t)LiveModel::Live38Thinking) {
+            l.addSubmenu("ระดับการคิด", thinkingLevelId(s.thinking), openThinking);
+        }
+        l.addSubmenu("ภาษาที่ AI พูด", aiLanguageLabel(s.language), openLanguage);
+        l.add("ค้นหาเว็บ (Google Search)", s.googleSearch ? "เปิด" : "ปิด", []() {
+            gSettings.update([](SettingsData& d) { d.googleSearch = !d.googleSearch; });
+            gMenu.rebuild();
+        }).valueColor = s.googleSearch ? ui::OK : ui::DIM;
+        l.add("เครื่องมือการเงิน / หุ้น", s.financeTools ? "เปิด" : "ปิด", []() {
+            gSettings.update([](SettingsData& d) { d.financeTools = !d.financeTools; });
+            gMenu.rebuild();
+        }).valueColor = s.financeTools ? ui::OK : ui::DIM;
+        l.add("เครื่องมือระดับน้ำ / ฝน", s.waterTools ? "เปิด" : "ปิด", []() {
+            gSettings.update([](SettingsData& d) { d.waterTools = !d.waterTools; });
+            gMenu.rebuild();
+        }).valueColor = s.waterTools ? ui::OK : ui::DIM;
+        l.addSubmenu("API Key", maskKey(s.apiKey), []() {
+            const SettingsData d = gSettings.get();
+            editText("Gemini API Key", d.apiKey, 120, true, true, [](SettingsData& x, const String& t) {
+                strncpy(x.apiKey, t.c_str(), sizeof(x.apiKey) - 1);
+                x.apiKey[sizeof(x.apiKey) - 1] = '\0';
+            });
+        }).valueColor = strlen(s.apiKey) > 20 ? ui::DIM : ui::WARN;
+        l.add("ทดสอบ API Key", "", []() {
+            if (gUi.host()) gUi.host()->uiApiTest();
+            gUi.popToRoot();
+        });
+    });
+    gMenu.onTick = nullptr;
+    gUi.push(&gMenu);
+}
+
+void openCatAudio() {
+    gMenu.setup("เสียง & ไมโครโฟน", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        l.addSubmenu("ความดังเสียง AI", String(s.aiVolume) + "%", []() {
+            openNumberPicker("ความดังเสียง AI", 10, 100, 10, gSettings.get().aiVolume / 10 * 10, "%",
+                             [](int v) { gSettings.update([&](SettingsData& d) { d.aiVolume = (uint8_t)v; }); });
+        });
+        l.addSubmenu("ความดังวิทยุ / เพลง", String(s.volume) + "%", []() {
+            openNumberPicker("ความดังวิทยุ / เพลง", 0, 100, 10, gSettings.get().volume / 10 * 10, "%",
+                             [](int v) { gSettings.update([&](SettingsData& d) { d.volume = (uint8_t)v; }); });
+        });
         static char micLabel[24];
         snprintf(micLabel, sizeof(micLabel), "ระดับ %u/7", (unsigned)s.micGain);
         l.add("ความไวไมค์ (แตะเพื่อเพิ่ม)", micLabel, []() {
             gSettings.update([](SettingsData& d) { d.micGain = d.micGain >= 7 ? 2 : d.micGain + 1; });
             gMenu.rebuild();
         });
-    }
-    {  // what wakes it by voice while asleep (wiki 14): the wake word needs the "model" partition
         static const char* const kWake[] = {"ระดับเสียง", "คำปลุก", "คำปลุก + ระดับเสียง"};
         l.add("ปลุกด้วยเสียง (แตะ)", kWake[s.wakeMode > 2 ? 2 : s.wakeMode], []() {
             gSettings.update([](SettingsData& d) { d.wakeMode = (uint8_t)((d.wakeMode + 1) % 3); });
             gMenu.rebuild();
         });
-    }
-    l.addSubmenu("พักเมื่อเงียบ", sleepLabel(s.sleepMinutes), openSleep);
-    {
+        static const char* const kWords[] = {"Jarvis", "Hi ESP", "Jarvis + Hi ESP"};
+        l.add("คำปลุก (แตะ • รีสตาร์ทมีผล)", kWords[s.wakeWord > 2 ? 1 : s.wakeWord], []() {
+            gSettings.update([](SettingsData& d) { d.wakeWord = (uint8_t)((d.wakeWord + 1) % 3); });
+            gMenu.rebuild();
+        });
+    });
+    gMenu.onTick = nullptr;
+    gUi.push(&gMenu);
+}
+
+void openCatDisplay() {
+    gMenu.setup("หน้าจอ & พักหน้าจอ", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        l.addSubmenu("ธีมพักหน้าจอ", clockThemeLabel(s.clockTheme), openClockThemes);
+        l.addSubmenu("เมืองสภาพอากาศ", s.weatherCity[0] ? s.weatherCity : "อัตโนมัติ (ตาม IP)", openWeatherCity);
+        l.add("ดูตัวอย่างพักหน้าจอ", "แตะเพื่อแสดงตอนนี้", []() {
+            gUi.popToRoot();
+            if (gUi.host()) gUi.host()->uiPowerSave();
+        }).valueColor = ui::ACCENT;
         static char clockLabel[24];
         if (s.clockMinutes) snprintf(clockLabel, sizeof(clockLabel), "หลังพัก %u นาที", (unsigned)s.clockMinutes);
         else snprintf(clockLabel, sizeof(clockLabel), "ไม่ใช้");
         l.addSubmenu("โหมดนาฬิกา ประหยัดไฟ", clockLabel, openClockMode);
+        l.addSubmenu("พักเมื่อเงียบ", sleepLabel(s.sleepMinutes), openSleep);
+        l.addSubmenu("ความสว่างจอ", String(s.brightness) + "%", []() {
+            openNumberPicker("ความสว่างจอ", 10, 100, 10, gSettings.get().brightness / 10 * 10, "%", [](int v) {
+                gSettings.update([&](SettingsData& d) { d.brightness = (uint8_t)v; });
+                gUi.setBrightness((uint8_t)v);
+            });
+        });
         static char dimLabel[16];
         snprintf(dimLabel, sizeof(dimLabel), "%u%%", (unsigned)s.dimBrightness);
-        l.add("แสงจอตอนเป็นนาฬิกา (แตะ)", dimLabel, []() {  // cycles 4 / 8 / 15 / 25 %
+        l.add("แสงจอตอนพักหน้าจอ (แตะ)", dimLabel, []() {
             gSettings.update([](SettingsData& d) {
                 d.dimBrightness = d.dimBrightness < 8 ? 8 : d.dimBrightness < 15 ? 15 : d.dimBrightness < 25 ? 25 : 4;
             });
             gMenu.rebuild();
         });
-    }
-    l.add("จัดความจำอัตโนมัติ", s.consolidate ? "เปิด" : "ปิด", []() {
-        gSettings.update([](SettingsData& d) { d.consolidate = !d.consolidate; });
-        gMenu.rebuild();
-    }).valueColor = s.consolidate ? ui::OK : ui::DIM;
-    l.add("ค้นหาเว็บ (Google Search)", s.googleSearch ? "เปิด" : "ปิด", []() {
-        gSettings.update([](SettingsData& d) { d.googleSearch = !d.googleSearch; });
-        gMenu.rebuild();
-    }).valueColor = s.googleSearch ? ui::OK : ui::DIM;
-    l.addSubmenu("ความจำ", "", openMemory);
-    l.addSubmenu("ปรับการแตะหน้าจอ", s.touchCal ? "ปรับแล้ว" : "ยังไม่ปรับ", []() { gUi.push(&gCalibration); });
-    l.add("หมุนจอ 180°", s.rotation == 3 ? "เปิด" : "ปิด", []() {
-        uint8_t rot = 1;
-        gSettings.update([&](SettingsData& d) {
-            d.rotation = d.rotation == 3 ? 1 : 3;
-            rot = d.rotation;
+        l.addSubmenu("การแสดงแบตเตอรี่", batteryModeLabel(s.batteryMode), openBatteryModes);
+        l.add("หมุนจอ 180°", s.rotation == 3 ? "เปิด" : "ปิด", []() {
+            uint8_t rot = 1;
+            gSettings.update([&](SettingsData& d) {
+                d.rotation = d.rotation == 3 ? 1 : 3;
+                rot = d.rotation;
+            });
+            gUi.setRotation(rot);
+            gMenu.rebuild();
         });
-        gUi.setRotation(rot);
-        gMenu.rebuild();
-    });
-    // พื้นจอควรเป็นสีดำ: ถ้าเห็นพื้นขาว/สีเพี้ยน ให้สลับค่านี้ (แผง IPS บางล็อตต้องเปิด INVON บางล็อตไม่ต้อง)
-    l.add("พื้นจอเป็นสีขาว? แตะเพื่อสลับสี", s.lcdInvert ? "แบบ 1" : "แบบ 2", []() {
-        bool inv = true;
-        gSettings.update([&](SettingsData& d) {
-            d.lcdInvert = !d.lcdInvert;
-            inv = d.lcdInvert;
+        l.add("สลับสีจอ (พื้นดำ/ขาว)", s.lcdInvert ? "แบบ 1" : "แบบ 2", []() {
+            bool inv = true;
+            gSettings.update([&](SettingsData& d) {
+                d.lcdInvert = !d.lcdInvert;
+                inv = d.lcdInvert;
+            });
+            gUi.setInvert(inv);
+            gMenu.rebuild();
         });
-        gUi.setInvert(inv);
-        gMenu.rebuild();
+        l.addSubmenu("ปรับการแตะหน้าจอ", s.touchCal ? "ปรับแล้ว" : "ยังไม่ปรับ", []() { gUi.push(&gCalibration); });
     });
-    l.add("ทดสอบ API key", "", []() {
-        if (gUi.host()) gUi.host()->uiApiTest();
-        gUi.popToRoot();  // the result appears on the face
-    });
-    l.add("เริ่มบทสนทนาใหม่", "", []() {
-        if (gUi.host()) gUi.host()->uiNewSession();
-        gUi.popToRoot();
-    });
-    l.addSubmenu("ข้อมูลระบบ", "", []() { gUi.push(&gInfo); });
-    {
-        const OtaUpdater::State os = gOta.state();
-        String v = "v" FIRMWARE_VERSION;
-        if (os == OtaUpdater::State::Available) v = "มี v" + gOta.latest();
-        ListScreen::Item& up = l.addSubmenu("อัปเดตเฟิร์มแวร์", v, openUpdate);
-        if (os == OtaUpdater::State::Available) up.valueColor = ui::OK;
-    }
-    l.add("รีสตาร์ทเครื่อง", "", []() {
-        gConfirm.ask("รีสตาร์ท", "รีสตาร์ทเครื่องตอนนี้?", "รีสตาร์ท", []() {
-            if (gUi.host()) gUi.host()->uiRestart();  // closes the Live session first
-            else ESP.restart();
-        });
-    });
+    gMenu.onTick = nullptr;
+    gUi.push(&gMenu);
 }
+
+void openCatMediaDash() {
+    gMenu.setup("วิทยุ / MP3 & หน้าปัด", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        l.addSubmenu("เครื่องเล่น วิทยุ / MP3", gRadio.active() ? "กำลังเล่น" : "เปิดเครื่องเล่น",
+                     []() { gUi.push(&gRadioUi); });
+        l.add("เปิดหน้าปัดรถยนต์", "", []() {
+            gUi.popToRoot();
+            gVehicle.requestOpen();
+        });
+        l.addSubmenu("ตั้งค่าหน้าปัดรถ (OBD)", gVehicle.enabled() ? vehicle::sourceNameTh(gVehicle.source()) : "ปิด",
+                     openVehicle);
+        l.addSubmenu("ความดังวิทยุ / เพลง", String(s.volume) + "%", []() {
+            openNumberPicker("ความดังวิทยุ / เพลง", 0, 100, 10, gSettings.get().volume / 10 * 10, "%",
+                             [](int v) { gSettings.update([&](SettingsData& d) { d.volume = (uint8_t)v; }); });
+        });
+    });
+    gMenu.onTick = nullptr;
+    gUi.push(&gMenu);
+}
+
+void openCatMemory() {
+    gMenu.setup("ความจำ & ประวัติ", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        l.add("จัดความจำอัตโนมัติ", s.consolidate ? "เปิด" : "ปิด", []() {
+            gSettings.update([](SettingsData& d) { d.consolidate = !d.consolidate; });
+            gMenu.rebuild();
+        }).valueColor = s.consolidate ? ui::OK : ui::DIM;
+        l.add("เริ่มบทสนทนาใหม่", "เคลียร์บริบทรอบนี้", []() {
+            if (gUi.host()) gUi.host()->uiNewSession();
+            gUi.popToRoot();
+        });
+        l.add("ล้างความจำระยะยาว", "facts + graph", []() {
+            gConfirm.ask("ล้างความจำ", "ลบทุกอย่างที่ผู้ช่วยจำเกี่ยวกับคุณ? ย้อนกลับไม่ได้", "ลบทั้งหมด", []() {
+                if (gUi.host()) gUi.host()->uiClearMemory();
+            });
+        }).valueColor = ui::ERR;
+        l.add("ล้างประวัติบทสนทนา", "episodes", []() {
+            gConfirm.ask("ล้างประวัติ", "ลบบันทึกบทสนทนาทั้งหมด? ย้อนกลับไม่ได้", "ลบทั้งหมด", []() {
+                if (gUi.host()) gUi.host()->uiClearHistory();
+            });
+        }).valueColor = ui::ERR;
+    });
+    gMenu.onTick = nullptr;
+    gUi.push(&gMenu);
+}
+
+void openCatSystem() {
+    gMenu.setup("ระบบ & อัปเดต", [](ListScreen& l) {
+        l.addSubmenu("ข้อมูลระบบ", "สถานะฮาร์ดแวร์ & เครือข่าย", []() { gUi.push(&gInfo); });
+        {
+            const OtaUpdater::State os = gOta.state();
+            String v = "v" FIRMWARE_VERSION;
+            if (os == OtaUpdater::State::Available) v = "มี v" + gOta.latest();
+            ListScreen::Item& up = l.addSubmenu("อัปเดตเฟิร์มแวร์ (OTA)", v, openUpdate);
+            if (os == OtaUpdater::State::Available) up.valueColor = ui::OK;
+        }
+        l.add("ทดสอบ API Key", "", []() {
+            if (gUi.host()) gUi.host()->uiApiTest();
+            gUi.popToRoot();
+        });
+        l.add("รีสตาร์ทเครื่อง", "", []() {
+            gConfirm.ask("รีสตาร์ท", "รีสตาร์ทเครื่องตอนนี้?", "รีสตาร์ท", []() {
+                if (gUi.host()) gUi.host()->uiRestart();
+                else ESP.restart();
+            });
+        }).valueColor = ui::WARN;
+    });
+    gMenu.onTick = nullptr;
+    gUi.push(&gMenu);
+}
+
+// ============================================================
+// Smartwatch-Style Grouped Settings Launcher
+// ============================================================
+
+class SmartwatchMenuScreen : public Screen {
+public:
+    static constexpr int kCatCount = 8;
+    static constexpr int kPerPage = 4;
+    static constexpr int kPages = 2;
+    static constexpr int kCardW = 146, kCardH = 84;
+
+    void setPage(int p) {
+        _page = constrain(p, 0, kPages - 1);
+        _scrollX = (float)(_page * ui::W);
+    }
+
+    void onEnter() override {
+        _pressed = -1;
+        _dragging = false;
+        _fingerDown = false;
+    }
+
+    void onTouch(const TouchEvent& e) override {
+        switch (e.type) {
+            case TouchEvent::Down:
+                _startX = _lastX = e.x;
+                _startY = _lastY = e.y;
+                _dragging = false;
+                _fingerDown = true;
+                _pressed = cardAt(e.x, e.y);
+                break;
+            case TouchEvent::Move: {
+                const int dx = e.x - _startX;
+                const int dy = e.y - _startY;
+                if (!_dragging && (abs(dx) > 10 || abs(dy) > 10)) {
+                    _dragging = true;
+                    _pressed = -1;
+                }
+                if (_dragging) {
+                    const int step = abs(dx) >= abs(dy) ? (e.x - _lastX) : (e.y - _lastY);
+                    _scrollX -= step;
+                    const float maxS = (kPages - 1) * (float)ui::W;
+                    if (_scrollX < -30) _scrollX = -30;
+                    if (_scrollX > maxS + 30) _scrollX = maxS + 30;
+                }
+                _lastX = e.x;
+                _lastY = e.y;
+                break;
+            }
+            case TouchEvent::Up:
+                _fingerDown = false;
+                _pressed = -1;
+                if (_dragging) {
+                    const int dx = e.x - _startX;
+                    const int dy = e.y - _startY;
+                    const int delta = abs(dx) >= abs(dy) ? dx : dy;
+                    if (delta < -35 && _page < kPages - 1) _page++;
+                    else if (delta > 35 && _page > 0) _page--;
+                    else _page = (_scrollX + ui::W / 2) >= ui::W ? 1 : 0;
+                }
+                break;
+            case TouchEvent::Tap: {
+                if (UiManager::hitBack(e.x, e.y)) {
+                    gUi.pop();
+                    return;
+                }
+                // Top-right page pill or bottom navigation bar toggles / steps page
+                if ((e.y < ui::kTitleH && e.x >= 220) || e.y >= 216) {
+                    if (e.x < 120 && _page > 0) _page--;
+                    else if (e.x > 200 && _page < kPages - 1) _page++;
+                    else _page = (_page + 1) % kPages;
+                    return;
+                }
+                const int idx = cardAt(e.x, e.y);
+                if (idx >= 0 && idx < kCatCount) openCategory(idx);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    void tick(uint32_t now, float dt) override {
+        (void)now;
+        (void)dt;
+        if (!_fingerDown) {
+            const float target = (float)(_page * ui::W);
+            const float diff = target - _scrollX;
+            if (fabsf(diff) < 1.5f) _scrollX = target;
+            else _scrollX += diff * 0.35f;
+        }
+    }
+
+    void draw(LGFX_Sprite& c) override {
+        c.fillScreen(ui::BG);
+        const SettingsData s = gSettings.get();
+        const String joined = joinedSsid();
+
+        c.setClipRect(0, ui::kTitleH, ui::W, 218 - ui::kTitleH);
+        for (int p = 0; p < kPages; p++) {
+            const int baseX = p * ui::W - (int)_scrollX;
+            if (baseX <= -ui::W || baseX >= ui::W) continue;
+            for (int slot = 0; slot < kPerPage; slot++) {
+                const int idx = p * kPerPage + slot;
+                const int col = slot % 2;
+                const int row = slot / 2;
+                const int x = baseX + 10 + col * (kCardW + 8);
+                const int y = 40 + row * (kCardH + 6);
+                drawCard(c, idx, x, y, s, joined);
+            }
+        }
+        c.clearClipRect();
+
+        // Bottom swipe / page indicator bar
+        c.setFont(&fonts::Font2);
+        c.setTextDatum(textdatum_t::middle_center);
+        c.setTextColor(_page > 0 ? ui::ACCENT : 0x39E7);
+        c.drawString("<", 112, 229);
+        for (int p = 0; p < kPages; p++) {
+            const int dx = 150 + p * 20;
+            if (p == _page) c.fillSmoothRoundRect(dx - 8, 225, 16, 8, 4, ui::ACCENT);
+            else c.fillSmoothCircle(dx, 229, 4, 0x4208);
+        }
+        c.setTextColor(_page < kPages - 1 ? ui::ACCENT : 0x39E7);
+        c.drawString(">", 208, 229);
+
+        // Title bar + page badge
+        gUi.drawTitle(c, "ตั้งค่า", true);
+        char pageBadge[32];
+        snprintf(pageBadge, sizeof(pageBadge), "หน้า %d/%d", _page + 1, kPages);
+        gUi.drawFitted(c, pageBadge, ui::W - 12, ui::kTitleH / 2, 110, gUi.thai20(), ui::ACCENT,
+                       textdatum_t::middle_right);
+    }
+
+private:
+    int _page = 0;
+    float _scrollX = 0.0f;
+    int _pressed = -1;
+    int16_t _startX = 0, _startY = 0, _lastX = 0, _lastY = 0;
+    bool _dragging = false;
+    bool _fingerDown = false;
+
+    int cardAt(int16_t x, int16_t y) const {
+        if (y < 40 || y >= 40 + 2 * kCardH + 6) return -1;
+        const int col = (x >= 160) ? 1 : 0;
+        const int row = (y >= 40 + kCardH + 3) ? 1 : 0;
+        return _page * kPerPage + row * 2 + col;
+    }
+
+    void openCategory(int idx) {
+        switch (idx) {
+            case 0: openWifi(); break;
+            case 1: openCatPersona(); break;
+            case 2: openCatAi(); break;
+            case 3: openCatAudio(); break;
+            case 4: openCatDisplay(); break;
+            case 5: openCatMediaDash(); break;
+            case 6: openCatMemory(); break;
+            case 7: openCatSystem(); break;
+            default: break;
+        }
+    }
+
+    void drawIcon(LGFX_Sprite& c, int idx, int cx, int cy, uint16_t badgeCol) {
+        c.fillSmoothCircle(cx, cy, 18, badgeCol);
+        switch (idx) {
+            case 0:  // Wi-Fi arcs
+                c.fillCircle(cx, cy + 7, 2, ui::TEXT);
+                c.drawArc(cx, cy + 7, 7, 5, 225, 315, ui::TEXT);
+                c.drawArc(cx, cy + 7, 12, 10, 225, 315, ui::TEXT);
+                c.drawArc(cx, cy + 7, 17, 15, 225, 315, ui::TEXT);
+                break;
+            case 1:  // Persona / Avatar face
+                c.fillSmoothRoundRect(cx - 11, cy - 9, 22, 18, 6, ui::TEXT);
+                c.fillSmoothRoundRect(cx - 7, cy - 4, 5, 6, 2, badgeCol);
+                c.fillSmoothRoundRect(cx + 2, cy - 4, 5, 6, 2, badgeCol);
+                c.drawArc(cx, cy + 2, 5, 4, 30, 150, badgeCol);
+                break;
+            case 2:  // AI Brain / Sparkle
+                c.fillTriangle(cx, cy - 12, cx - 4, cy, cx + 4, cy, ui::TEXT);
+                c.fillTriangle(cx, cy + 12, cx - 4, cy, cx + 4, cy, ui::TEXT);
+                c.fillTriangle(cx - 12, cy, cx, cy - 4, cx, cy + 4, ui::TEXT);
+                c.fillTriangle(cx + 12, cy, cx, cy - 4, cx, cy + 4, ui::TEXT);
+                c.fillCircle(cx + 8, cy - 8, 2, 0xFFE0);
+                c.fillCircle(cx - 8, cy + 8, 2, 0xFFE0);
+                break;
+            case 3:  // Audio & Mic
+                c.fillSmoothRoundRect(cx - 4, cy - 10, 9, 13, 4, ui::TEXT);
+                c.fillArc(cx, cy - 2, 6, 8, 0, 180, ui::TEXT);
+                c.fillRect(cx - 1, cy + 6, 3, 3, ui::TEXT);
+                c.fillRect(cx - 4, cy + 9, 9, 2, ui::TEXT);
+                break;
+            case 4:  // Display & Clock / Sun
+                c.fillCircle(cx, cy, 7, 0xFFE0);
+                for (int i = 0; i < 8; i++) {
+                    const float a = i * 0.7854f;
+                    c.drawWideLine(cx + cosf(a) * 9, cy + sinf(a) * 9, cx + cosf(a) * 13, cy + sinf(a) * 13, 2.0f,
+                                   ui::TEXT);
+                }
+                break;
+            case 5:  // Radio / MP3 & Vehicle Dash
+                c.fillCircle(cx - 5, cy + 5, 3, ui::TEXT);
+                c.fillCircle(cx + 4, cy + 3, 3, ui::TEXT);
+                c.fillRect(cx - 3, cy - 6, 2, 11, ui::TEXT);
+                c.fillRect(cx + 6, cy - 8, 2, 11, ui::TEXT);
+                c.drawWideLine(cx - 3, cy - 6, cx + 7, cy - 8, 2.5f, ui::TEXT);
+                break;
+            case 6:  // Memory chip
+                c.drawRoundRect(cx - 8, cy - 8, 16, 16, 3, ui::TEXT);
+                c.fillRect(cx - 4, cy - 4, 8, 8, ui::TEXT);
+                for (int d = -5; d <= 5; d += 5) {
+                    c.drawFastHLine(cx - 12, cy + d, 4, ui::TEXT);
+                    c.drawFastHLine(cx + 8, cy + d, 4, ui::TEXT);
+                    c.drawFastVLine(cx + d, cy - 12, 4, ui::TEXT);
+                    c.drawFastVLine(cx + d, cy + 8, 4, ui::TEXT);
+                }
+                break;
+            case 7:  // System & OTA Gear
+                for (int i = 0; i < 8; i++) {
+                    const float a = i * 0.7854f;
+                    c.fillCircle(cx + (int)(cosf(a) * 9.5f), cy + (int)(sinf(a) * 9.5f), 2, ui::TEXT);
+                }
+                c.fillCircle(cx, cy, 8, ui::TEXT);
+                c.fillCircle(cx, cy, 3, badgeCol);
+                break;
+        }
+    }
+
+    void drawCard(LGFX_Sprite& c, int idx, int x, int y, const SettingsData& s, const String& joined) {
+        static const uint16_t kBadgeColors[kCatCount] = {
+            0x0548,  // 0: Emerald Green (Wi-Fi)
+            0x14BF,  // 1: Ocean Blue (Persona)
+            0x699F,  // 2: Royal Purple (AI Brain)
+            0xE2E4,  // 3: Coral Orange (Audio/Mic)
+            0xD460,  // 4: Amber Gold (Display/Clock)
+            0x0576,  // 5: Teal Cyan (Radio/Dash)
+            0xB133,  // 6: Rose Magenta (Memory)
+            0x337D   // 7: Slate Blue (System/OTA)
+        };
+        static const char* const kTitles[kCatCount] = {
+            "Wi-Fi & เน็ต", "ผู้ช่วย & เสียง", "สมอง AI", "เสียง & ไมค์",
+            "จอ & พักจอ",  "วิทยุ & รถ",   "ความจำ",  "ระบบ & อัปเดต"
+        };
+
+        const bool pressed = (_pressed == idx);
+        const uint16_t badgeCol = kBadgeColors[idx];
+        c.fillSmoothRoundRect(x, y, kCardW, kCardH, 14, pressed ? 0x1926 : 0x10A3);
+        c.drawRoundRect(x, y, kCardW, kCardH, 14, pressed ? badgeCol : 0x2945);
+
+        drawIcon(c, idx, x + 26, y + 28, badgeCol);
+        gUi.drawFitted(c, kTitles[idx], x + 50, y + 28, kCardW - 56, gUi.thai20(), ui::TEXT, textdatum_t::middle_left);
+
+        String sub;
+        uint16_t subCol = 0xAD55;
+        switch (idx) {
+            case 0:
+                if (joined.length()) {
+                    sub = joined;
+                    subCol = ui::OK;
+                } else {
+                    sub = s.wifiSsid[0] ? "ไม่ได้เชื่อมต่อ" : "ยังไม่ตั้งค่า";
+                    subCol = ui::WARN;
+                }
+                break;
+            case 1:
+                sub = String(s.agentName) + " • " + s.voice;
+                subCol = ui::ACCENT;
+                break;
+            case 2:
+                sub = s.model == 0 ? "3.8 Live" : (s.model == 1 ? "3.8 Thinking" : "3.1 Flash");
+                sub += String(" • ") + aiLanguageId(s.language);
+                break;
+            case 3:
+                sub = "AI " + String(s.aiVolume) + "% • ไมค์ " + String(s.micGain) + "/7";
+                break;
+            case 4:
+                sub = String(clockThemeLabel(s.clockTheme));
+                subCol = ui::ACCENT;
+                break;
+            case 5:
+                sub = gRadio.active() ? "กำลังเล่นวิทยุ/เพลง"
+                                      : (gVehicle.enabled() ? vehicle::sourceNameTh(gVehicle.source()) : "MP3 • หน้าปัด OBD");
+                if (gRadio.active()) subCol = ui::OK;
+                break;
+            case 6:
+                sub = s.consolidate ? "สรุปอัตโนมัติ: เปิด" : "สรุปอัตโนมัติ: ปิด";
+                break;
+            case 7:
+                if (gOta.state() == OtaUpdater::State::Available) {
+                    sub = "มีอัปเดต v" + gOta.latest();
+                    subCol = ui::OK;
+                } else {
+                    sub = "v" FIRMWARE_VERSION " • ปกติ";
+                }
+                break;
+        }
+        gUi.drawFitted(c, sub.c_str(), x + 10, y + 65, kCardW - 20, gUi.thai20(), subCol, textdatum_t::middle_left);
+    }
+};
+
+SmartwatchMenuScreen gLauncher;
 
 }  // namespace
 
@@ -1018,16 +1522,22 @@ namespace settingsui {
 void openCalibration() { gUi.push(&gCalibration); }
 
 void openMenu() {
-    gMenu.setup("ตั้งค่า", buildMenu);
-    gMenu.onTick = [](ListScreen& l, uint32_t now) {
-        if (joinedChanged(now)) l.rebuild();  // the Wi-Fi row follows the real connection
-    };
-    gUi.push(&gMenu);
+    gLauncher.setPage(0);
+    gUi.push(&gLauncher);
 }
 
 bool openPage(const char* page) {
     if (!strcmp(page, "menu")) openMenu();
-    else if (!strcmp(page, "wifi")) openWifi();
+    else if (!strcmp(page, "menu2")) {
+        gLauncher.setPage(1);
+        if (gUi.top() != &gLauncher) gUi.push(&gLauncher);
+    } else if (!strcmp(page, "wifi")) openWifi();
+    else if (!strcmp(page, "persona")) openCatPersona();
+    else if (!strcmp(page, "ai")) openCatAi();
+    else if (!strcmp(page, "audio")) openCatAudio();
+    else if (!strcmp(page, "display")) openCatDisplay();
+    else if (!strcmp(page, "clocktheme")) openClockThemes();
+    else if (!strcmp(page, "city")) openWeatherCity();
     else if (!strcmp(page, "profile")) openProfiles();
     else if (!strcmp(page, "voice")) openVoices();
     else if (!strcmp(page, "info")) gUi.push(&gInfo);

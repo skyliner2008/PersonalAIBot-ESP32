@@ -164,6 +164,7 @@ public:
     void uiSystemInfo(String& out) override;
     AvatarState uiState() override { return state(); }
     void uiActivity() override { _sleepSince = millis(); }  // asleep under the radio player: restart the clock-face timer
+    void uiPowerSave() override { post(CMD_POWER_SAVE); }
 
 private:
     enum Command : uint8_t {

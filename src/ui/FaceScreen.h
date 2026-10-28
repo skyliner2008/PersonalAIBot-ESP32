@@ -63,6 +63,7 @@ private:
     volatile bool _powerSave = false;
     void drawClock(LGFX_Sprite& c);
     void drawRadioIcon(LGFX_Sprite& c, int cx, int cy, uint16_t color);
+    void drawRadioButton(LGFX_Sprite& c, int cx, int cy, bool active);
     void drawDashButton(LGFX_Sprite& c, int cx, int cy);
     UiStatus _status;
 
@@ -85,8 +86,9 @@ private:
     Line _lines[2];
     int _lineCount = 0;
     bool _subtitleVisible = false;
-    volatile bool _radioShown = false;  // "now playing" line drawn (tap on it opens the radio player)
-    volatile bool _dashShown = false;   // dash shortcut drawn (bottom right)
+    volatile bool _radioShown = false;     // "now playing" line drawn (tap on it opens the radio player)
+    volatile bool _radioBtnShown = false;  // radio/MP3 shortcut button drawn (next to dash button)
+    volatile bool _dashShown = false;      // dash shortcut drawn (bottom right)
 
     void layout();
     void drawStatus(LGFX_Sprite& c, const UiStatus& s);

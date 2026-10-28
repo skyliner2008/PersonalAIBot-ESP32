@@ -57,6 +57,15 @@ void AgentController::publishStatus() {
         else if (title[0]) snprintf(st.radio, sizeof(st.radio), "%s - %s", name, title);
         else snprintf(st.radio, sizeof(st.radio), "%s", name);
     }
+    const webtools::ClockWeather wx = webtools::getClockWeather();
+    st.wxValid = wx.valid;
+    st.wxTemp = wx.temp;
+    st.wxHumidity = wx.humidity;
+    st.wxPm25 = wx.pm25;
+    st.wxCode = wx.code;
+    st.wxIsDay = wx.isDay;
+    snprintf(st.wxCity, sizeof(st.wxCity), "%s",
+             wx.city[0] ? wx.city : (_cfg.weatherCity[0] ? _cfg.weatherCity : "อัตโนมัติ"));
     _face->setStatus(st);
 }
 

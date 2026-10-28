@@ -33,6 +33,14 @@ struct UiStatus {
     uint32_t tokensPerMin = 0;
     char clock[6] = "";
     char radio[160] = "";      // "station - now playing" while the Internet radio is on
+    // Weather snapshot for screensaver clock themes
+    bool wxValid = false;
+    float wxTemp = 0.0f;
+    int16_t wxHumidity = 0;
+    int16_t wxPm25 = -1;
+    int8_t wxCode = 0;
+    bool wxIsDay = true;
+    char wxCity[48] = "";
 };
 
 /** Actions the UI asks the agent to perform (implemented by AgentController). */
@@ -50,4 +58,5 @@ public:
     virtual void uiSystemInfo(String& out) = 0;
     virtual AvatarState uiState() = 0;
     virtual void uiActivity() {}        // touch on a non-face screen (radio player): delay the power-save clock
+    virtual void uiPowerSave() {}       // preview power-save clock screen now
 };

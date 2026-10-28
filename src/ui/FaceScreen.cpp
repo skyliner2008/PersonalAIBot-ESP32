@@ -1,16 +1,19 @@
 /**
  * @file FaceScreen.cpp
- * @brief Eyes + status + subtitles home screen
+ * @brief Eyes + status + subtitles home screen + multi-theme power-save screensaver with weather
  */
 
 #include "FaceScreen.h"
 
+#include <math.h>
 #include <string.h>
 
 #include <vector>
 
+#include "../app/Settings.h"
 #include "../util/TextWrap.h"
 #include "../util/Utf8.h"
+#include "CardScreen.h"
 
 FaceScreen gFace;
 
@@ -33,9 +36,76 @@ void copyUtf8(char* dst, size_t cap, const char* src) {
 }
 
 constexpr int kSubtitleY = 174;
-constexpr int kDashX = 297, kDashY = 216;  // vehicle dash shortcut (bottom right), centre
+constexpr int kDashX = 297, kDashY = 216;         // vehicle dash shortcut (bottom right), centre
+constexpr int kRadioBtnX = 256, kRadioBtnY = 216; // radio / MP3 player shortcut next to dash button
 constexpr float kEyesYIdle = 112.0f;
 constexpr float kEyesYSubtitle = 90.0f;
+
+uint16_t pm25BadgeColor(int pm25) {
+    if (pm25 < 0) return ui::DIM;
+    if (pm25 <= 15) return 0x2EDF;   // very good
+    if (pm25 <= 25) return 0x2FE8;   // good
+    if (pm25 <= 37) return 0xFFE0;   // moderate
+    if (pm25 <= 75) return 0xFD20;   // unhealthy for sensitive
+    return 0xF9E7;                   // unhealthy
+}
+
+void drawSleepingEyes(LGFX_Sprite& c, int cx, int y, int w, int gap, uint16_t col) {
+    c.fillSmoothRoundRect(cx - gap / 2 - w, y, w, 5, 2, col);
+    c.fillSmoothRoundRect(cx + gap / 2, y, w, 5, 2, col);
+}
+
+void drawWeatherCard(LGFX_Sprite& c, const UiStatus& st, int x, int y, int w, int h, uint16_t borderCol) {
+    c.fillSmoothRoundRect(x, y, w, h, 10, 0x1082);
+    c.drawRoundRect(x, y, w, h, 10, borderCol);
+    if (!st.wxValid) {
+        char waitMsg[96];
+        snprintf(waitMsg, sizeof(waitMsg), "สภาพอากาศ %s • กำลังซิงค์...", st.wxCity[0] ? st.wxCity : "อัตโนมัติ");
+        gUi.drawFitted(c, waitMsg, x + w / 2, y + h / 2, w - 20, gUi.thai20(), ui::DIM, textdatum_t::middle_center);
+        return;
+    }
+    wx::drawIcon(c, x + 26, y + h / 2, 26, st.wxCode, st.wxIsDay);
+
+    char tempBuf[16];
+    snprintf(tempBuf, sizeof(tempBuf), "%.1f", st.wxTemp);
+    c.setFont(&fonts::FreeSansBold12pt7b);
+    c.setTextSize(1);
+    c.setTextColor(ui::TEXT);
+    c.setTextDatum(textdatum_t::middle_left);
+    c.drawString(tempBuf, x + 52, y + h / 2 - 9);
+    const int tw = c.textWidth(tempBuf);
+    c.drawCircle(x + 52 + tw + 4, y + h / 2 - 16, 2, ui::TEXT);
+    c.setFont(&fonts::Font2);
+    c.drawString("C", x + 52 + tw + 9, y + h / 2 - 9);
+
+    char cityLine[96];
+    snprintf(cityLine, sizeof(cityLine), "%s", st.wxCity[0] ? st.wxCity : "ตำแหน่งปัจจุบัน");
+    gUi.drawFitted(c, cityLine, x + 52 + tw + 26, y + h / 2 - 10, w - (52 + tw + 34), gUi.thai20(), ui::ACCENT,
+                   textdatum_t::middle_left);
+
+    char condLine[120];
+    if (st.wxPm25 >= 0) {
+        snprintf(condLine, sizeof(condLine), "%s • ชื้น %d%%", wx::describe(st.wxCode), (int)st.wxHumidity);
+    } else {
+        snprintf(condLine, sizeof(condLine), "%s • ความชื้น %d%%", wx::describe(st.wxCode), (int)st.wxHumidity);
+    }
+    const int rightReserve = st.wxPm25 >= 0 ? 74 : 8;
+    gUi.drawFitted(c, condLine, x + 52, y + h / 2 + 14, w - 52 - rightReserve, gUi.thai20(), 0xCE79,
+                   textdatum_t::middle_left);
+
+    if (st.wxPm25 >= 0) {
+        const uint16_t pmCol = pm25BadgeColor(st.wxPm25);
+        const int bx = x + w - 70, by = y + h / 2 + 3;
+        c.fillSmoothRoundRect(bx, by, 62, 20, 6, 0x18E3);
+        c.drawRoundRect(bx, by, 62, 20, 6, pmCol);
+        char pmBuf[20];
+        snprintf(pmBuf, sizeof(pmBuf), "PM %d", (int)st.wxPm25);
+        c.setFont(&fonts::Font2);
+        c.setTextColor(pmCol);
+        c.setTextDatum(textdatum_t::middle_center);
+        c.drawString(pmBuf, bx + 31, by + 10);
+    }
+}
 
 }  // namespace
 
@@ -116,21 +186,22 @@ void FaceScreen::setExpression(Emotion e, uint32_t holdMs) {
 void FaceScreen::onTouch(const TouchEvent& e) {
     const bool gear = e.startX >= 266 && e.startY <= 56;
     const bool mic = e.startX <= 64 && e.startY <= 60;
-    const bool dash = e.startX >= kDashX - 34 && e.startY >= kDashY - 30 && _dashShown;
-    const bool radioBar = e.startY >= 204 && _radioShown;
+    const bool dash = e.startX >= kDashX - 20 && e.startY >= kDashY - 26 && _dashShown;
+    const bool radioBtn = e.startX >= kRadioBtnX - 22 && e.startX < kDashX - 20 && e.startY >= kRadioBtnY - 26 && _radioBtnShown;
+    const bool radioBar = e.startY >= 204 && e.startX < kRadioBtnX - 22 && _radioShown;
     if (e.type == TouchEvent::Tap) {
         if (gear) {
             if (_openMenu) _openMenu();
         } else if (dash) {
             _openDash();
+        } else if (radioBtn || radioBar) {
+            if (_openRadio) _openRadio();
         } else if (mic) {
             if (gUi.host()) gUi.host()->uiToggleMic();
-        } else if (radioBar && _openRadio) {
-            _openRadio();  // the "now playing" line under the eyes opens the radio player
         } else if (gUi.host()) {
             gUi.host()->uiTap();
         }
-    } else if (e.type == TouchEvent::LongPress && !gear && !mic && !dash && gUi.host()) {
+    } else if (e.type == TouchEvent::LongPress && !gear && !mic && !dash && !radioBtn && gUi.host()) {
         gUi.host()->uiLongPress();
     }
 }
@@ -230,90 +301,267 @@ void FaceScreen::drawMic(LGFX_Sprite& c, int cx, int cy, bool muted, bool hearin
 }
 
 void FaceScreen::drawStatus(LGFX_Sprite& c, const UiStatus& s) {
-    const int cy = 11;
+    const int cy = 14;
     drawMic(c, 21, 19, s.muted, !s.muted && _state == AVATAR_LISTENING);
+
+    // Wi-Fi signal bars: green (ui::OK) when connected, grey when disconnected
     int bars = 0;
-    if (s.wifi) bars = s.rssi > -60 ? 3 : (s.rssi > -72 ? 2 : 1);
-    for (int i = 0; i < 3; i++) {
+    if (s.wifi) bars = s.rssi > -58 ? 4 : (s.rssi > -68 ? 3 : (s.rssi > -78 ? 2 : 1));
+    for (int i = 0; i < 4; i++) {
         const int h = 4 + i * 3;
-        const uint16_t col = !s.wifi ? (s.configured ? 0x4208 : ui::ERR) : (i < bars ? ui::DIM : 0x2945);
-        c.fillRect(46 + i * 5, cy + 5 - h, 3, h, col);
+        const uint16_t col = !s.wifi ? (s.configured ? 0x4208 : ui::ERR) : (i < bars ? ui::OK : 0x2945);
+        c.fillRect(45 + i * 4, cy + 6 - h, 3, h, col);
     }
-    c.setFont(&fonts::Font2);
+
+    // Center clock: bold & large for high visibility
     if (s.clock[0]) {
-        c.setTextColor(ui::DIM);
+        c.setFont(&fonts::FreeSansBold12pt7b);
+        c.setTextSize(1);
+        c.setTextColor(ui::TEXT);
         c.setTextDatum(textdatum_t::middle_center);
         c.drawString(s.clock, ui::W / 2, cy);
     }
-    // battery
-    const int bx = 250;
+
+    // Battery or USB power indicator
+    const int bx = 254;
     if (s.battery >= 0) {
-        c.drawRect(bx, cy - 5, 18, 10, ui::DIM);
-        c.fillRect(bx + 18, cy - 2, 2, 4, ui::DIM);
-        c.fillRect(bx + 1, cy - 4, 16 * s.battery / 100, 8, s.battery > 20 ? ui::DIM : ui::ERR);
+        const uint16_t batCol = s.battery > 30 ? ui::OK : (s.battery > 20 ? ui::WARN : ui::ERR);
+        c.drawRect(bx, cy - 6, 20, 12, ui::DIM);
+        c.fillRect(bx + 20, cy - 3, 2, 6, ui::DIM);
+        c.fillRect(bx + 2, cy - 4, 16 * s.battery / 100, 8, batCol);
         char buf[8];
         snprintf(buf, sizeof(buf), "%d%%", s.battery);
-        c.setTextColor(ui::DIM);
+        c.setFont(&fonts::Font2);
+        c.setTextColor(ui::TEXT);
         c.setTextDatum(textdatum_t::middle_right);
-        c.drawString(buf, bx - 3, cy);
+        c.drawString(buf, bx - 4, cy);
+    } else {
+        // Powered by USB (no LiPo battery discharge detected)
+        c.drawRoundRect(bx, cy - 6, 20, 12, 2, ui::OK);
+        c.fillRect(bx + 20, cy - 3, 2, 6, ui::OK);
+        // Lightning bolt inside battery icon
+        c.fillTriangle(bx + 11, cy - 4, bx + 6, cy, bx + 10, cy, ui::OK);
+        c.fillTriangle(bx + 9, cy + 4, bx + 14, cy, bx + 10, cy, ui::OK);
+        c.setFont(&fonts::Font2);
+        c.setTextColor(ui::OK);
+        c.setTextDatum(textdatum_t::middle_right);
+        c.drawString("USB", bx - 4, cy);
     }
     const bool attention = _state == AVATAR_SETUP && (_now / 600) % 2;
-    drawGear(c, 302, cy + 1, attention ? ui::ACCENT : ui::DIM);
+    drawGear(c, 302, cy, attention ? ui::ACCENT : ui::DIM);
 }
 
-// Power save: big clock, Thai date and two closed eyes. The backlight is already dimmed by the agent
-// and the UI task redraws only once a second. The layout drifts a few pixels every minute so the
-// IPS panel never holds one static image for hours.
+// Power save: 4 selectable clock/screensaver themes with date and live weather.
 void FaceScreen::drawClock(LGFX_Sprite& c) {
     static const char* const kMonths[] = {"มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
                                           "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"};
+    static const char* const kShortMonths[] = {"ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+                                               "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."};
     static const char* const kDays[] = {"อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"};
     c.fillScreen(ui::BG);
     const time_t t = time(nullptr);
-    struct tm lt;
+    struct tm lt{};
     localtime_r(&t, &lt);
     const bool synced = t > 1700000000;
-    const int dx = (lt.tm_min % 5) * 3 - 6;  // pixel drift: -6..+6
-    const int dy = (lt.tm_min % 3) * 3 - 3;
+    const int dx = (lt.tm_min % 5) * 2 - 4;  // gentle pixel drift: -4..+4
+    const int dy = (lt.tm_min % 3) * 2 - 2;
     const int cx = ui::W / 2 + dx;
 
-    // closed eyes (the avatar is still "here", asleep)
-    const uint16_t eye = _eyes.color();
-    c.fillSmoothRoundRect(cx - 52, 34 + dy, 34, 6, 3, eye);
-    c.fillSmoothRoundRect(cx + 18, 34 + dy, 34, 6, 3, eye);
-
-    // hours and minutes at fixed spots around a blinking colon, so nothing shifts when it blinks
-    char hh[4] = "--", mm[4] = "--";
-    if (synced) {
-        snprintf(hh, sizeof(hh), "%02d", lt.tm_hour);
-        snprintf(mm, sizeof(mm), "%02d", lt.tm_min);
-    }
-    constexpr uint16_t kDigits = 0xCE79;  // light grey: readable on a dimmed backlight without glare
-    const int y = 112 + dy;
-    c.setFont(&fonts::Font7);  // 7-segment digits, 48 px
-    c.setTextSize(2);
-    c.setTextColor(kDigits);
-    c.setTextDatum(textdatum_t::middle_right);
-    c.drawString(hh, cx - 14, y);
-    c.setTextDatum(textdatum_t::middle_left);
-    c.drawString(mm, cx + 14, y);
-    c.setTextSize(1);
-    if (!synced || !(lt.tm_sec & 1)) {
-        c.fillRect(cx - 4, y - 22, 8, 8, kDigits);
-        c.fillRect(cx - 4, y + 14, 8, 8, kDigits);
-    }
-
-    if (synced) {
-        char date[96];
-        snprintf(date, sizeof(date), "วัน%s %d %s %d", kDays[lt.tm_wday % 7], lt.tm_mday, kMonths[lt.tm_mon % 12],
-                 lt.tm_year + 1900 + 543);
-        gUi.drawFitted(c, date, cx, 182 + dy, 300, gUi.thai20(), ui::DIM, textdatum_t::middle_center);
-    }
     UiStatus st;
     {
         Guard g(_lock);
         st = _status;
     }
+
+    const uint8_t theme = gSettings.get().clockTheme % kClockThemeCount;
+    const uint16_t eye = _eyes.color();
+    constexpr uint16_t kDigits = 0xE73C;
+
+    char hh[4] = "--", mm[4] = "--", ss[6] = "--";
+    if (synced) {
+        snprintf(hh, sizeof(hh), "%02d", lt.tm_hour);
+        snprintf(mm, sizeof(mm), "%02d", lt.tm_min);
+        snprintf(ss, sizeof(ss), ":%02d", lt.tm_sec);
+    }
+
+    if (theme == 0) {
+        // ============================================================
+        // Theme 0: ดิจิทัล + สภาพอากาศ (Modern Weather Hub)
+        // ============================================================
+        drawSleepingEyes(c, cx, 18 + dy, 28, 12, eye);
+
+        const int yClock = 66 + dy;
+        c.setFont(&fonts::Font7);  // 48 px 7-segment
+        c.setTextSize(1);
+        c.setTextColor(kDigits);
+        c.setTextDatum(textdatum_t::middle_right);
+        c.drawString(hh, cx - 10, yClock);
+        c.setTextDatum(textdatum_t::middle_left);
+        c.drawString(mm, cx + 10, yClock);
+        if (!synced || !(lt.tm_sec & 1)) {
+            c.fillCircle(cx, yClock - 11, 3, eye);
+            c.fillCircle(cx, yClock + 11, 3, eye);
+        }
+        c.setFont(&fonts::Font4);
+        c.setTextColor(eye);
+        c.setTextDatum(textdatum_t::bottom_left);
+        c.drawString(ss, cx + 82, yClock + 24);
+
+        if (synced) {
+            char date[96];
+            snprintf(date, sizeof(date), "วัน%sที่ %d %s %d", kDays[lt.tm_wday % 7], lt.tm_mday, kMonths[lt.tm_mon % 12],
+                     lt.tm_year + 1900 + 543);
+            gUi.drawFitted(c, date, cx, 114 + dy, 300, gUi.thai20(), 0xAD55, textdatum_t::middle_center);
+        }
+
+        drawWeatherCard(c, st, 14 + dx / 2, 134 + dy, ui::W - 28, 68, 0x2945);
+
+    } else if (theme == 1) {
+        // ============================================================
+        // Theme 1: สมาร์ทวอช วงแหวน (Smartwatch Ring & Complications)
+        // ============================================================
+        const int rcx = 84 + dx / 2, rcy = 112 + dy;
+        c.fillSmoothCircle(rcx, rcy, 72, 0x0841);
+        for (int i = 0; i < 60; i++) {
+            const float a = (i * 6 - 90) * 0.0174533f;
+            const bool lit = synced && i <= lt.tm_sec;
+            const bool major = (i % 5) == 0;
+            const float r0 = major ? 58.0f : 61.0f;
+            const float r1 = 69.0f;
+            const uint16_t col = lit ? (i == lt.tm_sec ? ui::TEXT : eye) : (major ? 0x39E7 : 0x18E3);
+            c.drawWideLine(rcx + cosf(a) * r0, rcy + sinf(a) * r0, rcx + cosf(a) * r1, rcy + sinf(a) * r1,
+                           major ? 2.2f : 1.4f, col);
+        }
+        drawSleepingEyes(c, rcx, rcy - 34, 18, 8, eye);
+        char hm[8];
+        snprintf(hm, sizeof(hm), "%s:%s", hh, mm);
+        c.setFont(&fonts::FreeSansBold12pt7b);
+        c.setTextSize(1);
+        c.setTextColor(ui::TEXT);
+        c.setTextDatum(textdatum_t::middle_center);
+        c.drawString(hm, rcx, rcy - 2);
+        c.setFont(&fonts::Font2);
+        c.setTextColor(eye);
+        c.drawString(ss, rcx, rcy + 24);
+
+        // Top-right card: Date complication
+        const int rx = 166 + dx / 2, rw = 142;
+        c.fillSmoothRoundRect(rx, 24 + dy, rw, 74, 10, 0x1082);
+        c.fillSmoothRoundRect(rx, 24 + dy, rw, 24, 10, eye);
+        c.fillRect(rx, 38 + dy, rw, 10, eye);
+        if (synced) {
+            char dayStr[48];
+            snprintf(dayStr, sizeof(dayStr), "วัน%s", kDays[lt.tm_wday % 7]);
+            gUi.drawFitted(c, dayStr, rx + rw / 2, 36 + dy, rw - 12, gUi.thai20(), ui::BG, textdatum_t::middle_center);
+            char dateLine[64];
+            snprintf(dateLine, sizeof(dateLine), "%d %s %d", lt.tm_mday, kShortMonths[lt.tm_mon % 12],
+                     lt.tm_year + 1900 + 543);
+            gUi.drawFitted(c, dateLine, rx + rw / 2, 72 + dy, rw - 12, gUi.thai26(), ui::TEXT, textdatum_t::middle_center);
+        }
+
+        // Bottom-right card: Weather complication
+        c.fillSmoothRoundRect(rx, 106 + dy, rw, 94, 10, 0x1082);
+        c.drawRoundRect(rx, 106 + dy, rw, 94, 10, 0x2945);
+        if (st.wxValid) {
+            wx::drawIcon(c, rx + 26, 132 + dy, 24, st.wxCode, st.wxIsDay);
+            char tBuf[16];
+            snprintf(tBuf, sizeof(tBuf), "%.1f", st.wxTemp);
+            c.setFont(&fonts::FreeSansBold12pt7b);
+            c.setTextColor(ui::TEXT);
+            c.setTextDatum(textdatum_t::middle_left);
+            c.drawString(tBuf, rx + 50, 132 + dy);
+            const int tw = c.textWidth(tBuf);
+            c.drawCircle(rx + 54 + tw, 125 + dy, 3, ui::TEXT);
+            c.setFont(&fonts::Font2);
+            c.drawString("C", rx + 60 + tw, 134 + dy);
+            gUi.drawFitted(c, st.wxCity[0] ? st.wxCity : "สภาพอากาศ", rx + 10, 159 + dy, rw - 20, gUi.thai20(),
+                           ui::ACCENT, textdatum_t::middle_left);
+            char subWx[80];
+            if (st.wxPm25 >= 0) snprintf(subWx, sizeof(subWx), "%s • PM %d", wx::describe(st.wxCode), (int)st.wxPm25);
+            else snprintf(subWx, sizeof(subWx), "%s • %d%%", wx::describe(st.wxCode), (int)st.wxHumidity);
+            gUi.drawFitted(c, subWx, rx + 10, 183 + dy, rw - 20, gUi.thai20(), 0xCE79, textdatum_t::middle_left);
+        } else {
+            gUi.drawFitted(c, "กำลังซิงค์อากาศ...", rx + rw / 2, 152 + dy, rw - 16, gUi.thai20(), ui::DIM,
+                           textdatum_t::middle_center);
+        }
+
+    } else if (theme == 2) {
+        // ============================================================
+        // Theme 2: ฟลิปการ์ด ไซเบอร์ (Cyber Flip Cards + Weather)
+        // ============================================================
+        const int cardY = 12 + dy, cardH = 88, cardW = 124;
+        const int lx = cx - 138, rx = cx + 14;
+        // Left flip card (HH)
+        c.fillSmoothRoundRect(lx, cardY, cardW, cardH, 12, 0x10A3);
+        c.drawRoundRect(lx, cardY, cardW, cardH, 12, eye);
+        c.setFont(&fonts::Font7);
+        c.setTextSize(1);
+        c.setTextColor(ui::TEXT);
+        c.setTextDatum(textdatum_t::middle_center);
+        c.drawString(hh, lx + cardW / 2, cardY + cardH / 2);
+        c.drawFastHLine(lx + 2, cardY + cardH / 2, cardW - 4, ui::BG);
+        c.drawFastHLine(lx + 2, cardY + cardH / 2 + 1, cardW - 4, 0x0841);
+
+        // Right flip card (MM)
+        c.fillSmoothRoundRect(rx, cardY, cardW, cardH, 12, 0x10A3);
+        c.drawRoundRect(rx, cardY, cardW, cardH, 12, eye);
+        c.drawString(mm, rx + cardW / 2, cardY + cardH / 2);
+        c.drawFastHLine(rx + 2, cardY + cardH / 2, cardW - 4, ui::BG);
+        c.drawFastHLine(rx + 2, cardY + cardH / 2 + 1, cardW - 4, 0x0841);
+
+        // Center neon colon + sleeping mini-eyes
+        if (!synced || !(lt.tm_sec & 1)) {
+            c.fillCircle(cx, cardY + 32, 4, eye);
+            c.fillCircle(cx, cardY + 56, 4, eye);
+        }
+
+        if (synced) {
+            char date[96];
+            snprintf(date, sizeof(date), "วัน%s %d %s %d", kDays[lt.tm_wday % 7], lt.tm_mday, kMonths[lt.tm_mon % 12],
+                     lt.tm_year + 1900 + 543);
+            gUi.drawFitted(c, date, cx, 116 + dy, 300, gUi.thai20(), eye, textdatum_t::middle_center);
+        }
+        drawWeatherCard(c, st, 14 + dx / 2, 134 + dy, ui::W - 28, 68, eye);
+
+    } else {
+        // ============================================================
+        // Theme 3: คลาสสิก มินิมอล (Classic Big Clock + Compact Weather)
+        // ============================================================
+        drawSleepingEyes(c, cx, 22 + dy, 34, 36, eye);
+
+        const int y = 88 + dy;
+        c.setFont(&fonts::Font7);  // 7-segment digits, 48 px x2
+        c.setTextSize(2);
+        c.setTextColor(0xCE79);
+        c.setTextDatum(textdatum_t::middle_right);
+        c.drawString(hh, cx - 14, y);
+        c.setTextDatum(textdatum_t::middle_left);
+        c.drawString(mm, cx + 14, y);
+        c.setTextSize(1);
+        if (!synced || !(lt.tm_sec & 1)) {
+            c.fillRect(cx - 4, y - 22, 8, 8, 0xCE79);
+            c.fillRect(cx - 4, y + 14, 8, 8, 0xCE79);
+        }
+
+        if (synced) {
+            char date[96];
+            snprintf(date, sizeof(date), "วัน%s %d %s %d", kDays[lt.tm_wday % 7], lt.tm_mday, kMonths[lt.tm_mon % 12],
+                     lt.tm_year + 1900 + 543);
+            gUi.drawFitted(c, date, cx, 158 + dy, 300, gUi.thai20(), ui::DIM, textdatum_t::middle_center);
+        }
+        if (st.wxValid) {
+            char wxLine[128];
+            if (st.wxPm25 >= 0) {
+                snprintf(wxLine, sizeof(wxLine), "%s %.1f°C • %s • PM2.5 %d",
+                         st.wxCity[0] ? st.wxCity : "อากาศ", st.wxTemp, wx::describe(st.wxCode), (int)st.wxPm25);
+            } else {
+                snprintf(wxLine, sizeof(wxLine), "%s %.1f°C • %s • ชื้น %d%%",
+                         st.wxCity[0] ? st.wxCity : "อากาศ", st.wxTemp, wx::describe(st.wxCode), (int)st.wxHumidity);
+            }
+            gUi.drawFitted(c, wxLine, cx, 188 + dy, 300, gUi.thai20(), eye, textdatum_t::middle_center);
+        }
+    }
+
     if (st.radio[0]) {  // radio keeps playing under the clock
         drawRadioIcon(c, cx - 140, 222 + dy, ui::ACCENT);
         gUi.drawFitted(c, st.radio, cx - 122, 222 + dy, 262, gUi.thai20(), ui::DIM, textdatum_t::middle_left);
@@ -331,6 +579,19 @@ void FaceScreen::drawRadioIcon(LGFX_Sprite& c, int cx, int cy, uint16_t color) {
     c.drawLine(cx - 6, cy - 6, cx + 4, cy - 11, color);
 }
 
+// Radio / MP3 player shortcut button next to the vehicle dash button
+void FaceScreen::drawRadioButton(LGFX_Sprite& c, int cx, int cy, bool active) {
+    c.fillSmoothCircle(cx, cy, 17, active ? 0x0A32 : ui::PANEL_HI);
+    if (active) c.drawCircle(cx, cy, 17, ui::ACCENT);
+    const uint16_t col = active ? ui::ACCENT : ui::TEXT;
+    // Beamed eighth notes (♫)
+    c.fillCircle(cx - 5, cy + 5, 3, col);
+    c.fillCircle(cx + 4, cy + 3, 3, col);
+    c.fillRect(cx - 3, cy - 6, 2, 11, col);
+    c.fillRect(cx + 6, cy - 8, 2, 11, col);
+    c.drawWideLine(cx - 3, cy - 6, cx + 7, cy - 8, 2.5f, active ? ui::TEXT : ui::ACCENT);
+}
+
 // Vehicle dash shortcut: a round button with a small gauge (arc, red zone, needle)
 void FaceScreen::drawDashButton(LGFX_Sprite& c, int cx, int cy) {
     c.fillSmoothCircle(cx, cy, 17, ui::PANEL_HI);
@@ -344,7 +605,9 @@ void FaceScreen::drawDashButton(LGFX_Sprite& c, int cx, int cy) {
 
 void FaceScreen::draw(LGFX_Sprite& c) {
     if (_powerSave) {
-        _radioShown = _dashShown = false;
+        _radioShown = false;
+        _radioBtnShown = false;
+        _dashShown = false;
         drawClock(c);
         return;
     }
@@ -364,10 +627,14 @@ void FaceScreen::draw(LGFX_Sprite& c) {
 
     _dashShown = _openDash && !_subtitleVisible;
     if (_dashShown) drawDashButton(c, kDashX, kDashY);
+    _radioBtnShown = _openRadio && !_subtitleVisible;
+    if (_radioBtnShown) drawRadioButton(c, kRadioBtnX, kRadioBtnY, status.radio[0] != '\0');
+
     _radioShown = status.radio[0] && !_subtitleVisible;
     if (status.radio[0] && !_subtitleVisible) {  // Internet radio: what is playing, under the eyes
         drawRadioIcon(c, 22, 222, ui::ACCENT);
-        const int w = _dashShown ? kDashX - 22 - 40 : ui::W - 48;  // stops short of the dash button
+        const int rightStop = _radioBtnShown ? (kRadioBtnX - 22) : (_dashShown ? (kDashX - 22) : (ui::W - 8));
+        const int w = rightStop - 40;
         gUi.drawFitted(c, status.radio, 40, 222, w, gUi.thai20(), ui::DIM, textdatum_t::middle_left);
     }
 

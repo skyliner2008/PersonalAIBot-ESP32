@@ -185,8 +185,13 @@ const char* textModelId(uint8_t m) { return kTextIds[m < 2 ? m : 0]; }
 const char* thinkingLevelId(uint8_t l) { return kThinking[l < 3 ? l : 0]; }
 static const char* const kLangIds[] = {"th", "en", "auto"};
 static const char* const kLangLabels[] = {"ไทย (ล็อก)", "English (ล็อก)", "ตามภาษาที่ผู้ใช้พูด"};
+static const char* const kClockThemeLabels[] = {"ดิจิทัล + สภาพอากาศ", "สมาร์ทวอช วงแหวน", "ฟลิปการ์ด ไซเบอร์",
+                                                "คลาสสิก มินิมอล"};
+static const char* const kBatteryModeLabels[] = {"อัตโนมัติ (USB / แบต)", "แสดง % แบตเสมอ", "แสดง USB เสมอ"};
 const char* aiLanguageId(uint8_t l) { return kLangIds[l < (uint8_t)AiLanguage::Count ? l : 0]; }
 const char* aiLanguageLabel(uint8_t l) { return kLangLabels[l < (uint8_t)AiLanguage::Count ? l : 0]; }
+const char* clockThemeLabel(uint8_t t) { return kClockThemeLabels[t < kClockThemeCount ? t : 0]; }
+const char* batteryModeLabel(uint8_t m) { return kBatteryModeLabels[m < kBatteryModeCount ? m : 0]; }
 
 bool Settings::applyProfile(SettingsData& d, const char* profileId) {
     const persona::Profile* p = persona::findProfile(profileId);
@@ -263,8 +268,13 @@ void Settings::load() {
     d.sleepMinutes = p.getUChar("sleep", d.sleepMinutes);
     d.clockMinutes = p.getUChar("clockmin", d.clockMinutes);
     d.dimBrightness = p.getUChar("dimbri", d.dimBrightness);
+    d.clockTheme = p.getUChar("clktheme", d.clockTheme);
+    d.batteryMode = p.getUChar("batmode", d.batteryMode);
+    if (p.isKey("wxcity")) p.getString("wxcity", d.weatherCity, sizeof(d.weatherCity));
     if (d.clockMinutes > 120) d.clockMinutes = 5;
     if (d.dimBrightness < 1 || d.dimBrightness > 60) d.dimBrightness = 8;
+    if (d.clockTheme >= kClockThemeCount) d.clockTheme = 0;
+    if (d.batteryMode >= kBatteryModeCount) d.batteryMode = 0;
     d.micGain = p.getUChar("mgain", d.micGain);
     d.micMuted = p.getBool("muted", d.micMuted);
     d.wakeMode = p.getUChar("wakemode", d.wakeMode);
@@ -407,6 +417,9 @@ void Settings::save(const SettingsData& d) {
     p.putUChar("sleep", d.sleepMinutes);
     p.putUChar("clockmin", d.clockMinutes);
     p.putUChar("dimbri", d.dimBrightness);
+    p.putUChar("clktheme", d.clockTheme);
+    p.putUChar("batmode", d.batteryMode);
+    p.putString("wxcity", d.weatherCity);
     p.putUChar("mgain", d.micGain);
     p.putBool("muted", d.micMuted);
     p.putUChar("wakemode", d.wakeMode);

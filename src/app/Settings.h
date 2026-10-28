@@ -43,6 +43,9 @@ struct SettingsData {
     uint8_t sleepMinutes = 3;      // 0 = never
     uint8_t clockMinutes = 5;      // asleep this long -> power save: clock face + dimmed screen (0 = never)
     uint8_t dimBrightness = 8;     // screen brightness % while in power save
+    uint8_t clockTheme = 0;        // power-save clock theme: 0 Weather Hub, 1 Smartwatch Ring, 2 Cyber Flip, 3 Classic
+    uint8_t batteryMode = 0;       // 0 Auto (USB float vs LiPo), 1 Always show %, 2 Always show USB
+    char weatherCity[48] = "";     // "" = auto IP location, else Thai province / city name for clock weather
     bool financeTools = true;      // declare the market / finance tools (they cost tokens every turn)
     bool waterTools = true;        // declare the ThaiWater `water` tool (water level / rain / storms, T100)
     uint8_t micGain = 5;           // ES8311 ADC scale step 0-7 (x6 dB); 5 = 30 dB, chosen by the user (normal voice at ~40 cm)
@@ -73,6 +76,10 @@ const char* textModelId(uint8_t model);      // "gemini-3.5-flash-lite", ...
 const char* thinkingLevelId(uint8_t level);  // "low" / "medium" / "high"
 const char* aiLanguageId(uint8_t lang);      // "th" / "en" / "auto"
 const char* aiLanguageLabel(uint8_t lang);   // "ไทย (ล็อก)", ...
+const char* clockThemeLabel(uint8_t theme);  // "ดิจิทัล + อากาศ", ...
+const char* batteryModeLabel(uint8_t mode);  // "อัตโนมัติ (USB/แบต)", ...
+constexpr uint8_t kClockThemeCount = 4;
+constexpr uint8_t kBatteryModeCount = 3;
 
 class Settings {
 public:

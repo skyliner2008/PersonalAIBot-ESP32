@@ -43,6 +43,23 @@ inline void setStage(const char* s) {
 /** Result.tag of a fired price alert (name "_price_alert", json = {"message": "..."}). */
 constexpr uint32_t kAlertTag = 0xFFFFFFFFu;
 
+/** Compact weather snapshot for power-save clock / screensaver themes. */
+struct ClockWeather {
+    bool valid = false;
+    float temp = 0.0f;
+    int16_t humidity = 0;
+    int16_t pm25 = -1;
+    int8_t code = 0;
+    bool isDay = true;
+    char city[48] = "";
+};
+
+/** Thread-safe read of the latest weather snapshot for the screensaver clock. */
+ClockWeather getClockWeather();
+
+/** Trigger an early background refresh (e.g. when the user changes weatherCity in Settings). */
+void requestClockWeatherRefresh();
+
 struct Result {
     char id[64];
     char name[32];

@@ -131,12 +131,28 @@ static int lipoPercent(uint32_t mv) {
 
 static int readBatteryPercent() {
     static float filtered = -1.0f;
-    const float mv = analogReadMilliVolts(VBAT_ADC_PIN) * VBAT_DIVIDER;
+    static bool sawBatteryLoad = false;
+    static uint8_t batteryLoadTicks = 0;
+    const uint8_t mode = gSettings.get().batteryMode;
+    if (mode == 2) return -1;  // forced USB-only display
+    uint32_t sumMv = 0;
+    for (int i = 0; i < 4; i++) sumMv += analogReadMilliVolts(VBAT_ADC_PIN);
+    const float mv = (sumMv * 0.25f) * VBAT_DIVIDER;
     if (mv < 2500.0f) {
         filtered = -1.0f;
         return -1;
     }
-    filtered = filtered < 0 ? mv : filtered * 0.9f + mv * 0.1f;
+    filtered = filtered < 0 ? mv : filtered * 0.85f + mv * 0.15f;
+    // On ES3C28P, when powered via USB with NO battery plugged in, the onboard LiPo charger IC regulates the
+    // unloaded BAT+ pin to its ~4.12-4.20V CV float voltage (~92-98%). A real LiPo battery under board load or
+    // normal discharge drops below 4.02V (<82%) for sustained readings, latching sawBatteryLoad = true.
+    if (filtered >= 3000.0f && filtered < 4020.0f) {
+        if (batteryLoadTicks < 10) batteryLoadTicks++;
+        if (batteryLoadTicks >= 5) sawBatteryLoad = true;
+    } else {
+        batteryLoadTicks = 0;
+    }
+    if (mode == 0 && !sawBatteryLoad && filtered >= 4020.0f) return -1;  // Auto: unloaded USB charger float -> USB
     return lipoPercent((uint32_t)filtered);
 }
 
@@ -386,6 +402,9 @@ static void printConfig() {
     d["sleep"] = s.sleepMinutes;
     d["clock"] = s.clockMinutes;
     d["dimlevel"] = s.dimBrightness;
+    d["clocktheme"] = s.clockTheme;
+    d["batmode"] = s.batteryMode;
+    d["city"] = s.weatherCity;
     d["rotation"] = s.rotation;
     d["invert"] = s.lcdInvert;
     d["consolidate"] = s.consolidate;
@@ -810,7 +829,8 @@ static int indexOrFind(const String& v, int (*find)(const char*)) {
 static bool handleSet(const String& field, const String& value) {
     static const char* const kFields[] = {"ssid", "pass", "key", "agent", "user", "voice", "profile",
                                           "personality", "gender", "eye", "model", "thinking", "language", "textmodel",
-                                          "volume", "aivolume", "brightness", "sleep", "clock", "dimlevel", "rotation", "invert", "consolidate",
+                                          "volume", "aivolume", "brightness", "sleep", "clock", "dimlevel", "clocktheme",
+                                          "batmode", "city", "rotation", "invert", "consolidate",
                                           "search", "micgain", "touch", "finance", "water", "wake", "wakeword", "wakethreshold"};
     bool known = false;
     for (const char* f : kFields) known |= field == f;
@@ -863,6 +883,12 @@ static bool handleSet(const String& field, const String& value) {
         else if (field == "sleep") d.sleepMinutes = (uint8_t)constrain(value.toInt(), 0, 120);
         else if (field == "clock") d.clockMinutes = (uint8_t)constrain(value.toInt(), 0, 120);
         else if (field == "dimlevel") d.dimBrightness = (uint8_t)constrain(value.toInt(), 1, 60);
+        else if (field == "clocktheme") d.clockTheme = (uint8_t)constrain(value.toInt(), 0, (int)kClockThemeCount - 1);
+        else if (field == "batmode") d.batteryMode = (uint8_t)constrain(value.toInt(), 0, (int)kBatteryModeCount - 1);
+        else if (field == "city") {
+            if (value == "auto" || value == "ip" || value == "-") d.weatherCity[0] = '\0';
+            else copy(d.weatherCity, sizeof(d.weatherCity));
+        }
         else if (field == "rotation") rotation = d.rotation = value.toInt() == 3 ? 3 : 1;
         else if (field == "invert") invert = d.lcdInvert = on;
         else if (field == "consolidate") d.consolidate = on;
@@ -876,6 +902,7 @@ static bool handleSet(const String& field, const String& value) {
         else if (field == "touch") d.touchMap = (uint8_t)constrain(value.toInt(), 0, 7);
     });
     if (field == "search" && on) agent.retrySearch();  // try Google Search again now, not in 6 h
+    if (field == "city") webtools::requestClockWeatherRefresh();
     if (rotation) {  // the LCD belongs to the UI task
         UiCommand c{};
         c.type = UiCommand::Rotate;
@@ -1558,7 +1585,7 @@ void setup() {
     rgbLed.setPixelColor(0, rgbLed.Color(50, 50, 50));
     rgbLed.show();
     analogReadResolution(12);
-    analogSetPinAttenuation(VBAT_ADC_PIN, ADC_11db);
+    (void)analogReadMilliVolts(VBAT_ADC_PIN);  // attaches ADC channel cleanly at 11 dB without HAL warning
 
     storage.begin();
     // Wi-Fi password / API key: sealed on the SD card when there is one (else NVS);

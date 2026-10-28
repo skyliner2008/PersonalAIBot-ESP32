@@ -21,6 +21,7 @@
 #include <algorithm>
 
 #include "../ai/GoogleRootCA.h"
+#include "../app/Settings.h"
 #include "../ui/CardScreen.h"
 #include "../util/JsonAlloc.h"
 #include "../util/Units.h"
@@ -29,6 +30,25 @@
 namespace webtools {
 
 namespace {
+
+portMUX_TYPE gClockWxMux = portMUX_INITIALIZER_UNLOCKED;
+ClockWeather gClockWx;
+volatile bool gClockWxRefreshReq = true;
+
+void storeClockWeather(const CardData::WeatherInfo& w, const char* city) {
+    ClockWeather snap;
+    snap.valid = true;
+    snap.temp = w.temp;
+    snap.humidity = w.humidity;
+    snap.pm25 = w.pm25;
+    snap.code = w.code;
+    snap.isDay = w.isDay;
+    strncpy(snap.city, city ? city : "", sizeof(snap.city) - 1);
+    snap.city[sizeof(snap.city) - 1] = '\0';
+    portENTER_CRITICAL(&gClockWxMux);
+    gClockWx = snap;
+    portEXIT_CRITICAL(&gClockWxMux);
+}
 
 constexpr UBaseType_t kQueueDepth = 4;
 constexpr UBaseType_t kTaskPriority = 2;  // idle / background (price alerts); see JobPriority
@@ -163,6 +183,7 @@ bool geocode(const char* name, float& lat, float& lon, String& label) {
 void runWeather(JsonObjectConst args, JsonDocument& out, CardData& card) {
     const char* loc = args["location"] | "";
     const char* locEn = args["location_en"] | "";
+    const SettingsData cfg = gSettings.get();
     float lat = 13.7540f, lon = 100.5014f;
     String label = "กรุงเทพมหานคร";
     if (*loc || *locEn) {
@@ -170,6 +191,8 @@ void runWeather(JsonObjectConst args, JsonDocument& out, CardData& card) {
             setError(out, "ไม่พบสถานที่นี้ ลองระบุชื่อจังหวัด หรือส่ง location_en เป็นภาษาอังกฤษ");
             return;
         }
+    } else if (cfg.weatherCity[0] && geocode(cfg.weatherCity, lat, lon, label)) {
+        // user selected a home/weather city in Settings
     } else {  // no place given: approximate location from the internet IP (Bangkok if that fails)
         float ilat, ilon;
         String ilabel;
@@ -242,6 +265,9 @@ void runWeather(JsonObjectConst args, JsonDocument& out, CardData& card) {
     if (w.pm25 >= 0) {
         res["pm25"] = w.pm25;
         res["us_aqi_pm25"] = w.aqi;
+    }
+    if (!(*loc || *locEn) || (cfg.weatherCity[0] && !strcmp(loc, cfg.weatherCity)) || !getClockWeather().valid) {
+        storeClockWeather(w, label.c_str());
     }
     JsonArray fc = res["forecast"].to<JsonArray>();
     for (size_t i = 0; i < times.size() && i < 5; i++) {
@@ -744,16 +770,54 @@ struct JobPriority {
 };
 }  // namespace
 
+ClockWeather getClockWeather() {
+    ClockWeather snap;
+    portENTER_CRITICAL(&gClockWxMux);
+    snap = gClockWx;
+    portEXIT_CRITICAL(&gClockWxMux);
+    return snap;
+}
+
+void requestClockWeatherRefresh() { gClockWxRefreshReq = true; }
+
 void WebTools::loop() {
     // ~3 KB: not on the task stack, and not in internal RAM either (wiki 14: the wake word needs it)
     void* cardMem = heap_caps_malloc(sizeof(CardData), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     CardData& card = *new (cardMem ? cardMem : malloc(sizeof(CardData))) CardData();  // the task never ends
     const ToolEnv env{_dir};
     uint32_t nextAlertCheck = millis() + 30000;
+    uint32_t nextWxCheck = millis() + 6000;
+    char lastWxCity[48] = "\x01";
     bool alertsKnown = hasPriceAlerts(env);
     Job j;
     for (;;) {
         if (xQueueReceive(_jobs, &j, pdMS_TO_TICKS(5000)) != pdTRUE) {
+            const uint32_t nowMs = millis();
+            // idle: refresh screensaver weather (on boot/city change or every 20 min) without popping up a card
+            if (WiFi.status() == WL_CONNECTED) {
+                const SettingsData cfg = gSettings.get();
+                const bool cityChanged = strcmp(lastWxCity, cfg.weatherCity) != 0;
+                if (gClockWxRefreshReq || cityChanged || (int32_t)(nowMs - nextWxCheck) >= 0) {
+                    gClockWxRefreshReq = false;
+                    strncpy(lastWxCity, cfg.weatherCity, sizeof(lastWxCity) - 1);
+                    lastWxCity[sizeof(lastWxCity) - 1] = '\0';
+                    JsonDocument a(JsonPsramAllocator::instance());
+                    JsonDocument out(JsonPsramAllocator::instance());
+                    if (cfg.weatherCity[0]) a["location"] = cfg.weatherCity;
+                    else a.to<JsonObject>();
+                    card = CardData();
+                    setStage("clock_weather");
+                    runWeather(a.as<JsonObjectConst>(), out, card);
+                    setStage("idle");
+                    if (card.kind == CardData::Weather && out["error"].isNull()) {
+                        const char* locLabel = out["result"]["location"] | cfg.weatherCity;
+                        storeClockWeather(card.w, locLabel);
+                        nextWxCheck = millis() + 20 * 60000;
+                    } else {
+                        nextWxCheck = millis() + 60000;
+                    }
+                }
+            }
             // idle: watch the stored price alerts (one TradingView batch request every 2 min)
             if (alertsKnown && (int32_t)(millis() - nextAlertCheck) >= 0 && WiFi.status() == WL_CONNECTED) {
                 nextAlertCheck = millis() + kAlertCheckMs;
