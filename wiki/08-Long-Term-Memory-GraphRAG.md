@@ -192,3 +192,7 @@ sequenceDiagram
 - [ ] ทดสอบ end-to-end กับ Gemini จริง (ต้องใส่ Wi-Fi + API key ใน `include/secrets.h`)
 - [ ] (ทางเลือก) สรุปบทสนทนารายวันอัตโนมัติ (consolidation) เป็น facts
 - [ ] (ทางเลือก) พจนานุกรมคำพ้องขนาดเล็ก (หมา↔สุนัข, แม่↔มารดา) ช่วย recall
+
+## SD card หยุดตอบ (T125)
+
+การเขียนความจำ/บทสนทนาที่ล้ม (`[Memory] write failed`) แจ้ง `Storage::reportError()` → task agent อ่าน sector 0 ของการ์ด ถ้าไม่ตอบจะ mount ใหม่ที่ path เดิม (ไฟล์ความจำเปิด-เขียน-ปิดทุกครั้ง จึงเขียนต่อได้เอง) · `diag` มี `sd_remounts` — ดู [[07-Troubleshooting-Log#T125]]

@@ -304,6 +304,10 @@ void AgentController::loop() {
         handleSearchGate();
         handleConsolidation(now);
         lap("consolidation");
+        // T125: an SD card that stopped answering is mounted again - here, not in loop(): the agent stack is internal
+        // with ~6 KB to spare (mounting the card needs a few KB; loopTask has 2.5)
+        if (_storage) _storage->poll(now);
+        lap("storage");
         updateState(now);
         reportReply();
         lap("state");

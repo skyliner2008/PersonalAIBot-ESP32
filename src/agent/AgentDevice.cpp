@@ -6,6 +6,8 @@
 
 #include "AgentInternal.h"
 
+#include <esp_random.h>
+
 // ============================================================
 // State & status for the UI
 // ============================================================
@@ -221,10 +223,35 @@ const char* AgentController::playMusic(const char* query, JsonObject r) {
     String q = query ? query : "";
     q.trim();
     static const char* const kAny[] = {"*", "เพลง", "music", "mp3", "ต่อ", "เล่นต่อ", "เพลงต่อ", "all", "ทั้งหมด"};
+    // T124 (board logs): "เปลี่ยนเพลง" came as "*" every time = carry on = the same song again
+    static const char* const kNext[] = {"next", "ถัดไป", "เพลงถัดไป", "เปลี่ยน", "เปลี่ยนเพลง", "เพลงอื่น", "อื่น",
+                                        "skip", "ข้าม", "another", "change"};
+    static const char* const kPrev[] = {"prev", "previous", "back", "ก่อนหน้า", "เพลงก่อนหน้า", "ย้อน", "เพลงที่แล้ว"};
+    static const char* const kRandom[] = {"random", "shuffle", "สุ่ม", "สุ่มเพลง"};
+    int step = 0;
+    bool random = false;
     for (const char* g : kAny) {
         if (q.equalsIgnoreCase(g)) q = "";
     }
-    if (q.length()) {
+    for (const char* g : kNext) {
+        if (q.equalsIgnoreCase(g)) q = "", step = 1;
+    }
+    for (const char* g : kPrev) {
+        if (q.equalsIgnoreCase(g)) q = "", step = -1;
+    }
+    for (const char* g : kRandom) {
+        if (q.equalsIgnoreCase(g)) q = "", random = true;
+    }
+    // asking for songs while one plays is asking for another one (carrying on needs no call)
+    if (!q.length() && !step && !random && gMusic.playing()) step = 1;
+    if (random) {
+        const int n = (int)gMusic.count();
+        int i = (int)(esp_random() % (uint32_t)n);
+        if (n > 1 && i == gMusic.current()) i = (i + 1) % n;
+        if (!gMusic.play(i)) return "เปิดเพลงไม่ได้";
+    } else if (step) {
+        if (!gMusic.step(step)) return "เปิดเพลงไม่ได้";
+    } else if (q.length()) {
         const int i = gMusic.find(q.c_str());
         if (i < 0) return "ไม่พบเพลงนี้ใน SD card (ค้นจากชื่อไฟล์เพลง) บอกผู้ใช้ตรงๆ";
         if (!gMusic.play(i)) return "เปิดเพลงไม่ได้";
@@ -237,7 +264,7 @@ const char* AgentController::playMusic(const char* query, JsonObject r) {
     r["song"] = (const char*)name;
     r["number"] = cur + 1;
     r["of"] = (unsigned)gMusic.count();
-    r["note"] = "กำลังเล่นเพลงจาก SD card บอกชื่อเพลงสั้นๆ แล้วเงียบ (จบเพลงแล้วเล่นเพลงถัดไปเอง)";
+    r["note"] = "กำลังเล่นเพลงนี้จาก SD card บอกชื่อเพลงสั้นๆ แล้วเงียบ (จบเพลงแล้วเล่นเพลงถัดไปเอง)";
     noteActivity();
     requestSleep();  // like a station: the song plays at full level, the mic only listens for a wake-up
     return nullptr;
@@ -250,7 +277,9 @@ void AgentController::handleRadio(uint32_t now, bool busy) {
             _audio->setRadioGain(1.0f);
             if (gRadio.state() == RadioPlayer::State::Error) {
                 char msg[128];
-                snprintf(msg, sizeof(msg), "เปิดวิทยุไม่ได้ (%s)", gRadio.lastError());
+                // T125: a song from the card is not "the radio" (it said "เปิดวิทยุไม่ได้" right after naming a song)
+                snprintf(msg, sizeof(msg), gRadio.isFile() ? "เล่นเพลงจาก SD card ไม่ได้ (%s)" : "เปิดวิทยุไม่ได้ (%s)",
+                         gRadio.lastError());
                 _face->setHint(msg, 5000);
                 if (!_sleeping) {
                     PsString a = "[แจ้งเตือนจากระบบ] ";
@@ -426,6 +455,7 @@ void AgentController::fillDiagnostics(JsonObject out) {
     out["heap_largest_kb"] = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024;  // T119: fragmentation
     out["psram_kb"] = ESP.getFreePsram() / 1024;
     out["storage"] = _storage->kindName();
+    out["sd_remounts"] = _storage->remounts();  // T125: times a card that stopped answering was mounted again
     out["storage_free_mb"] = (uint32_t)((_storage->totalBytes() - _storage->usedBytes()) / (1024 * 1024));
     out["battery"] = (int)_battery;
     out["uptime_s"] = millis() / 1000;

@@ -28,7 +28,9 @@ bool Storage::mountSd() {
     if (SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0, SD_D1, SD_D2, SD_D3) &&
         SD_MMC.begin("/sdcard", false, false, SDMMC_FREQ_DEFAULT)) {
         Serial.println("[Storage] SD card mounted (4-bit)");
+        _sd4bit = true;
     } else {
+        _sd4bit = false;
         SD_MMC.end();
         if (!SD_MMC.setPins(SD_CLK, SD_CMD, SD_D0) || !SD_MMC.begin("/sdcard", true, false, SDMMC_FREQ_DEFAULT)) {
             SD_MMC.end();
@@ -84,4 +86,49 @@ uint64_t Storage::usedBytes() const {
     if (_kind == StorageKind::SdCard) return SD_MMC.usedBytes();
     if (_kind == StorageKind::Flash) return LittleFS.usedBytes();
     return 0;
+}
+
+// ============================================================
+// T125: a card that stopped answering is mounted again
+// ============================================================
+
+volatile uint32_t Storage::s_errors = 0;
+volatile bool Storage::s_forceRemount = false;
+
+void Storage::reportError() { s_errors = s_errors + 1; }
+
+void Storage::requestRemount() {
+    s_forceRemount = true;
+    reportError();
+}
+
+void Storage::poll(uint32_t now) {
+    if (_kind != StorageKind::SdCard || s_errors == _seenErrors || (int32_t)(now - _nextCheck) < 0) return;
+    _seenErrors = s_errors;
+    // a file that is not there (or a full card) is not a dead card: ask the card itself
+    static uint8_t* sector = (uint8_t*)heap_caps_malloc(512, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    if (!sector) return;
+    const bool forced = s_forceRemount;
+    s_forceRemount = false;
+    if (!forced && SD_MMC.readRAW(sector, 0)) {
+        _failedTries = 0;
+        _nextCheck = now + 2000;
+        return;
+    }
+    Serial.println(forced ? "[Storage] Mounting the SD card again (console)" : "[Storage] SD card stopped answering - mounting it again");
+    SD_MMC.end();
+    const bool ok = mountSd();  // same mount point and paths: open-per-write users carry on by themselves
+    _remounts++;
+    if (ok && SD_MMC.readRAW(sector, 0)) {
+        Serial.printf("[Storage] SD card back (%s, remount %lu)\n", _sd4bit ? "4-bit" : "1-bit", (unsigned long)_remounts);
+        _failedTries = 0;
+        _nextCheck = now + 2000;
+        _seenErrors = s_errors;  // errors from before the remount are answered
+    } else {
+        _failedTries++;
+        Serial.printf("[Storage] SD card still not answering (try %u) - again in %u s\n", (unsigned)_failedTries,
+                      _failedTries < 5 ? 5u : 60u);
+        _nextCheck = now + (_failedTries < 5 ? 5000 : 60000);
+        _seenErrors = s_errors - 1;  // keep checking without a new error
+    }
 }

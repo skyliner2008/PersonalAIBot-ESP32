@@ -308,7 +308,8 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     declare(d, b, "go_to_sleep", "Stop listening and sleep after this reply (user said goodbye / good night).");
     static const Param radio[] = {
         {"station", "STRING", "Number, name or genre the user asked for. Omit = the last station played.", false, nullptr},
-        {"music", "STRING", "SD-card songs instead: song/artist words, '*' = carry on.", false, nullptr},
+        {"music", "STRING", "SD-card songs: song/artist words, 'next' (change song), 'prev', 'random' or '*'.", false,
+         nullptr},
     };
     declare(d, b, "play_radio", "Play a radio-list station (in your instructions) or SD-card songs. Name it, then stay quiet.",
             radio, 2);

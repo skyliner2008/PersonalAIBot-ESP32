@@ -259,8 +259,8 @@ After opening the vault, press `Ctrl+G` to see the knowledge graph. All `[[WikiL
 # Build the firmware
 pio run
 
-# Upload to the board (connect via USB first)
-pio run --target upload
+# Upload to the board (Windows PowerShell: ตั้ง UTF-8 ก่อนเสมอ เพื่อให้แถบความคืบหน้าของ esptool v5.4 ไม่ทำให้ PlatformIO ค้างด้วย UnicodeEncodeError บน cp1252 และห้ามใส่ -t nobuild คู่กับ -t upload)
+chcp 65001 > $null; $env:PYTHONUTF8 = "1"; $env:PYTHONIOENCODING = "utf-8"; pio run -t upload --upload-port COM3
 
 # Open serial monitor to see debug output
 pio device monitor --baud 115200

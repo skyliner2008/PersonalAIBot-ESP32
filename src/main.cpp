@@ -12,7 +12,10 @@
 
 #include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include <ArduinoJson.h>
+#include <ff.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
 #include <esp_memory_utils.h>
@@ -479,6 +482,291 @@ static void printWifiScan() {
 
 // Internal RAM budget (wiki 14: ESP-SR needs headroom) and every task's stack: where it lives and how
 // much of it was never touched (high-water mark).
+// sdls: bytes and files under a folder (sub-folders up to 8 deep; the path lives in PSRAM, little stack per level)
+static void sdTotal(PsString& path, int depth, uint64_t& bytes, uint32_t& files) {
+    DIR* d = opendir(path.c_str());
+    if (!d) return;
+    const size_t base = path.size();
+    while (const struct dirent* e = readdir(d)) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        path += '/';
+        path += e->d_name;
+        if (e->d_type == DT_DIR) {
+            if (depth < 8) sdTotal(path, depth + 1, bytes, files);
+        } else {
+            struct stat st;
+            if (stat(path.c_str(), &st) == 0) bytes += (uint64_t)st.st_size;
+            files++;
+        }
+        path.resize(base);
+    }
+    closedir(d);
+}
+
+static String normSdPath(const String& path) {
+    String p = path;
+    p.trim();
+    if (p.indexOf("..") >= 0) return "";
+    if (!p.startsWith("/sdcard")) {
+        if (p.startsWith("/")) p = "/sdcard" + p;
+        else p = "/sdcard/" + p;
+    }
+    while (p.length() > 8 && p.endsWith("/")) p.remove(p.length() - 1);
+    return p;
+}
+
+static void sdList(const String& dir) {
+    if (!dir.startsWith("/sdcard")) {
+        Serial.println("ERR sdls: only under /sdcard");
+        return;
+    }
+    DIR* d = opendir(dir.c_str());
+    if (!d) {
+        Serial.printf("ERR sdls: cannot open %s\n", dir.c_str());
+        return;
+    }
+    Serial.printf("SDLS %s\n", dir.c_str());
+    uint64_t sum = 0;
+    PsString path;
+    while (const struct dirent* e = readdir(d)) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        path = dir.c_str();
+        path += '/';
+        path += e->d_name;
+        uint64_t bytes = 0;
+        uint32_t files = 0;
+        if (e->d_type == DT_DIR) {
+            sdTotal(path, 1, bytes, files);
+            Serial.printf("  <DIR> %10.1f MB  %6lu files  %s\n", bytes / 1048576.0, (unsigned long)files, e->d_name);
+        } else {
+            struct stat st;
+            if (stat(path.c_str(), &st) == 0) bytes = (uint64_t)st.st_size;
+            Serial.printf("        %10.1f MB               %s\n", bytes / 1048576.0, e->d_name);
+        }
+        sum += bytes;
+    }
+    closedir(d);
+    Serial.printf("SDLS END %.1f MB in %s (card: %llu MB used of %llu MB)\n", sum / 1048576.0, dir.c_str(),
+                  storage.usedBytes() >> 20, storage.totalBytes() >> 20);
+}
+
+// SD card JSON list for PC Studio (tag SDLIST)
+static void printSdList(const String& dir) {
+    if (storage.kind() != StorageKind::SdCard) {
+        Serial.println("SDLIST {\"error\":\"ไม่มี SD card หรือ SD card ไม่ได้ mount\"}");
+        return;
+    }
+    const String dpath = normSdPath(dir.length() ? dir : String("/sdcard"));
+    if (dpath.isEmpty() || !dpath.startsWith("/sdcard")) {
+        Serial.println("SDLIST {\"error\":\"invalid path\"}");
+        return;
+    }
+    DIR* d = opendir(dpath.c_str());
+    if (!d) {
+        Serial.printf("SDLIST {\"error\":\"cannot open %s\"}\n", dpath.c_str());
+        return;
+    }
+    JsonDocument doc(JsonPsramAllocator::instance());
+    doc["path"] = dpath;
+    doc["free_mb"] = (uint32_t)((storage.totalBytes() - storage.usedBytes()) >> 20);
+    doc["total_mb"] = (uint32_t)(storage.totalBytes() >> 20);
+    JsonArray entries = doc["entries"].to<JsonArray>();
+
+    PsString path;
+    while (const struct dirent* e = readdir(d)) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        path = dpath.c_str();
+        if (!dpath.endsWith("/")) path += '/';
+        path += e->d_name;
+        JsonObject item = entries.add<JsonObject>();
+        item["name"] = String(e->d_name);
+        struct stat st;
+        if (stat(path.c_str(), &st) == 0) {
+            item["dir"] = S_ISDIR(st.st_mode);
+            item["size"] = S_ISDIR(st.st_mode) ? 0 : (uint32_t)st.st_size;
+            item["mtime"] = (uint32_t)st.st_mtime;
+        } else {
+            item["dir"] = (e->d_type == DT_DIR);
+            item["size"] = 0;
+            item["mtime"] = 0;
+        }
+    }
+    closedir(d);
+    String json;
+    serializeJson(doc, json);
+    printTagged("SDLIST", json);
+}
+
+// SD card file download for PC Studio: sdget <path> [offset] [length]
+static void sdGet(const String& arg) {
+    if (storage.kind() != StorageKind::SdCard) {
+        Serial.println("SDGETERR no SD card mounted");
+        return;
+    }
+    String rawPath = arg;
+    long off = 0, len = -1;
+    const int sp = arg.indexOf(' ');
+    if (sp > 0) {
+        rawPath = arg.substring(0, sp);
+        String r = arg.substring(sp + 1);
+        r.trim();
+        off = r.toInt();
+        const int sp2 = r.indexOf(' ');
+        if (sp2 > 0) len = r.substring(sp2 + 1).toInt();
+    }
+    const String path = normSdPath(rawPath);
+    if (path.isEmpty() || !path.startsWith("/sdcard/")) {
+        Serial.printf("SDGETERR %s: invalid path\n", rawPath.c_str());
+        return;
+    }
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) {
+        Serial.printf("SDGETERR %s: cannot open file\n", path.c_str());
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    const long size = ftell(f);
+    if (off < 0 || off > size) off = size;
+    if (len < 0 || off + len > size) len = size - off;
+    fseek(f, off, SEEK_SET);
+
+    Serial.printf("SDGETFILE %s %ld %ld %ld\n", path.c_str(), size, off, len);
+    sha256::Hash h;
+    uint8_t chunk[768];
+    char line[1100];
+    long pos = off;
+    while (pos < off + len) {
+        const size_t want = (size_t)(off + len - pos) < sizeof(chunk) ? (size_t)(off + len - pos) : sizeof(chunk);
+        const size_t got = fread(chunk, 1, want, f);
+        if (!got) break;
+        h.update(chunk, got);
+        int n = snprintf(line, sizeof(line), "SDGETDATA %ld ", pos);
+        n += (int)b64::encode(chunk, got, line + n);
+        line[n++] = '\n';
+        for (int i = 0; i < 250 && Serial.availableForWrite() < n; i++) delay(2);
+        Serial.write((const uint8_t*)line, (size_t)n);
+        pos += (long)got;
+    }
+    fclose(f);
+    uint8_t digest[32];
+    char hex[65];
+    h.finish(digest);
+    sha256::toHex(digest, hex);
+    Serial.printf("SDGETEND %s %ld %ld %s\n", path.c_str(), off, pos - off, hex);
+}
+
+// Clear FAT attributes (Read-Only 0x01, Hidden 0x02, System 0x04, Archive 0x20)
+// Often left on files created by cameras/dashcams (e.g. GoPro).
+static void clearFatReadOnly(const char* vfsPath) {
+    const char* rel = vfsPath;
+    if (strncmp(rel, "/sdcard", 7) == 0) {
+        rel += 7;
+        if (*rel == '\0') rel = "/";
+    }
+    char fatPath[160];
+    snprintf(fatPath, sizeof(fatPath), "0:%s", (rel[0] == '/') ? rel : "");
+    if (rel[0] != '/') snprintf(fatPath, sizeof(fatPath), "0:/%s", rel);
+
+    const BYTE mask = AM_RDO | AM_HID | AM_SYS | AM_ARC;
+    f_chmod(fatPath, 0, mask);
+    if (rel[0] == '/') {
+        f_chmod(rel, 0, mask);
+    }
+}
+
+static int safeUnlink(const char* vfsPath) {
+    clearFatReadOnly(vfsPath);
+    int ret = unlink(vfsPath);
+    if (ret != 0) {
+        // Fallback: try f_unlink directly
+        const char* rel = vfsPath;
+        if (strncmp(rel, "/sdcard", 7) == 0) rel += 7;
+        char fatPath[160];
+        snprintf(fatPath, sizeof(fatPath), "0:%s", (rel[0] == '/') ? rel : "");
+        if (rel[0] != '/') snprintf(fatPath, sizeof(fatPath), "0:/%s", rel);
+        if (f_unlink(fatPath) == FR_OK || f_unlink(rel) == FR_OK) {
+            ret = 0;
+        }
+    }
+    return ret;
+}
+
+// SD card file / recursive dir delete
+static bool sdRmTree(const char* path, int depth = 0) {
+    if (depth > 10) return false;
+    DIR* d = opendir(path);
+    if (!d) return safeUnlink(path) == 0;
+    while (const struct dirent* e = readdir(d)) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        char sub[160];
+        snprintf(sub, sizeof(sub), "%s/%s", path, e->d_name);
+        struct stat st;
+        if (stat(sub, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) sdRmTree(sub, depth + 1);
+            else safeUnlink(sub);
+        }
+    }
+    closedir(d);
+    clearFatReadOnly(path);
+    int r = rmdir(path);
+    if (r != 0) {
+        const char* rel = path;
+        if (strncmp(rel, "/sdcard", 7) == 0) rel += 7;
+        char fatPath[160];
+        snprintf(fatPath, sizeof(fatPath), "0:%s", (rel[0] == '/') ? rel : "");
+        if (rel[0] != '/') snprintf(fatPath, sizeof(fatPath), "0:/%s", rel);
+        if (f_unlink(fatPath) == FR_OK || f_unlink(rel) == FR_OK) r = 0;
+    }
+    return r == 0;
+}
+
+static void sdDel(const String& rawPath) {
+    if (storage.kind() != StorageKind::SdCard) {
+        Serial.println("ERR sddel: no SD card mounted");
+        return;
+    }
+    const String path = normSdPath(rawPath);
+    if (path.isEmpty() || !path.startsWith("/sdcard/")) {
+        Serial.println("ERR sddel: invalid path");
+        return;
+    }
+    if (path == "/sdcard" || path == "/sdcard/agent" || path == "/sdcard/music") {
+        Serial.println("ERR sddel: cannot delete system directory");
+        return;
+    }
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) {
+        Serial.printf("ERR sddel: not found %s\n", path.c_str());
+        return;
+    }
+    const bool isDir = S_ISDIR(st.st_mode);
+    int ret = isDir ? (sdRmTree(path.c_str()) ? 0 : -1) : safeUnlink(path.c_str());
+    if (ret == 0) {
+        Serial.printf("OK sddel %s\n", path.c_str());
+    } else {
+        Serial.printf("ERR sddel: failed (%d)\n", errno);
+    }
+}
+
+// SD card directory creation
+static void sdMkdir(const String& rawPath) {
+    if (storage.kind() != StorageKind::SdCard) {
+        Serial.println("ERR sdmkdir: no SD card mounted");
+        return;
+    }
+    const String path = normSdPath(rawPath);
+    if (path.isEmpty() || !path.startsWith("/sdcard/")) {
+        Serial.println("ERR sdmkdir: invalid path");
+        return;
+    }
+    int ret = mkdir(path.c_str(), 0755);
+    if (ret == 0) {
+        Serial.printf("OK sdmkdir %s\n", path.c_str());
+    } else {
+        Serial.printf("ERR sdmkdir: failed (%d)\n", errno);
+    }
+}
+
 // T123: the song list for ESP32-AI Studio's music tab
 static void printMusicList() {
     JsonDocument d(JsonPsramAllocator::instance());
@@ -615,6 +903,7 @@ static void handleConsoleLine(String line) {
         Serial.println("status | audio | tone [hz] [ms] | mic [sec] | vol <0-100> | i2c | regs | reg <r> [v]");
         Serial.println("tool <name> [json] | say <u|a|s> <text> | expr <emotion> | sleep | powersave | wake | screenshot | radio [<n>|<url> [name]|stop]");
         Serial.println("music [list|rescan|next|prev|pause|resume|<n>|<words>] (MP3 from /sdcard/music)");
+        Serial.println("sd card: sdls [path] | sdlist [path] | sdget <path> [off] [len] | sddel <path> | sdmkdir <path> | sdremount");
         Serial.println("ask <text> (type to the assistant) | mute (toggle mic) | retry | new (fresh session) | memclear <facts|history>");
         Serial.println("rec [sec] (record what the mic sends to Gemini: RECINFO <json> + RECORD <rate> <bytes> + PCM + END)");
         Serial.println("recref [sec] (raw mic + echo reference, interleaved: RECPAIRS <rate> <bytes> + PCM + END)");
@@ -972,7 +1261,7 @@ static void handleConsoleLine(String line) {
             const String name = s2 < 0 ? String("console") : rest.substring(s2 + 1);
             Serial.println(gRadio.play(url.c_str(), name.c_str()) ? "OK radio" : "ERR radio");
         } else {
-            char rn[64], rt[128];
+            char rn[128], rt[128];
             gRadio.info(rn, sizeof(rn), rt, sizeof(rt));
             Serial.printf("radio %s | %s | %s | %s %lu Hz | buffered %u ms | %s\n", gRadio.stateName(), rn, rt, gRadio.codec(),
                           (unsigned long)gRadio.sampleRate(), (unsigned)(audio.radioBuffered() / 24), gRadio.lastError());
@@ -1002,6 +1291,19 @@ static void handleConsoleLine(String line) {
             const int i = gMusic.find(rest.c_str());
             Serial.println(i >= 0 && gMusic.play(i) ? "OK music" : "ERR no such song");
         }
+    } else if (cmd == "sdls") {  // sdls [folder] (read-only): what is on the card - files, and folders with their total size
+        sdList(rest.length() ? rest : String("/sdcard"));
+    } else if (cmd == "sdlist") {  // sdlist [folder] -> SDLIST <json> for PC studio
+        printSdList(rest.length() ? rest : String("/sdcard"));
+    } else if (cmd == "sdget") {  // sdget <path> [offset] [length] -> SDGETFILE, SDGETDATA, SDGETEND
+        sdGet(rest);
+    } else if (cmd == "sddel") {  // sddel <path>
+        sdDel(rest);
+    } else if (cmd == "sdmkdir") {  // sdmkdir <path>
+        sdMkdir(rest);
+    } else if (cmd == "sdremount") {  // T125: test the SD card recovery (the agent task mounts it again)
+        Storage::requestRemount();
+        Serial.println("OK sdremount requested");
     } else if (cmd == "musiclist") {
         printMusicList();
     } else if (cmd == "musicput") {  // T123: musicput <size> <file name> -> MUSICPUT READY 0 | MUSICPUT ERR <why>

@@ -63,6 +63,7 @@ void AgentController::wake(bool byVoice) {
     // tap: users start talking right away and lost their first words. After a tap only what comes
     // next counts, and it is sent only if there was voice in it.
     _wakeBuffering = true;
+    _wokeByWord = false;  // (the mic loop sets it right after this for the wake word)
     _wakeHeard = byVoice;
     _wakeVoiced = byVoice ? AGENT_WAKE_CHUNKS : 0;  // the chunks that woke it are speech too
     if (!byVoice) _preroll.clear();

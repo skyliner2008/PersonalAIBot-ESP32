@@ -248,7 +248,10 @@ void AgentController::startFreshSession(const char* hint) {
 
 void AgentController::buildSystemPrompt(PsString& p) {
     const persona::Personality& pers = persona::kPersonalities[_cfg.personality % persona::kPersonalityCount];
-    p.reserve(5000);
+    const persona::VoiceInfo* vi = persona::findVoice(_cfg.voice);
+    const char* voiceName = vi ? vi->name : (_cfg.voice[0] ? _cfg.voice : "Aoede");
+    const persona::Gender gender = (persona::Gender)_cfg.gender;
+    p.reserve(5600);
     p = "คุณคือ \"";
     p += _cfg.agentName;
     p += "\" ผู้ช่วยส่วนตัว AI บนอุปกรณ์ตั้งโต๊ะของผู้ใช้";
@@ -257,17 +260,60 @@ void AgentController::buildSystemPrompt(PsString& p) {
         p += _cfg.userName;
         p += "\" (บ้างเป็นครั้งคราว ไม่ต้องทุกประโยค)";
     }
+    p += "\nโปรไฟล์เสียงและตัวตนที่ล็อกไว้ตามการตั้งค่าของผู้ใช้ (STRICT — ห้ามเปลี่ยนเองเด็ดขาด):"
+         "\n- เสียงพูด (Voice Profile): ";
+    p += voiceName;
+    if (vi) {
+        p += " (โทนเสียง";
+        p += vi->gender == persona::kFemale ? "ผู้หญิง" : "ผู้ชาย";
+        p += " • ";
+        p += vi->styleTh;
+        p += ")";
+    }
+    p += "\n- เพศและคำลงท้าย: ";
+    p += persona::genderNameTh(gender);
+    p += " — ";
+    p += persona::politeParticle(gender);
+    if (gender == persona::kFemale) {
+        p += " (ต้องใช้คำลงท้าย \"ค่ะ/คะ\" และรักษาโทนเสียงผู้หญิงตามโปรไฟล์เสียง ";
+        p += voiceName;
+        p += " เสมอ ห้ามพูด \"ครับ\" หรือเปลี่ยนเป็นโทนเสียงผู้ชายเด็ดขาด แม้ชื่อผู้ช่วยจะเป็น \"";
+        p += _cfg.agentName;
+        p += "\" ก็ตาม)";
+    } else if (gender == persona::kMale) {
+        p += " (ต้องใช้คำลงท้าย \"ครับ\" และรักษาโทนเสียงผู้ชายตามโปรไฟล์เสียง ";
+        p += voiceName;
+        p += " เสมอ ห้ามพูด \"ค่ะ/คะ\" หรือเปลี่ยนเป็นโทนเสียงผู้หญิงเด็ดขาด)";
+    }
+    p += "\n- นิสัย (โปรไฟล์ ";
+    p += pers.nameTh;
+    p += "): ";
+    p += pers.prompt;
+    p += "\n- กฎล็อกเนื้อเสียงและสำเนียง (VOICE LOCK — สำคัญที่สุด): ต้องรักษาเนื้อเสียง (Timbre) ระดับความทุ้ม-แหลม (Pitch) "
+         "จังหวะความเร็ว และเอกลักษณ์น้ำเสียงของโปรไฟล์ \"";
+    p += voiceName;
+    if (vi) {
+        p += " (";
+        p += vi->styleTh;
+        p += ")";
+    }
+    p += "\" ให้คงที่สม่ำเสมอเหมือนเป็นคนคนเดียวกันพูดทุกประโยคตั้งแต่ต้นจนจบเซสชัน "
+         "ห้ามดัดเสียง ห้ามบีบเสียงแหลมหรือกดเสียงทุ้ม ห้ามเปลี่ยนโทนเสียงไปมาตามอารมณ์ของเรื่องหรือหลังเรียกใช้ tool "
+         "ใช้สำเนียงภาษาไทยมาตรฐานที่ชัดถ้อยชัดคำ เป็นธรรมชาติ ห้ามพูดติดสำเนียงต่างชาติ/สำเนียงฝรั่ง ห้ามดัดลิ้น "
+         "(การแสดงอารมณ์หรือความขี้เล่นตามนิสัยให้สื่อผ่านการเลือกใช้คำพูดและดวงตา set_expression เท่านั้น ห้ามเปลี่ยนเนื้อเสียง)";
     // waking it = calling its name: "จาวิส" alone was taken for a question (search_knowledge "jawit") or
     // replayed an old request (it opened the radio)
-    p += "\nการเรียกชื่อ: ผู้ใช้ปลุกคุณด้วยการเรียกชื่อ (เสียงอาจถอดเป็นคำที่ออกเสียงใกล้เคียง เช่น Jarvis, jawit)";
+    // T124 (board logs): "Jarvis" came back as "Chaves", "¿Ya ves?", "¿Sabes?", "Jawez" - 3.8 then followed the Thai lock
+    // below ("heard another language: ask again in Thai") instead of answering its name; 3.1 answered it
+    p += "\nการเรียกชื่อ: ผู้ใช้ปลุกคุณด้วยการเรียกชื่อ (เสียงอาจถอดเป็นคำที่ออกเสียงใกล้เคียง เช่น Jarvis, jawit, จาวิส, "
+         "Chaves, Chavez, Jawez, ¿Sabes?, ¿Ya ves? — คำสั้นๆ แบบนี้คือการเรียกชื่อคุณเป็นภาษาไทย ไม่ใช่ภาษาอื่น "
+         "ห้ามขอให้พูดภาษาไทย ให้ขานรับแทน: กฎนี้มาก่อนกฎเรื่องภาษา)";
     if (_cfg.wakeMode != 0) {  // the offline wake word reaches the session too ("Hi ESP" changed the radio station)
         if (_cfg.wakeWord != 0) p += " หรือคำปลุก \"Hi ESP\" (อาจถอดเป็น ไฮอีเอสพี, Hi ISP ฯลฯ)";
         if (_cfg.wakeWord != 1) p += " หรือคำปลุก \"Jarvis\"";
     }
-    p += " ถ้าประโยคมีแค่ชื่อคุณ คำปลุก หรือคำทักทาย ให้ขานรับสั้นๆ อย่างเป็นกันเอง (ไม่ซ้ำคำเดิมทุกครั้ง) แล้วรอฟัง ห้ามเรียก tool ห้ามค้นหาคำนั้น "
+    p += " ถ้าประโยคมีแค่ชื่อคุณ คำปลุก หรือคำทักทาย ให้ขานรับสั้นๆ อย่างเป็นกันเองด้วยน้ำเสียงโปรไฟล์เดิม (ไม่ซ้ำคำเดิมทุกครั้ง) แล้วรอฟัง ห้ามเรียก tool ห้ามค้นหาคำนั้น "
          "ห้ามเปิด/เปลี่ยนวิทยุ และห้ามทำคำสั่งเก่า ถ้ามีคำสั่งต่อท้าย ให้ทำตามคำสั่งนั้น";
-    p += "\nนิสัย: ";
-    p += pers.prompt;
     // what it can do changes with the firmware and what is connected: read it, never from memory (about_me)
     p += "\nตัวตน: ถ้าผู้ใช้ถามว่าคุณเป็นใคร ทำอะไรได้บ้าง ขอให้แนะนำ/นำเสนอ/รีวิวตัวเอง หรือถามว่าทำสิ่งใดได้ไหม "
          "ให้เรียก about_me แล้วตอบจากผลนั้นเท่านั้น (ความสามารถเพิ่มขึ้นเมื่ออัปเดตเฟิร์มแวร์ ห้ามตอบจากความจำ) "
@@ -294,9 +340,10 @@ void AgentController::buildSystemPrompt(PsString& p) {
          "จึงตอบให้ละเอียด ถูกต้อง เข้าใจง่าย ชัดเจน: ตัวเลขพูดตรงตามผลของ tool (ทศนิยมได้ถึง 2 หลัก หน่วยเป็นคำไทย เช่น ดอลลาร์ บาท เปอร์เซ็นต์) "
          "ไม่ปัดจนคลาดเคลื่อน · ยาวตามเนื้อหา: คุยเล่น/รับคำสั่ง 1-2 ประโยค ตอบข้อมูลให้ครบทุกส่วนที่ผู้ใช้ควรรู้ พร้อมบอกว่าแปลว่าอะไร "
          "(ขึ้นหรือลง ดีหรือน่าห่วง ควรทำอะไร) เรื่องที่มีรายละเอียดมาก (ข่าวหลายข่าว ภาพรวมตลาด วิเคราะห์ ระดับน้ำหลายจุด) ตอบยาวได้ "
-         "เล่าไล่ทีละเรื่องจนครบ · พูดแบบคนจริงที่มีชีวิตชีวา มีอารมณ์ร่วมกับเรื่อง (ดีใจ ตื่นเต้น ทึ่ง เห็นใจ แซวเบาๆ ตามนิสัย) "
-         "ใช้คำหลากหลาย ไม่ขึ้นต้นแบบเดิมซ้ำๆ ";
-    p += persona::politeParticle((persona::Gender)_cfg.gender);
+         "เล่าไล่ทีละเรื่องจนครบ · พูดอย่างเป็นธรรมชาติตามนิสัยที่ตั้งไว้โดยคงเนื้อเสียงและโทนเสียงโปรไฟล์ ";
+    p += voiceName;
+    p += " ให้เหมือนเดิมทุกครั้ง ใช้คำหลากหลาย ไม่ขึ้นต้นแบบเดิมซ้ำๆ ";
+    p += persona::politeParticle(gender);
     p += " แปลงตาราง/รายการเป็นประโยคพูด ไม่อ่านสัญลักษณ์ ห้ามพูดชื่อ tool หรือคำสั่งแบบ ชื่อ(...) ออกมา (เรียก tool อย่างเงียบๆ)\n";
     p += "การทำงานแบบเอเจนต์: คำขอชัดเจนให้ลงมือเรียก tool ทันทีใน turn นั้น ไม่ต้องถามยืนยันเรื่องเล็ก ห้ามพูดว่าเดี๋ยวดูให้แล้วไม่เรียก "
          "• งานหลายขั้นให้เรียกหลาย tool ต่อกันเองจนได้คำตอบครบ (เช่น ดึงราคาแล้ว calculate) • ถามหลายเรื่องในครั้งเดียว ตอบให้ครบทุกเรื่อง "
@@ -340,7 +387,7 @@ void AgentController::buildSystemPrompt(PsString& p) {
                            : "ไม่มีการค้นเว็บทั่วไป: เรื่องล่าสุด (ผลกีฬา หวย เหตุการณ์ ราคาทองตามประกาศสมาคมฯ) ใช้ get_news ระบุ topic "
                              "แล้วตอบจากหัวข่าวพร้อมบอกวันที่ ข้อเท็จจริงทั่วไปใช้ search_knowledge ถ้ายังหาไม่ได้ให้บอกตรงๆ "
                              "ว่าค้นไม่ได้ ห้ามเดา ";
-    p += "เปลี่ยนเสียง/นิสัย/ชื่อด้วย configure_assistant ถ้าผู้ใช้บอกลาหรือราตรีสวัสดิ์ให้เรียก go_to_sleep\n"
+    p += "ห้ามเรียก configure_assistant เพื่อเปลี่ยนเสียง/นิสัย/ชื่อเองเด็ดขาด (โปรไฟล์ถูกล็อกตามที่ผู้ใช้ตั้งค่าไว้ เรียกได้เฉพาะเมื่อผู้ใช้พูดสั่งให้เปลี่ยนเสียง/นิสัย/ชื่ออย่างชัดเจนเท่านั้น) ถ้าผู้ใช้บอกลาหรือราตรีสวัสดิ์ให้เรียก go_to_sleep\n"
          "ควบคุมเครื่อง: เสียงดัง/เบา = set_volume (change +/-, ปรับเฉพาะวิทยุ เสียงพูดของคุณล็อกไว้ที่เดิม), จอสว่าง/มืด = set_brightness (change +/-), "
          "ความไวไมค์ / ตั้งเวลาพัก / ตั้งเวลาโหมดนาฬิกา = configure_device, พักหน้าจอ / โหมดนาฬิกาเดี๋ยวนี้ = rest_screen, วิทยุ = play_radio / stop_radio (เปิดแล้วพูดชื่อสถานีสั้นๆ แล้วเงียบ เพลงที่เล่นอยู่ดูได้จาก get_device_status), ปิดไมค์ = mute_microphone "
          "(เปิดไมค์ด้วยเสียงไม่ได้ บอกผู้ใช้ให้แตะปุ่มไมค์บนจอ)\n"
@@ -380,7 +427,8 @@ void AgentController::buildSystemPrompt(PsString& p) {
         if (gRadio.active() && gRadio.isFile()) gRadio.info(song, sizeof(song), nullptr, 0);
         p += "เพลงใน SD card: ";
         p += String((unsigned)gMusic.count()).c_str();
-        p += " เพลง — ผู้ใช้ขอฟังเพลง (ไม่ใช่วิทยุ) ให้เรียก play_radio ใส่ music = คำในชื่อเพลง/ศิลปิน หรือ \"*\" = เล่นต่อ";
+        p += " เพลง — ผู้ใช้ขอฟังเพลง (ไม่ใช่วิทยุ) ให้เรียก play_radio ใส่ music = คำในชื่อเพลง/ศิลปิน, \"next\" = เปลี่ยนเพลง/เพลงถัดไป, \"prev\" = เพลงก่อนหน้า, "
+             "\"random\" = สุ่ม, \"*\" = เปิดเพลง (ระบบบอกชื่อเพลงที่เล่นจริงในผลลัพธ์ ให้พูดตามนั้น)";
         if (song[0]) {
             p += " • ตอนนี้กำลังเล่นเพลง: ";
             p += song;
@@ -416,7 +464,7 @@ void AgentController::buildSystemPrompt(PsString& p) {
     if (!recent.empty()) {
         // the assistant's own lines are in here too: one greeting that raised an old topic used to be
         // fed back into the next session, which raised it again (a loop - T054)
-        p += "\n## บทสนทนาล่าสุดก่อนเซสชันนี้ (บริบทเท่านั้น ไม่ต้องทวน อย่ายกเรื่องเก่าขึ้นมาเองตอนทักทาย)\n";
+        p += "\n## บทสนทนาล่าสุดก่อนเซสชันนี้ (บริบทเท่านั้น ไม่ต้องทวน อย่ายกเรื่องเก่าขึ้นมาเองตอนทักทาย และยึดโทนเสียง/คำลงท้ายตามโปรไฟล์ที่ล็อกไว้ปัจจุบันเท่านั้น)\n";
         PsString cleanRecent;  // T109: lines logged before the filter could still hold "set_expression(...)"
         transcript::stripToolCallText(recent.c_str(), cleanRecent);
         p += cleanRecent;
@@ -445,7 +493,9 @@ void AgentController::buildSetup(JsonObject setup) {
         Serial.printf("[Agent] Setup: %s, SEARCH ONLY (diagnostic)\n", liveModelId(model));
         return;
     }
-    gen["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"] = _cfg.voice;
+    const persona::VoiceInfo* vi = persona::findVoice(_cfg.voice);
+    const char* voiceName = vi ? vi->name : (_cfg.voice[0] ? _cfg.voice : "Aoede");
+    gen["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"] = voiceName;
     if (model == (uint8_t)LiveModel::Live38Thinking) {
         gen["thinkingConfig"]["thinkingLevel"] = thinkingLevelId(_cfg.thinking);
     }
@@ -492,7 +542,7 @@ void AgentController::buildSetup(JsonObject setup) {
     if (_resumeHandle.length()) resume["handle"] = _resumeHandle.c_str();
 
     Serial.printf("[Agent] Setup: %s, %s session, voice %s, prompt %u bytes%s%s\n", liveModelId(model),
-                  _resumeHandle.length() ? "resumed" : "new", _cfg.voice, (unsigned)prompt.size(),
+                  _resumeHandle.length() ? "resumed" : "new", voiceName, (unsigned)prompt.size(),
                   _searchInSetup ? "" : ", no Google Search", model != _cfg.model ? " (FALLBACK)" : "");
 }
 
@@ -530,7 +580,28 @@ void AgentController::onSetupComplete() {
     if (_wakeBuffering && _wakeHeard) {  // a silent tap wake: the mic loop lets go of it
         beginUtterance(millis(), 0.0f, false);  // fresh stats (they showed the previous sentence's)
         sendPreroll();
+    } else if (_wokeByWord) {
+        // T124: "Jarvis" ... silence: the user waits for an answer. The word itself is not sent (heard as Spanish), and
+        // without a reply the radio rule closed the session 2-3 s after it was ready - say "ว่าไงคะ", then listen.
+        // Anchor the locked voice & gender on Turn 1 so the session's first audio turn never drifts in pitch/gender.
+        const persona::VoiceInfo* vi = persona::findVoice(_cfg.voice);
+        PsString greet = "(ระบบ: ผู้ใช้เพิ่งเรียกชื่อคุณด้วยคำปลุก ขานรับสั้นๆ 1-4 คำอย่างเป็นกันเองด้วยเนื้อเสียง ";
+        greet += vi ? vi->name : _cfg.voice;
+        if (vi) {
+            greet += " โทน";
+            greet += vi->styleTh;
+        }
+        greet += " ";
+        greet += persona::politeParticle((persona::Gender)_cfg.gender);
+        greet += " ห้ามดัดเสียง แล้วรอฟังคำสั่ง ห้ามเรียก tool)";
+        if (_gemini.sendClientText(greet.c_str(), true)) {
+            Serial.println("[Chat] woken by the wake word, nothing said yet - greeting");
+            _awaitingReply = true;
+            _lastUserSpeech = millis();
+            noteActivity();
+        }
     }
+    _wokeByWord = false;
 }
 
 void AgentController::onDisconnected(bool wasReady) {
@@ -867,7 +938,7 @@ void AgentController::onTurnComplete() {
         _awaitToolAnswer = false;
         nudged = true;
         _nudgeWhy = "empty turn after a tool result - asking for the answer";
-        _nudgeText = "(ระบบ: ผลของเครื่องมือมาถึงแล้ว ตอบคำถามล่าสุดของผู้ใช้จากผลนั้นเลย)";
+        _nudgeText = "(ระบบ: ผลของเครื่องมือมาถึงแล้ว ตอบคำถามล่าสุดของผู้ใช้จากผลนั้นด้วยน้ำเสียงและคำลงท้ายตามโปรไฟล์ที่ล็อกไว้เลย)";
         _nudgeAt = millis();
     } else if (_replyAudio || !_agentTurn.empty()) {
         // T110: a "let me check" that began before the result went out is not the answer to it
@@ -884,10 +955,10 @@ void AgentController::onTurnComplete() {
             _nudgeWhy = "heard the user but the turn ended without an answer - asking once";
             _nudgeText = "(ระบบ: ผู้ใช้เพิ่งพูดกับคุณว่า \"";
             _nudgeText += _userTurn;
-            _nudgeText += "\" แต่คุณยังไม่ได้ตอบ ตอบเลย)";
+            _nudgeText += "\" แต่คุณยังไม่ได้ตอบ ตอบด้วยน้ำเสียงและคำลงท้ายตามโปรไฟล์ที่ล็อกไว้เลย)";
         } else {
             _nudgeWhy = "text turn ended without an answer - asking once";
-            _nudgeText = "(ระบบ: ข้อความนี้ยังไม่ได้รับคำตอบ ตอบเลย) ";
+            _nudgeText = "(ระบบ: ข้อความนี้ยังไม่ได้รับคำตอบ ตอบด้วยน้ำเสียงและคำลงท้ายตามโปรไฟล์ที่ล็อกไว้เลย) ";
             _nudgeText += _textTurn;
         }
         _nudgeAt = millis();

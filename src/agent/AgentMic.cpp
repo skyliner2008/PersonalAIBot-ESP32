@@ -407,6 +407,15 @@ void AgentController::handleAudioInput() {
                 _wakeHistory = 0;
                 const uint32_t tw = micros();
                 wake(true);
+                if (byWord) {
+                    // T124: the word is not the request - sent along it came back as "chavés" / "¿Sabes?" / "Chaviz",
+                    // and the model spent the turn on "ขอโทษค่ะ ไม่เข้าใจภาษาอื่น". Only what is said after it goes out
+                    // (the detection fires at the end of the word); nothing said = like a tap
+                    _preroll.clear();
+                    _wakeHeard = false;
+                    _wakeVoiced = 0;
+                }
+                _wokeByWord = byWord;
                 prof.wake = micros() - tw;
             }
             recordChunk(chunk, kChunk, voice, false);

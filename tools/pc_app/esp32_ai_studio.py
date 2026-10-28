@@ -31,7 +31,7 @@ import threading
 import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 import music_upload  # tools/pc_app/music_upload.py (T123)
 
@@ -69,7 +69,7 @@ EMOTIONS = ["neutral", "happy", "excited", "love", "sad", "worried", "angry", "s
 # set wake 0|1|2 (firmware Settings::wakeMode)
 WAKE_MODES = ["ระดับเสียง (แบบเดิม)", "คำปลุกอย่างเดียว", "คำปลุก + ระดับเสียง"]
 
-TAG_RE = re.compile(r"^(CONFIG|OPTIONS|TOOLS|DIAG|WIFISCAN|APITEST|RECINFO|RADIOLIST|MUSICLIST|TOOL|OTA)\s+(.*)$")
+TAG_RE = re.compile(r"^(CONFIG|OPTIONS|TOOLS|DIAG|WIFISCAN|APITEST|RECINFO|RADIOLIST|MUSICLIST|SDLIST|TOOL|OTA)\s+(.*)$")
 SECRET_RE = re.compile(r"(key=)[^&\s\"]+")
 
 
@@ -106,6 +106,7 @@ class SerialLink:
         self._stop = threading.Event()
         self._wlock = threading.Lock()
         self.music_q: "queue.Queue[str]" = queue.Queue()  # "MUSICPUT ..." replies for the song upload (T123)
+        self.sd_q: "queue.Queue[str]" = queue.Queue()     # "SDGET..." replies for SD file download
 
     @property
     def connected(self) -> bool:
@@ -212,6 +213,9 @@ class SerialLink:
                     self.music_q.put(text[9:])
                     if not text.startswith("MUSICPUT ERR"):
                         continue
+                if text.startswith("SDGET"):  # SD file download lines: to the file downloader, not the log
+                    self.sd_q.put(text)
+                    continue
                 self.events.put(("line", time.time(), text))
 
 
@@ -319,6 +323,8 @@ class Studio:
         self._build_firmware_tab()
         self._build_radio_tab()  # appended last: other code refers to tab indices
         self._build_music_tab()
+        self._build_sdcard_tab()
+        self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self._install_clipboard()
         self.refresh_ports(auto_connect=True)
         root.after(30, self._pump)
@@ -491,8 +497,16 @@ class Studio:
         self.conn_btn.configure(text="ตัดการเชื่อมต่อ", style="TButton")
         self.status_var.set(f"เชื่อมต่อ {port} แล้ว • กำลังอ่านค่า...")
         self.log_local(f"เชื่อมต่อ {port} @ {BAUD}", "ok")
-        for cmd in ("config", "options", "tools", "diag", "radiolist", "musiclist"):
+        for cmd in ("config", "options", "tools", "diag", "radiolist", "musiclist", "sdlist"):
             self.send(cmd, echo=False)
+
+    def _on_tab_changed(self, event=None):
+        try:
+            tab_text = self.nb.tab(self.nb.select(), "text")
+            if "ไฟล์ SD Card" in tab_text and not self.sd_entries and self.link.connected:
+                self.sd_refresh()
+        except Exception:
+            pass
 
     def _on_disconnected(self, why):
         self.conn_btn.configure(text="เชื่อมต่อ", style="Accent.TButton")
@@ -679,6 +693,8 @@ class Studio:
                 messagebox.showwarning(APP_TITLE, f"บอร์ดตอบกลับ: {data['error']}")
         elif tag == "MUSICLIST":
             self.show_music_list(data if isinstance(data, dict) else {})
+        elif tag == "SDLIST":
+            self.show_sd_list(data if isinstance(data, dict) else {})
         elif tag == "TOOL":
             self.show_tool_result(name, data)
 
@@ -1882,6 +1898,424 @@ class Studio:
             self.log_local(f"เพลงลง SD card: สำเร็จ {len(saved)}, ไม่สำเร็จ {len(failed)}", "ok" if not failed else "warn")
         self.call_in_ui(finish)
 
+    # ---------------------------------------------------------- SD card file explorer tab
+    def _build_sdcard_tab(self):
+        tab = ttk.Frame(self.nb)
+        self.nb.add(tab, text="📁 ไฟล์ SD Card")
+        self.sd_entries: list[dict] = []
+        self.sd_current_path = "/sdcard"
+        self.sd_busy = False
+
+        bar = ttk.Frame(tab)
+        bar.pack(fill="x", pady=6)
+
+        ttk.Label(bar, text="โฟลเดอร์:").pack(side="left")
+        self.sd_path_var = tk.StringVar(value="/sdcard")
+        self.sd_path_ent = ttk.Entry(bar, textvariable=self.sd_path_var, width=28)
+        self.sd_path_ent.pack(side="left", padx=(4, 6))
+        self.sd_path_ent.bind("<Return>", lambda e: self.sd_navigate_to(self.sd_path_var.get()))
+
+        ttk.Button(bar, text="⬆ ขึ้น 1 ระดับ", command=self.sd_go_up).pack(side="left", padx=2)
+        ttk.Button(bar, text="🔄 รีเฟรช", command=self.sd_refresh).pack(side="left", padx=2)
+        ttk.Button(bar, text="📥 ดาวน์โหลดลง PC...", style="Accent.TButton",
+                   command=self.sd_download_selected).pack(side="left", padx=(10, 2))
+        ttk.Button(bar, text="👁 ดูเนื้อหาไฟล์", command=self.sd_view_selected).pack(side="left", padx=2)
+        ttk.Button(bar, text="➕ สร้างโฟลเดอร์...", command=self.sd_mkdir_dialog).pack(side="left", padx=(10, 2))
+        ttk.Button(bar, text="ลบ", style="Danger.TButton", command=self.sd_delete_selected).pack(side="left", padx=2)
+
+        self.sd_status = ttk.Label(tab, text="ยังไม่ได้โหลดรายการ — กด \"รีเฟรช\" หรือกด Enter ที่ช่องโฟลเดอร์", style="Dim.TLabel")
+        self.sd_status.pack(anchor="w", padx=2)
+
+        body = ttk.Frame(tab)
+        body.pack(fill="both", expand=True, pady=4)
+        self.sd_tree = ttk.Treeview(body, columns=("name", "type", "size"), show="headings", height=14,
+                                    selectmode="browse")
+        self.sd_tree.heading("name", text="ชื่อไฟล์ / โฟลเดอร์")
+        self.sd_tree.heading("type", text="ประเภท")
+        self.sd_tree.heading("size", text="ขนาด")
+        self.sd_tree.column("name", width=420, stretch=True)
+        self.sd_tree.column("type", width=130, stretch=False)
+        self.sd_tree.column("size", width=140, stretch=False)
+
+        sb = ttk.Scrollbar(body, orient="vertical", command=self.sd_tree.yview)
+        self.sd_tree.configure(yscrollcommand=sb.set)
+        self.sd_tree.pack(side="left", fill="both", expand=True)
+        sb.pack(side="left", fill="y")
+
+        self.sd_tree.bind("<Double-1>", lambda e: self.sd_on_double_click())
+
+        down_frame = ttk.LabelFrame(tab, text="สถานะการดาวน์โหลด / โอนย้ายไฟล์")
+        down_frame.pack(fill="x", pady=6)
+        self.sd_progress = ttk.Progressbar(down_frame, mode="determinate", maximum=1000, style="Horizontal.TProgressbar")
+        self.sd_progress.pack(fill="x", padx=6, pady=(6, 2))
+        row = ttk.Frame(down_frame)
+        row.pack(fill="x", padx=6, pady=(0, 6))
+        self.sd_op_label = ttk.Label(row, text="พร้อมทำงาน — ดับเบิลคลิกที่โฟลเดอร์เพื่อเปิด หรือดับเบิลคลิกไฟล์เพื่อดูเนื้อหา",
+                                     style="Dim.TLabel")
+        self.sd_op_label.pack(side="left")
+
+        ttk.Label(tab, text="เข้าถึงไฟล์บน SD card ผ่านสาย USB โดยตรง  •  ดู/สำรอง ltm.jsonl (ความจำ AI), devices.json, log รถยนต์, ไฟล์เพลง  •  ดาวน์โหลดพร้อมตรวจ SHA-256",
+                  style="Dim.TLabel").pack(anchor="w")
+
+    def show_sd_list(self, data: dict):
+        if data.get("error"):
+            self.sd_status.configure(text=f"ผิดพลาด: {data['error']}")
+            return
+        path = data.get("path", "/sdcard")
+        self.sd_current_path = path
+        self.sd_path_var.set(path)
+        free_mb = data.get("free_mb")
+        total_mb = data.get("total_mb")
+        raw_entries = data.get("entries", [])
+
+        # Sort: directories first, then alphabetical
+        def sort_key(e):
+            return (0 if e.get("dir") else 1, e.get("name", "").lower())
+
+        self.sd_entries = sorted(raw_entries, key=sort_key)
+        self.sd_tree.delete(*self.sd_tree.get_children())
+
+        for idx, item in enumerate(self.sd_entries):
+            name = item.get("name", "")
+            is_dir = item.get("dir", False)
+            size = item.get("size", 0)
+
+            if is_dir:
+                display_name = f"📁 {name}"
+                type_str = "โฟลเดอร์"
+                size_str = "<DIR>"
+            else:
+                ext = Path(name).suffix.lower()
+                if ext in (".mp3", ".aac"):
+                    display_name = f"🎵 {name}"
+                    type_str = "ไฟล์เพลง"
+                elif ext in (".json", ".jsonl"):
+                    display_name = f"📄 {name}"
+                    type_str = "JSON / ข้อมูล"
+                elif ext == ".log":
+                    display_name = f"📋 {name}"
+                    type_str = "Log บันทึก"
+                elif ext in (".txt", ".md"):
+                    display_name = f"📝 {name}"
+                    type_str = "ข้อความ"
+                else:
+                    display_name = f"📦 {name}"
+                    type_str = ext.upper()[1:] if ext else "ไฟล์"
+
+                if size < 1024:
+                    size_str = f"{size} B"
+                elif size < 1048576:
+                    size_str = f"{size / 1024:.1f} KB"
+                else:
+                    size_str = f"{size / 1048576:.2f} MB"
+
+            self.sd_tree.insert("", "end", iid=str(idx), values=(display_name, type_str, size_str))
+
+        free_info = f"  •  พื้นที่ว่าง {free_mb:,} MB / {total_mb:,} MB" if free_mb is not None else ""
+        self.sd_status.configure(text=f"โฟลเดอร์: {path}  •  {len(self.sd_entries)} รายการ{free_info}")
+
+    def sd_refresh(self):
+        if not self.link.connected:
+            messagebox.showwarning(APP_TITLE, "ยังไม่ได้เชื่อมต่อบอร์ด")
+            return
+        p = self.sd_path_var.get().strip()
+        if not p:
+            p = "/sdcard"
+        self.sd_status.configure(text=f"กำลังโหลดรายการจาก {p}...")
+        self.send(f"sdlist {p}", echo=False)
+
+    def sd_navigate_to(self, path: str):
+        path = path.strip()
+        if not path:
+            path = "/sdcard"
+        if not path.startswith("/sdcard"):
+            path = "/sdcard/" + path.lstrip("/")
+        self.sd_path_var.set(path)
+        self.send(f"sdlist {path}", echo=False)
+
+    def sd_go_up(self):
+        cur = self.sd_current_path.rstrip("/")
+        if cur == "/sdcard" or not cur.startswith("/sdcard"):
+            return
+        parts = cur.split("/")
+        if len(parts) > 2:
+            parent = "/".join(parts[:-1])
+        else:
+            parent = "/sdcard"
+        self.sd_navigate_to(parent)
+
+    def sd_selected_entry(self) -> dict | None:
+        sel = self.sd_tree.selection()
+        if not sel:
+            return None
+        try:
+            idx = int(sel[0])
+            if 0 <= idx < len(self.sd_entries):
+                return self.sd_entries[idx]
+        except (ValueError, IndexError):
+            pass
+        return None
+
+    def sd_on_double_click(self):
+        item = self.sd_selected_entry()
+        if not item:
+            return
+        if item.get("dir"):
+            sub = self.sd_current_path.rstrip("/") + "/" + item["name"]
+            self.sd_navigate_to(sub)
+        else:
+            self.sd_view_selected()
+
+    def sd_view_selected(self):
+        item = self.sd_selected_entry()
+        if not item:
+            messagebox.showwarning(APP_TITLE, "เลือกไฟล์ในตารางก่อน")
+            return
+        if item.get("dir"):
+            sub = self.sd_current_path.rstrip("/") + "/" + item["name"]
+            self.sd_navigate_to(sub)
+            return
+        if not self.link.connected:
+            messagebox.showwarning(APP_TITLE, "ยังไม่ได้เชื่อมต่อบอร์ด")
+            return
+        if self.sd_busy:
+            messagebox.showinfo(APP_TITLE, "กำลังดาวน์โหลดไฟล์อื่นอยู่ โปรดรอสักครู่")
+            return
+
+        remote = self.sd_current_path.rstrip("/") + "/" + item["name"]
+        size = item.get("size", 0)
+        if size > 2 * 1024 * 1024:
+            if not messagebox.askyesno(APP_TITLE, f"ไฟล์นี้มีขนาดใหญ่ ({size / 1048576:.1f} MB)\nการเปิดดูอาจใช้เวลาสักครู่ ต้องการดำเนินการต่อหรือไม่?"):
+                return
+
+        self.sd_busy = True
+        self.sd_progress.configure(value=0)
+        self.sd_op_label.configure(text=f"กำลังโหลดเนื้อหา {item['name']}...")
+        threading.Thread(target=self._sd_download_worker, args=(remote, None, True),
+                         name="sd-view-worker", daemon=True).start()
+
+    def sd_download_selected(self):
+        item = self.sd_selected_entry()
+        if not item:
+            messagebox.showwarning(APP_TITLE, "เลือกไฟล์ในตารางก่อน")
+            return
+        if item.get("dir"):
+            messagebox.showinfo(APP_TITLE, "รายการที่เลือกเป็นโฟลเดอร์ (โปรดเลือกไฟล์ที่ต้องการดาวน์โหลด)")
+            return
+        if not self.link.connected:
+            messagebox.showwarning(APP_TITLE, "ยังไม่ได้เชื่อมต่อบอร์ด")
+            return
+        if self.sd_busy:
+            messagebox.showinfo(APP_TITLE, "กำลังดาวน์โหลดไฟล์อื่นอยู่ โปรดรอสักครู่")
+            return
+
+        name = item["name"]
+        local = filedialog.asksaveasfilename(title="บันทึกไฟล์จาก SD card ลง PC",
+                                             initialfile=name)
+        if not local:
+            return
+
+        remote = self.sd_current_path.rstrip("/") + "/" + name
+        self.sd_busy = True
+        self.sd_progress.configure(value=0)
+        self.sd_op_label.configure(text=f"เริ่มดาวน์โหลด {name}...")
+        threading.Thread(target=self._sd_download_worker, args=(remote, local, False),
+                         name="sd-download-worker", daemon=True).start()
+
+    def sd_delete_selected(self):
+        item = self.sd_selected_entry()
+        if not item:
+            messagebox.showwarning(APP_TITLE, "เลือกรายการที่ต้องการลบในตารางก่อน")
+            return
+        if not self.link.connected:
+            messagebox.showwarning(APP_TITLE, "ยังไม่ได้เชื่อมต่อบอร์ด")
+            return
+        name = item["name"]
+        remote = self.sd_current_path.rstrip("/") + "/" + name
+        if remote in ("/sdcard", "/sdcard/agent", "/sdcard/music"):
+            messagebox.showerror(APP_TITLE, "ห้ามลบโฟลเดอร์ระบบหลักของบอร์ด")
+            return
+
+        kind_text = "โฟลเดอร์" if item.get("dir") else "ไฟล์"
+        if not messagebox.askyesno(APP_TITLE, f"ยืนยันการลบ {kind_text} \"{name}\" ออกจาก SD card หรือไม่?"):
+            return
+
+        self.sd_status.configure(text=f"กำลังลบ {name}...")
+        self.send(f"sddel {remote}")
+        self.root.after(1500, self.sd_refresh)
+
+    def sd_mkdir_dialog(self):
+        if not self.link.connected:
+            messagebox.showwarning(APP_TITLE, "ยังไม่ได้เชื่อมต่อบอร์ด")
+            return
+        name = simpledialog.askstring("สร้างโฟลเดอร์", "ชื่อโฟลเดอร์ใหม่:", parent=self.root)
+        if name and name.strip():
+            target = self.sd_current_path.rstrip("/") + "/" + name.strip()
+            self.send(f"sdmkdir {target}")
+            self.root.after(600, self.sd_refresh)
+
+    def _show_preview_dialog(self, title: str, content: str):
+        win = tk.Toplevel(self.root)
+        win.title(f"ดูไฟล์: {title}")
+        win.geometry("780x560")
+        win.configure(bg=BG)
+
+        top = ttk.Frame(win)
+        top.pack(fill="x", padx=8, pady=6)
+        ttk.Label(top, text=f"ไฟล์: {title}  ({len(content):,} ตัวอักษร)", style="Bold.TLabel").pack(side="left")
+
+        def copy_all():
+            self.root.clipboard_clear()
+            self.root.clipboard_append(content)
+            messagebox.showinfo(APP_TITLE, "คัดลอกเนื้อหาทั้งหมดเรียบร้อยแล้ว", parent=win)
+
+        def save_as():
+            p = filedialog.asksaveasfilename(initialfile=Path(title).name, parent=win)
+            if p:
+                try:
+                    Path(p).write_text(content, encoding="utf-8", errors="replace")
+                    messagebox.showinfo(APP_TITLE, f"บันทึกไฟล์เรียบร้อยที่:\n{p}", parent=win)
+                except Exception as e:
+                    messagebox.showerror(APP_TITLE, f"บันทึกไฟล์ไม่สำเร็จ: {e}", parent=win)
+
+        ttk.Button(top, text="📋 คัดลอกทั้งหมด", command=copy_all).pack(side="right", padx=2)
+        ttk.Button(top, text="💾 บันทึกเป็น...", command=save_as).pack(side="right", padx=2)
+
+        frame, txt = with_scroll(win, styled_text, height=22, mono=True, wrap="none")
+        frame.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        txt.insert("1.0", content)
+        txt.configure(state="disabled")
+
+    def _sd_download_worker(self, remote_path: str, local_path: str | None, is_preview: bool):
+        t0 = time.time()
+        while not self.link.sd_q.empty():
+            self.link.sd_q.get_nowait()
+
+        if not self.send(f"sdget {remote_path}"):
+            self.call_in_ui(lambda: (
+                setattr(self, 'sd_busy', False),
+                messagebox.showerror(APP_TITLE, "ส่งคำสั่ง sdget ไม่สำเร็จ (การเชื่อมต่อหลุด)")
+            ))
+            return
+
+        meta = None
+        total_size = 0
+        end_time = time.time() + 8.0
+        while time.time() < end_time:
+            try:
+                line = self.link.sd_q.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            if line.startswith("SDGETERR"):
+                self.call_in_ui(lambda err=line: (
+                    setattr(self, 'sd_busy', False),
+                    self.sd_op_label.configure(text=f"ผิดพลาด: {err}"),
+                    messagebox.showerror(APP_TITLE, f"บอร์ดแจ้งข้อผิดพลาด:\n{err}")
+                ))
+                return
+            if line.startswith("SDGETFILE "):
+                parts = line.split()
+                if len(parts) >= 3:
+                    try:
+                        total_size = int(parts[2])
+                        meta = parts
+                    except ValueError:
+                        pass
+                break
+
+        if not meta:
+            self.call_in_ui(lambda: (
+                setattr(self, 'sd_busy', False),
+                messagebox.showerror(APP_TITLE, "บอร์ดไม่ตอบรับคำสั่ง sdget (หมดเวลา)")
+            ))
+            return
+
+        chunks: dict[int, bytes] = {}
+        downloaded = 0
+        sha_expected = None
+        last_ui = 0.0
+
+        while True:
+            try:
+                line = self.link.sd_q.get(timeout=10.0)
+            except queue.Empty:
+                self.call_in_ui(lambda: (
+                    setattr(self, 'sd_busy', False),
+                    messagebox.showerror(APP_TITLE, "ขาดการติดต่อระหว่างดาวน์โหลด (Timeout)")
+                ))
+                return
+
+            if line.startswith("SDGETERR"):
+                self.call_in_ui(lambda err=line: (
+                    setattr(self, 'sd_busy', False),
+                    messagebox.showerror(APP_TITLE, f"เกิดข้อผิดพลาด:\n{err}")
+                ))
+                return
+
+            if line.startswith("SDGETDATA "):
+                sp = line.find(" ", 10)
+                if sp > 0:
+                    try:
+                        off = int(line[10:sp])
+                        b64_str = line[sp + 1:]
+                        raw = base64.b64decode(b64_str)
+                        chunks[off] = raw
+                        downloaded += len(raw)
+                        now = time.time()
+                        if now - last_ui > 0.2:
+                            last_ui = now
+                            frac = downloaded / max(total_size, 1)
+                            rate = downloaded / max(now - t0, 0.001) / 1024
+                            msg = f"กำลังโหลด {Path(remote_path).name}: {downloaded // 1024:,} / {total_size // 1024:,} KB ({rate:.0f} KB/s)"
+                            self.call_in_ui(lambda f=frac, m=msg: (
+                                self.sd_progress.configure(value=int(f * 1000)),
+                                self.sd_op_label.configure(text=m)
+                            ))
+                    except Exception:
+                        pass
+
+            elif line.startswith("SDGETEND "):
+                parts = line.split()
+                if len(parts) >= 5:
+                    sha_expected = parts[4]
+                break
+
+        data = bytearray()
+        for off in sorted(chunks.keys()):
+            data.extend(chunks[off])
+
+        h = hashlib.sha256(data).hexdigest()
+        if sha_expected and h.lower() != sha_expected.lower():
+            self.call_in_ui(lambda: (
+                setattr(self, 'sd_busy', False),
+                messagebox.showerror(APP_TITLE, f"การตรวจสอบ SHA-256 ล้มเหลว!\nคาดหวัง: {sha_expected}\nที่ได้รับ: {h}")
+            ))
+            return
+
+        took = max(time.time() - t0, 0.001)
+        rate = len(data) / took / 1024
+
+        def finish_done():
+            self.sd_busy = False
+            self.sd_progress.configure(value=1000)
+            if is_preview:
+                text_content = data.decode("utf-8", "replace")
+                self.sd_op_label.configure(text=f"โหลดเสร็จแล้ว ({len(data):,} ไบต์ ใน {took:.1f} วิ)")
+                self._show_preview_dialog(remote_path, text_content)
+            else:
+                if local_path:
+                    try:
+                        Path(local_path).write_bytes(data)
+                        self.sd_op_label.configure(
+                            text=f"ดาวน์โหลดสำเร็จ: {Path(local_path).name} ({len(data) // 1024:,} KB, {rate:.0f} KB/s)")
+                        messagebox.showinfo(
+                            APP_TITLE,
+                            f"ดาวน์โหลดไฟล์เรียบร้อย!\n\nบันทึกที่: {local_path}\nขนาด: {len(data):,} ไบต์ ({len(data)/1024:.1f} KB)\nSHA-256: {h[:16]}...")
+                    except Exception as e:
+                        messagebox.showerror(APP_TITLE, f"บันทึกไฟล์ไม่สำเร็จ: {e}")
+
+        self.call_in_ui(finish_done)
+
     def radio_selected(self) -> int:
         sel = self.radio_tree.selection()
         return int(sel[0]) if sel else -1
@@ -2337,7 +2771,10 @@ class Studio:
         def worker():
             rc = -1
             try:
-                p = subprocess.Popen(cmd, cwd=PROJECT_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                env = os.environ.copy()
+                env["PYTHONUTF8"] = "1"
+                env["PYTHONIOENCODING"] = "utf-8"
+                p = subprocess.Popen(cmd, cwd=PROJECT_DIR, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 for raw in p.stdout:
                     line = raw.decode("utf-8", "replace").rstrip()

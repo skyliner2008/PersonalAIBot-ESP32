@@ -14,6 +14,7 @@
 #include <mp3dec.h>
 
 #include "../system/PsramTask.h"
+#include "../system/Storage.h"
 #include "../util/HttpRedirect.h"
 #include "../util/Id3.h"
 #include "../util/IcyMeta.h"
@@ -46,8 +47,8 @@ struct Guard {
 
 void copyStr(char* dst, size_t cap, const char* src, size_t len = (size_t)-1) {
     if (!src) src = "";
-    size_t n = strnlen(src, len == (size_t)-1 ? cap - 1 : len);
-    if (n > cap - 1) n = cap - 1;
+    // one byte past the room, so a cut can look at the next byte (strnlen(.., cap - 1) cut Thai names into "ธงไ\xE0\xB8")
+    size_t n = strnlen(src, len == (size_t)-1 ? cap : len);
     n = utf8::clampToBoundary(src, n, cap - 1);
     memcpy(dst, src, n);
     dst[n] = '\0';
@@ -387,8 +388,9 @@ bool RadioPlayer::fileSession(uint32_t gen) {
     }
     FILE* f = fopen(path, "rb");
     if (!f) {
-        setError("ไม่พบไฟล์เพลง");
+        setError("อ่านไฟล์เพลงใน SD card ไม่ได้");
         Serial.printf("[Music] Cannot open %s\n", path);
+        Storage::reportError();  // T125: a card that stopped answering is mounted again (loop)
         _fileEnded = true;
         return false;
     }
@@ -415,6 +417,10 @@ bool RadioPlayer::fileSession(uint32_t gen) {
     auto pull = [&](uint8_t* d, int n, size_t) -> int {
         _filePos = start + consumed;  // live: pause() reads it before stop() (it was only set at the end: resumed at 0)
         const size_t got = fread(d, 1, (size_t)n, f);
+        if (got == 0 && ferror(f)) {  // not the end: the card failed (sdmmc timeouts seen on the board)
+            setError("อ่านไฟล์เพลงใน SD card ไม่ได้");
+            Storage::reportError();
+        }
         return got > 0 ? (int)got : -1;  // 0 = the end of the file
     };
     bool ended = false;

@@ -334,6 +334,7 @@ private:
     int _aecMicGain = -1;            // ADC gain step the echo filter was learned at
     uint8_t _wakeVoiced = 0;        // voiced chunks in the wake buffer (added to the sentence when it is sent)
     bool _wakeHeard = false;       // voice in the wake buffer (a tap wake with silence sends nothing)
+    bool _wokeByWord = false;      // T124: the wake word woke it (nothing said after it by "ready" = greet the user)
     bool _radioWasSounding = false;   // asleep: the radio (re)started -> relearn its echo before waking
     bool _radioSessionWas = false;    // asleep: the radio stopped / changed station -> its tail is not a voice
     int _wakeVolume = -1;             // speaker volume the radio echo was learned at

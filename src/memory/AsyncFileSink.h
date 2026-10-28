@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "../system/PsramTask.h"
+#include "../system/Storage.h"
 #include "../util/PsramAlloc.h"
 #include "AppendSink.h"
 
@@ -79,6 +80,7 @@ private:
             } else {
                 _failed = _failed + 1;
                 Serial.printf("[Memory] write failed: %s\n", path);
+                Storage::reportError();  // T125: the loop checks the card and mounts it again when it stopped answering
             }
             psramFree(it.buf);
             _writing = false;

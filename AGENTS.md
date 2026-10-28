@@ -5,7 +5,9 @@ plus a Python/Tkinter PC companion app. Gemini Live for voice, on-device memory,
 (weather, fuel, TradingView quotes/analysis, news, Wikipedia). There is no trading / MT5 / broker connection.
 
 ## Build & test
-- Firmware: `pio run` (upload: `pio run -t upload`)
+- Firmware: `pio run`
+- Upload (Windows PowerShell — MUST set UTF-8 first, otherwise `esptool v5.4` Unicode progress bars crash PlatformIO's reader thread with `UnicodeEncodeError` on `cp1252` and hang the upload; also never combine `-t nobuild` with `-t upload` as pioarduino omits flash address pairs):
+  `chcp 65001 > $null; $env:PYTHONUTF8 = "1"; $env:PYTHONIOENCODING = "utf-8"; pio run -t upload --upload-port COM3`
 - Host unit tests (after one `pio run`, which fetches ArduinoJson): `host_tests\run_tests.bat` (MSVC) or `bash host_tests/run_tests.sh`
 - PC app: `pip install -r tools/pc_app/requirements.txt` then `python tools/pc_app/esp32_ai_studio.py`
 - Android phone app `tools/mobile_app` (wiki 17: the Jarvis assistant `composeApp` + the ESP32 board screen `esp32` — flasher + Studio-like status/log/settings/chat over the same serial protocol + navigation): `python tools/build_mobile_apk.py` (needs JDK 17-24 and the Android SDK) → `dist/PersonalAIBot-Mobile.apk`;
