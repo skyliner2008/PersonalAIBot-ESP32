@@ -211,7 +211,7 @@ const char* checkName(const char* name) {
     if (!name || !*name) return "no file name";
     if (strlen(name) > 120) return "file name too long (max 120 bytes)";
     for (const char* p = name; *p; p++) {
-        if ((unsigned char)*p < 0x20 || strchr("/\:*?\"<>|", *p)) return "file name has a character the card cannot take";
+        if ((unsigned char)*p < 0x20 || strchr("/\\:*?\"<>|", *p)) return "file name has a character the card cannot take";
     }
     if (name[0] == '.') return "file name starts with a dot";
     if (!isSong(name)) return "only .mp3 / .aac files";

@@ -484,7 +484,10 @@ void GeminiLiveClient::pushMessage(MsgKind kind, const char* data, size_t len, i
         memcpy(m.data, data, len);
         m.data[len] = '\0';
     }
-    if (xQueueSend(_inbox, &m, pdMS_TO_TICKS(100)) != pdTRUE) {
+    // T134: while a long reply holds the inbox full (T128 backpressure), Connected / Disconnected / Closed must not be
+    // lost - a dropped Connected never sends the setup (the session hangs "Ready"); the agent drains a slot in <1 s
+    const uint32_t waitMs = kind == MsgKind::Data ? 100 : 3000;
+    if (xQueueSend(_inbox, &m, pdMS_TO_TICKS(waitMs)) != pdTRUE) {
         psramFree(m.data);
         _dropped = _dropped + 1;
     }

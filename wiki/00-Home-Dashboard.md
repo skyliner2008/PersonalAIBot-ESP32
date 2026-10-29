@@ -122,6 +122,7 @@ ESP32-AI/
 
 | Date | Activity | Related Docs |
 |------|----------|--------------|
+| 2026-10-29 | **ESP32-S3: ตรวจเฟิร์มแวร์ (T134):** build 2 env + host tests ผ่าน · แก้ข้อความ Connected/Disconnected หายตอนคำตอบยาว (T128 backpressure) + ตัวกัน `\` ในชื่อไฟล์เพลง | [[07-Troubleshooting-Log]] |
 | 2026-10-29 | **ESP32-P4: กล้อง + AI มองเห็น (T133):** ไดรเวอร์ OV02C10 (Espressif, จากแพ็กผู้ผลิต) → esp_video → PPA → JPEG ฮาร์ดแวร์ 640×360 → Gemini Live (`realtimeInput.video`), tool `camera` ("เห็นอะไรบ้าง"), `camera save` · ยังไม่มี AE/AWB (IPA) + ยังไม่ได้ลองบนบอร์ด | [[19-ESP32-P4-JC4880P443C]] |
 | 2026-10-29 | **ESP32-P4: ขาจากผังวงจรจริง (T132):** UART J5 + RS485 = GPIO 26/27 (`rs485 set 9600`), บอร์ดไม่มี LED, ขาว่าง JP1 = 28–34/49–52, ข้อมูลกล้อง OV02C10 ครบ (ไดรเวอร์ Apache-2.0 ในแพ็กผู้ผลิต, SCCB 0x36, 1288×728) · แพ็กผู้ผลิต git-ignore | [[19-ESP32-P4-JC4880P443C]] |
 | 2026-10-29 | **ESP32-P4: RS485 Modbus RTU + ข้อมูลบอร์ดจาก BSP ผู้ผลิต (T131):** tool `modbus` (อ่าน/เขียน register มิเตอร์/เซนเซอร์, ตั้งขา `rs485 set`), ยืนยันขาและ init จอกับ BSP ของ Guition, LED = GPIO 26, ขา UART ของรถปิดไว้จนรู้ขาจริง, env เริ่มต้น `esp32p4` (บอร์ด v1.3) · กล้องรอแพ็กผู้ผลิต (OV02C10) | [[19-ESP32-P4-JC4880P443C]] · [[07-Troubleshooting-Log]] |

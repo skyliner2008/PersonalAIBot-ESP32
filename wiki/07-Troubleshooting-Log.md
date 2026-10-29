@@ -92,6 +92,16 @@ This page documents common issues encountered during development and their solut
 
 ---
 
+## T134: ESP32-S3 — ตรวจความถูกต้อง/ความสมบูรณ์ของเฟิร์มแวร์ (T124–T129)
+
+**วันที่:** 2026-10-29 · **ผู้ใช้:** "กลับมาที่ตัว ESP32-S3 ตรวจสอบความถูกต้อง ความสมบูรณ์ของ firmware"
+**ตรวจ:** build `esp32s3-ble` + `esp32s3` (compile ไฟล์ src ใหม่ทั้งหมดเพื่อดู warning) · host tests 3,071 ✓ · อ่าน diff T124–T129
+(flow-control เสียง, SD remount, เมนูตั้งค่า, หน้าปัดนาฬิกา 4 แบบ + อากาศ, ตรวจไฟ USB/แบต)
+**พบ + แก้:** (1) T128 backpressure — ตอนคำตอบยาวจน inbox เต็ม ข้อความ Connected / Disconnected / Closed รอคิวแค่ 100 ms แล้วถูกทิ้ง →
+ถ้าเน็ตหลุดช่วงนั้น เซสชันค้างสถานะ Ready / ไม่ส่ง setup หลังต่อใหม่ → ข้อความควบคุมรอได้ 3 s (`GeminiLiveClient::pushMessage`) ·
+(2) `MusicLibrary` ตรวจชื่อไฟล์ด้วยสตริง `"/\:*?..."` (ต้องเป็น `"/\\:*?..."`) → ไม่กันตัว `\` (compiler เตือน unknown escape; Studio กันไว้แล้วฝั่ง PC)
+**ไม่ใช่บั๊ก:** warning `-Wvolatile` (C++20 deprecation) · ฟอนต์ไทยมี `°` `•` ครบ · ⏳ ยังไม่ได้แฟลชลองบนบอร์ด
+
 ## T133: ESP32-P4 — กล้อง OV02C10 + AI มองเห็นภาพ (tool `camera`)
 
 **วันที่:** 2026-10-29 · **ผู้ใช้:** "Commit + ทำกล้องต่อ"
