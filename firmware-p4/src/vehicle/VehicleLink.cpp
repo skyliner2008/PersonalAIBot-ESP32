@@ -75,6 +75,7 @@ bool vehicleBleKeptAtBoot() { return false; }
 
 bool UartLink::open() {
     if (_open) return true;
+    if (kTx < 0 || kRx < 0) return false;  // ESP32-P4 board: UART header pins not known yet (pins_config.h)
     Serial1.setRxBufferSize(1024);
     Serial1.begin(_baud, SERIAL_8N1, kRx, kTx);
     if (_pullUp) gpio_pullup_en((gpio_num_t)kRx);  // L9637D-type RX is open collector
@@ -101,6 +102,7 @@ bool UartLink::write(const uint8_t* data, size_t n) {
 }
 
 void UartLink::wakePulse(uint32_t lowMs, uint32_t highMs) {
+    if (kTx < 0) return;
     close();
     pinMode(kTx, OUTPUT);
     digitalWrite(kTx, LOW);

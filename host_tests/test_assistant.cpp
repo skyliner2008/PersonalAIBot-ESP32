@@ -1694,7 +1694,75 @@ TEST(thai_provinces) {
 
 #include <filesystem>
 
+#include "../firmware-p4/src/util/ModbusRtu.h"  // T131: the ESP32-P4 firmware's RS485 (portable)
 #include "util/IcyMeta.h"
+
+TEST(modbus_rtu_frames) {
+    using namespace modbus;
+    uint8_t f[kMaxFrame];
+    // published vectors: read 10 holding registers from slave 1 / write register 1 = 3 / read 37 coils at 0x13 (spec)
+    CHECK_EQ(buildRead(1, Table::Holding, 0, 10, f), (size_t)8);
+    const uint8_t r1[] = {0x01, 0x03, 0x00, 0x00, 0x00, 0x0A, 0xC5, 0xCD};
+    CHECK(memcmp(f, r1, 8) == 0);
+    CHECK_EQ(buildWriteSingle(1, Table::Holding, 1, 3, f), (size_t)8);
+    const uint8_t w1[] = {0x01, 0x06, 0x00, 0x01, 0x00, 0x03, 0x98, 0x0B};
+    CHECK(memcmp(f, w1, 8) == 0);
+    CHECK_EQ(buildRead(0x11, Table::Coil, 0x13, 0x25, f), (size_t)8);
+    const uint8_t c1[] = {0x11, 0x01, 0x00, 0x13, 0x00, 0x25, 0x0E, 0x84};
+    CHECK(memcmp(f, c1, 8) == 0);
+    // bad arguments: no frame
+    CHECK_EQ(buildRead(0, Table::Holding, 0, 1, f), (size_t)0);
+    CHECK_EQ(buildRead(248, Table::Holding, 0, 1, f), (size_t)0);
+    CHECK_EQ(buildRead(1, Table::Input, 0, 0, f), (size_t)0);
+    CHECK_EQ(buildRead(1, Table::Input, 0, kMaxCount + 1, f), (size_t)0);
+    CHECK_EQ(buildRead(1, Table::Input, 0xFFFF, 2, f), (size_t)0);  // address wrap
+    CHECK_EQ(buildWriteSingle(1, Table::Input, 0, 1, f), (size_t)0);  // read-only table
+    CHECK_EQ(buildWriteSingle(1, Table::Coil, 5, 1, f), (size_t)8);
+    CHECK(f[1] == 0x05 && f[4] == 0xFF && f[5] == 0x00);  // coil ON = 0xFF00
+
+    // a holding reply: 2 registers 0x0006, 0x0005
+    uint8_t rx[16] = {0x01, 0x03, 0x04, 0x00, 0x06, 0x00, 0x05};
+    size_t n = finish(rx, 7);
+    CHECK_EQ(replyLength(rx, 2), (size_t)0);  // byte count not in yet
+    CHECK_EQ(replyLength(rx, 3), (size_t)9);
+    uint16_t v[kMaxCount];
+    CHECK(parseRead(rx, n, 1, Table::Holding, 2, v) == nullptr);
+    CHECK(v[0] == 6 && v[1] == 5);
+    CHECK(parseRead(rx, n, 2, Table::Holding, 2, v) != nullptr);  // another slave
+    CHECK(parseRead(rx, n, 1, Table::Holding, 3, v) != nullptr);  // wrong count
+    CHECK(parseRead(rx, n - 1, 1, Table::Holding, 2, v) != nullptr);  // cut short
+    rx[4] ^= 1;
+    CHECK(strstr(parseRead(rx, n, 1, Table::Holding, 2, v), "CRC") != nullptr);
+    CHECK(strstr(parseRead(rx, 0, 1, Table::Holding, 2, v), "timeout") != nullptr);
+    // coils: 10 bits 0b11_0000_0101 -> 1,0,1,0,0,0,0,0,1,1
+    uint8_t cb[8] = {0x01, 0x01, 0x02, 0x05, 0x03};
+    n = finish(cb, 5);
+    CHECK(parseRead(cb, n, 1, Table::Coil, 10, v) == nullptr);
+    CHECK(v[0] == 1 && v[1] == 0 && v[2] == 1 && v[3] == 0 && v[8] == 1 && v[9] == 1);
+    // exception 02 (illegal data address)
+    uint8_t ex[8] = {0x01, 0x83, 0x02};
+    n = finish(ex, 3);
+    CHECK_EQ(replyLength(ex, 2), (size_t)5);
+    CHECK(strstr(parseRead(ex, n, 1, Table::Holding, 2, v), "illegal data address") != nullptr);
+    // write echo
+    buildWriteSingle(1, Table::Holding, 1, 3, f);
+    CHECK(parseWrite(f, 8, f) == nullptr);
+    uint8_t other[8];
+    memcpy(other, f, 8);
+    other[5] = 4;
+    finish(other, 6);
+    CHECK(parseWrite(other, 8, f) != nullptr);  // the device confirmed another value
+    const uint16_t regs[] = {0x000A, 0x0102};
+    CHECK_EQ(buildWriteMultiple(1, 1, regs, 2, f), (size_t)13);
+    CHECK(f[1] == 0x10 && f[6] == 4 && f[7] == 0x00 && f[8] == 0x0A && f[9] == 0x01 && f[10] == 0x02);
+    // RTU silence: 9600 baud 8N1 + parity bit = 11 bits -> 4.0 ms; fixed 1.75 ms above 19200
+    CHECK(interFrameUs(9600) >= 4000 && interFrameUs(9600) <= 4020);
+    CHECK_EQ(interFrameUs(115200), (uint32_t)1750);
+    Table t;
+    CHECK(parseTable("holding", t) && t == Table::Holding);
+    CHECK(parseTable("di", t) && t == Table::Discrete);
+    CHECK(!parseTable("register", t));
+}
 #include "util/Id3.h"
 #include "util/JsonFile.h"
 #include "util/NoteSearch.h"

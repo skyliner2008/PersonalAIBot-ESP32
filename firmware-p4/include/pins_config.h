@@ -62,8 +62,8 @@
 // ============================================================
 #define RGB_LED_PIN             -1
 #define RGB_LED_COUNT           0
-#define BUILTIN_LED_PIN         -1      // the red LED is on GPIO 26 = VEHICLE_UART_TX (J5): off until
-                                        // confirmed on the board (blinking it broke the OBD UART)
+#define BUILTIN_LED_PIN         -1      // T132: no LED on the schematic (JC4880P443_V1.0) - the vendor xiaozhi config.h
+                                        // says GPIO 26, but GPIO 26 is TX1 (UART J5 + RS485)
 
 // ============================================================
 // Battery Monitoring — ADC (IP5306 + R52=68K / R57=100K divider)
@@ -87,10 +87,22 @@
 #define SD_D3                   42
 
 // ============================================================
-// Expansion GPIOs (JP1 2x13 header & J5 UART connector)
+// Expansion GPIOs — JP1 2x13 (schematic page 4): GPIO 28-34, 49-52 (+ 35 = BOOT, the C6 UART / IO9 / CHIP_PU, I2C)
 // ============================================================
+// T132 (schematic JC4880P443_V1.0, page 3 + 5): GPIO 26 = TX1, GPIO 27 = RX1 go to the 4-pin UART J5 AND the MAX485
+// (U8, automatic direction from TX1, A/B on J4) - one UART for both: the vehicle UART source or RS485, not both
 #define VEHICLE_UART_TX         26
 #define VEHICLE_UART_RX         27
+#define RS485_TX                26      // vendor example uart_echo_rs485: TXD 26 / RXD 27, UART_MODE_RS485_HALF_DUPLEX,
+#define RS485_RX                27      // no RTS / DE pin
+
+// ============================================================
+// Camera — OV02C10 2 MP (MIPI-CSI 2 lanes, FPC2 15-pin), SCCB on the shared I2C bus
+// ============================================================
+#define CAM_SCCB_SDA            7       // vendor example video_lcd_display: SCCB SDA 7 / SCL 8 (with ES8311 + GT911)
+#define CAM_SCCB_SCL            8
+#define CAM_RESET               -1      // no reset / power-down GPIO from the P4 (CSI_IO0 pulled up on the FPC)
+#define CAM_PWDN                -1
 #define EXP_GPIO_1              1
 #define EXP_GPIO_2              2
 #define EXP_GPIO_3              3

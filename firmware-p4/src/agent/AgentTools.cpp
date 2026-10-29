@@ -150,6 +150,7 @@ const AgentTools::Entry AgentTools::kHandlers[] = {
     {"stop_radio", &AgentTools::stopRadio},
     {"play_radio", &AgentTools::playRadio},
     {"device", &AgentTools::device},
+    {"modbus", &AgentTools::modbus},
     {"vehicle", &AgentTools::vehicle},
     {"navigate", &AgentTools::navigate},
     {"about_me", &AgentTools::aboutMe},
@@ -325,6 +326,20 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
             {"value", "STRING", "set: on/off, or 0-100 for a dimmer.", false, nullptr},
         };
         declare(d, b, "device", "Read or switch the devices wired to the board (relay, dimmer, sensor).", devp, 3);
+    }
+    if (_device.modbusReady()) {  // T131: only once the RS485 port is set up (console rs485 set ...)
+        static const char* const kModbusActions[] = {"read", "write", nullptr};
+        static const char* const kModbusTables[] = {"holding", "input", "coil", "discrete", nullptr};
+        static const Param mbp[] = {
+            {"action", "STRING", nullptr, true, kModbusActions},
+            {"slave", "INTEGER", "Device address 1-247.", true, nullptr},
+            {"table", "STRING", nullptr, true, kModbusTables},
+            {"address", "INTEGER", "First register / coil, 0-based (40001 -> 0).", true, nullptr},
+            {"count", "INTEGER", "read: how many (1-64).", false, nullptr},
+            {"value", "STRING", "write: a number, or numbers separated by commas.", false, nullptr},
+        };
+        declare(d, b, "modbus", "Modbus RTU over the RS485 port: read / write registers of meters, sensors, PLCs.",
+                mbp, 6);
     }
     if (_device.vehicleEnabled()) {  // firmware with the dash: always, so "เปิดหน้าปัด" works before a source is set
         // T112: one tool for "how is the car", "what does this code mean", reading / clearing the codes
@@ -878,6 +893,16 @@ bool AgentTools::device(JsonObjectConst a, JsonObject r, const char*& e) {
     const char* name = a["name"] | "";
     if (!*name) return (e = "name is required"), false;
     if (const char* why = _device.deviceAction(action, name, a["value"], r)) return (e = why), false;
+    return true;
+}
+
+bool AgentTools::modbus(JsonObjectConst a, JsonObject r, const char*& e) {
+    const char* action = a["action"] | "";
+    if (strcmp(action, "read") && strcmp(action, "write")) return (e = "action must be read or write"), false;
+    if (const char* why = _device.modbusAction(action, a["slave"] | 0, a["table"] | "", a["address"] | -1,
+                                               a["count"] | 1, a["value"], r)) {
+        return (e = why), false;
+    }
     return true;
 }
 

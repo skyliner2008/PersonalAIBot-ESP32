@@ -61,3 +61,5 @@ logs/
 
 # ESP32-P4 firmware (firmware-p4/): its own secrets file and build folder
 firmware-p4/include/secrets.h
+# Guition vendor package (914 MB, the user's copy - reference only, never committed)
+JC4880P443C_I_W/

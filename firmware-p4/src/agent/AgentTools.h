@@ -85,6 +85,14 @@ public:
         (void)action, (void)name, (void)value, (void)result;
         return "no devices are configured";
     }
+    // ---- RS485 Modbus RTU (T131, ESP32-P4 board) ----
+    virtual bool modbusReady() { return false; }  // false = the `modbus` tool is not declared at all
+    /** action "read" (count values) / "write" (value: a number or a list). nullptr = ok, else why not. */
+    virtual const char* modbusAction(const char* action, int slave, const char* table, int address, int count,
+                                     JsonVariantConst value, JsonObject result) {
+        (void)action, (void)slave, (void)table, (void)address, (void)count, (void)value, (void)result;
+        return "RS485 is not set up";
+    }
     // ---- the phone app: GPS + Google Maps (wiki 18) ----
     virtual bool phonePaired() { return false; }  // false = the `navigate` tool is not declared at all
     /** action "go" (to = destination) / "stop" / "status" / "where". nullptr = ok, else why not. */
@@ -192,6 +200,7 @@ private:
     bool restScreen(JsonObjectConst a, JsonObject r, const char*& e);
     bool stopRadio(JsonObjectConst a, JsonObject r, const char*& e);
     bool device(JsonObjectConst a, JsonObject r, const char*& e);
+    bool modbus(JsonObjectConst a, JsonObject r, const char*& e);
     bool vehicle(JsonObjectConst a, JsonObject r, const char*& e);
     bool navigate(JsonObjectConst a, JsonObject r, const char*& e);
     bool playRadio(JsonObjectConst a, JsonObject r, const char*& e);

@@ -5,6 +5,8 @@
 
 #include "Vehicle.h"
 
+#include "../system/Rs485.h"
+
 #include <Preferences.h>
 #include <esp_heap_caps.h>
 
@@ -209,8 +211,11 @@ const char* Vehicle::setSource(SourceId src) {
     if (src == SourceId::ObdBle && !kBleBuilt) {
         return "เฟิร์มแวร์นี้ไม่มี OBD ผ่าน Bluetooth (กินหน่วยความจำที่ผู้ช่วยต้องใช้) — ใช้ ELM327 แบบสายแทน";
     }
+    if (usesUart(src) && gRs485.ready()) {  // T132: one UART (GPIO 26/27) for J5 and the RS485 transceiver
+        return "ขา UART (GPIO 26/27) ใช้กับ RS485 อยู่ — สั่ง rs485 off ก่อนใช้หน้าปัดรถแบบสาย";
+    }
     if (usesUart(src) && (gPeriph.usesPin(UartLink::kTx) || gPeriph.usesPin(UartLink::kRx))) {
-        return "GPIO 43/44 ถูกใช้โดยอุปกรณ์ใน devices.json อยู่ — ย้ายอุปกรณ์นั้นก่อน";
+        return "ขา UART ถูกใช้โดยอุปกรณ์ใน devices.json อยู่ — ย้ายอุปกรณ์นั้นก่อน";
     }
     {
         Guard g(_lock);

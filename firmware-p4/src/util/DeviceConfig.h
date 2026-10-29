@@ -62,12 +62,19 @@ inline bool parseKind(const char* s, Kind& out) {
 /** nullptr = this pin may be used for this kind, else why not. */
 inline const char* pinProblem(Kind k, int pin) {
 #if defined(BOARD_JC4880P443C) || defined(CONFIG_IDF_TARGET_ESP32P4)
+    // T132: what the JP1 header really brings out (schematic JC4880P443_V1.0 page 4): GPIO 28-34 and 49-52
     switch (pin) {
-        case 20:  // ADC1 (GPIO 16..23: 16..19 are the ESP32-C6 SDIO link, 21..23 touch + backlight)
         case 49:
         case 50:
         case 51:
         case 52: return nullptr;  // ADC2 (49..54; 53 = battery, 54 = C6 reset) - no Wi-Fi radio on the P4 to share it
+        case 28:
+        case 29:
+        case 30:
+        case 31:
+        case 32:
+        case 33:
+        case 34: return k == Kind::Analog ? "analog only on GPIO 49..52 (ADC)" : nullptr;
         case 14:
         case 15:
         case 16:
@@ -75,24 +82,10 @@ inline const char* pinProblem(Kind k, int pin) {
         case 18:
         case 19:
         case 54: return "GPIO 14..19 and 54 link the ESP32-C6 (Wi-Fi / Bluetooth, SDIO) - using one cuts the network";
-        case 1:
-        case 2:
-        case 3:
-        case 4:
         case 26:
-        case 27:
-        case 28:
-        case 29:
-        case 30:
-        case 31:
-        case 32:
-        case 33:
-        case 36:
-        case 46:
-        case 47:
-            return k == Kind::Analog ? "analog only on GPIO 20 and 49..52 (ADC)" : nullptr;
+        case 27: return "GPIO 26/27 are UART1 on J5 and the RS485 transceiver (vehicle UART / modbus)";
         case 35: return "GPIO 35 is the BOOT key, already a button of the screen (tap / settings)";
-        default: return "not a free pin on JC4880P443C (use JP1 expansion pins 1..4, 20, 26..33, 36, 46, 47, 49..52)";
+        default: return "not on the JP1 header (free: GPIO 28..34, 49..52)";
     }
 #else
     switch (pin) {

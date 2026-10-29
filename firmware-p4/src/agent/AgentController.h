@@ -139,6 +139,9 @@ public:
     int deviceCount() override;
     void listDevices(JsonArray out) override;
     const char* deviceAction(const char* action, const char* name, JsonVariantConst value, JsonObject result) override;
+    bool modbusReady() override;
+    const char* modbusAction(const char* action, int slave, const char* table, int address, int count,
+                             JsonVariantConst value, JsonObject result) override;
     bool vehicleEnabled() override;
     const char* vehicleAction(const char* action, const char* source, JsonObject result) override;
     bool phonePaired() override;

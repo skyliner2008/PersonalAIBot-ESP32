@@ -292,7 +292,7 @@ wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, me
 | [12 Internet radio](wiki/12-Internet-Radio.md) | Streaming, mixing/ducking, voice wake over music |
 | [13 Firmware update (OTA)](wiki/13-OTA-Update.md) | Over Wi-Fi from GitHub Releases, verified, automatic rollback |
 | [16 Vehicle dash](wiki/16-Vehicle-Dash.md) | OBD-II (wired ELM327; Bluetooth LE in the release firmware since T118), Honda K-Line, simulator; wiring, layouts, the `vehicle` tool, RAM budget |
-| [19 ESP32-P4 firmware](wiki/19-ESP32-P4-JC4880P443C.md) | Separate firmware for the Guition JC4880P443C (ESP32-P4 + C6, 4.3" MIPI-DSI): `pio run -d firmware-p4`; status and plan (camera, RS485) |
+| [19 ESP32-P4 firmware](wiki/19-ESP32-P4-JC4880P443C.md) | Separate firmware for the Guition JC4880P443C (ESP32-P4 + C6, 4.3" MIPI-DSI): `pio run -d firmware-p4`; RS485 Modbus RTU tool (T131), status and plan (camera) |
 | [18 Phone link & navigation](wiki/18-Phone-Link-Navigation-Plan.md) | Phone GPS on the dash, Google Maps turn-by-turn on the board, the assistant says each turn, "navigate to …" by voice (Wi-Fi / USB) |
 | [17 Phone app](wiki/17-Mobile-Flasher.md) | Android app over a USB-C cable: flash (update keeping settings, verified downloads), status, log, settings, chat |
 

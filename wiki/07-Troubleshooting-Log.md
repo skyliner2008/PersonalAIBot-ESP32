@@ -92,6 +92,27 @@ This page documents common issues encountered during development and their solut
 
 ---
 
+## T132: ESP32-P4 — ยืนยันขาจากผังวงจร + แพ็กผู้ผลิต (UART/RS485 = 26/27, ไม่มี LED, JP1, กล้อง)
+
+**วันที่:** 2026-10-29 · **ผู้ใช้:** "ไฟล์ JC4880P443C_I_W อยู่ที่ E:\APP-JARVIS\ESP32-AI\JC4880P443C_I_W" + ลิงก์
+seobaeksol/JC4880P443C_I_W `05_camera_csi.md`
+**พบ (ผังวงจร JC4880P443_V1.0):** GPIO 26/27 = TX1/RX1 → UART J5 **และ** MAX485 (สลับทิศเอง) · ไม่มี LED (ที่ T131 เปิด LED 26 ตาม `config.h` ของผู้ผลิต
+= ผิด: 26 คือ TX1) · JP1 มีแค่ GPIO 28–34, 49–52 (รายการขาว่างเดิมมี 1–4, 20, 36, 46, 47 ที่ไม่ได้ออกมาที่ JP1) · ไมค์ analog เข้า ES8311 ✓ ·
+กล้อง: SCCB บน I2C 7/8, ไม่มี reset/pwdn/XCLK · ไดรเวอร์ OV02C10 (Espressif Apache-2.0) อยู่ในแพ็ก
+**แก้:** `VEHICLE_UART` 26/27 + `RS485_TX/RX` 26/27, `BUILTIN_LED_PIN -1`, `CAM_*` · `DeviceConfig` = ขา JP1 จริง · `rs485 set <baud>` ใช้ขาของบอร์ด,
+โหมด `RS485_HALF_DUPLEX` (ตามตัวอย่างผู้ผลิต) · แหล่งหน้าปัดรถแบบสายถูกปฏิเสธเมื่อ RS485 เปิดอยู่ (ขาเดียวกัน) · แพ็กผู้ผลิต git-ignore
+**ทดสอบ:** `pio run -d firmware-p4` ✓ · host tests ✓ · ⏳ บอร์ด
+
+## T131: ESP32-P4 — RS485 Modbus RTU + ข้อมูลบอร์ดจริงจาก BSP ผู้ผลิต (LED, env ชิป, UART)
+
+**วันที่:** 2026-10-29 · **ผู้ใช้:** "ยังไม่มีบอร์ด P4 ค่อยทดสอบภายหลัง ดำเนินการเฟสต่อไปได้เลย" + "ลองค้นข้อมูล ESP32-P4 จาก repo
+github.com/Coke1120/codex-pet-dev-board ใช้บอร์ด GUITION JC4880P443C"
+**กล้อง (เฟส 2) ทำไม่ได้ตอนนี้:** OV02C10 ไม่มีใน `esp_cam_sensor` (SDK / 2.6.0) และไม่มีไดรเวอร์เปิดเผย — ต้องใช้แพ็กผู้ผลิต (ดู [[19-ESP32-P4-JC4880P443C]])
+**ทำแทน (เฟส 3):** `util/ModbusRtu.h` (portable + host test) · `system/Rs485` (UART2, ขาตั้งเอง `agent/rs485.json`) · tool `modbus` · console `rs485` / `modbus`
+**จาก BSP ผู้ผลิต (repo ที่ผู้ใช้ให้มา):** ขาเสียง/จอ/ทัช/ปุ่ม ตรงทุกขา, init + timing ของ ST7701S ตรงทุกค่า · **LED = GPIO 26** จริง → เปิด LED คืน,
+ขา UART ของรถ (เดิม 26/27 = เดา) → `-1` จนวัดขาได้ (แหล่ง UART ตอบว่าใช้ไม่ได้, BLE ใช้ได้) · บอร์ดที่ตรวจแล้วเป็น **P4 v1.3** → env เริ่มต้น `esp32p4`
+**ทดสอบ:** host tests 3,069 ✓ (`modbus_rtu_frames` +34) · `pio run -d firmware-p4` (esp32p4) ✓ flash 74.7 % · ⏳ ไม่มีบอร์ด P4 / อุปกรณ์ Modbus ให้ทดสอบ
+
 ## T130: เฟิร์มแวร์ ESP32-P4 แยกโปรเจค (`firmware-p4/`) — ตรวจงานรองรับ P4 ที่ใส่รวมกับ S3
 
 **วันที่:** 2026-10-29 · **ผู้ใช้:** "เพิ่มให้โปรเจครองรับบอร์ด ESP32-P4 ตรวจสอบความถูกต้องให้ฉัน" → "ไม่จำเป็นต้องทำร่วมกับตัว ESP32-S3 ... ทำ FIRMWARE แยกออกมาได้เลย"

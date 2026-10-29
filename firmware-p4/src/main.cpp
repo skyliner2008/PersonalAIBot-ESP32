@@ -40,6 +40,7 @@
 #include "system/I2cBus.h"
 #include "system/OtaUpdater.h"
 #include "system/Peripherals.h"
+#include "system/Rs485.h"
 #include "system/Storage.h"
 #include "ui/CardScreen.h"
 #include "ui/DashScreen.h"
@@ -964,6 +965,7 @@ static void handleConsoleLine(String line) {
         Serial.println("status | audio | tone [hz] [ms] | mic [sec] | vol <0-100> | i2c | regs | reg <r> [v]");
         Serial.println("tool <name> [json] | say <u|a|s> <text> | expr <emotion> | sleep | powersave | wake | screenshot | radio [<n>|<url> [name]|stop]");
         Serial.println("music [list|rescan|next|prev|pause|resume|<n>|<words>] (MP3 from /sdcard/music)");
+        Serial.println("rs485 [set <tx> <rx> <baud> [8N1|8E1|8O1|8N2] [de] | off] | modbus read|write <slave> <table> <addr> [count|value]");
         Serial.println("sd card: sdls [path] | sdlist [path] | sdget <path> [off] [len] | sddel <path> | sdmkdir <path> | sdremount");
         Serial.println("ask <text> (type to the assistant) | mute (toggle mic) | retry | new (fresh session) | memclear <facts|history>");
         Serial.println("rec [sec] (record what the mic sends to Gemini: RECINFO <json> + RECORD <rate> <bytes> + PCM + END)");
@@ -1362,6 +1364,61 @@ static void handleConsoleLine(String line) {
         sdDel(rest);
     } else if (cmd == "sdmkdir") {  // sdmkdir <path>
         sdMkdir(rest);
+    } else if (cmd == "rs485") {  // T131: rs485 | rs485 set <tx> <rx> <baud> [8N1|8E1|8O1|8N2] [de] | rs485 off
+        if (rest.startsWith("set ")) {
+            Rs485Config c;
+            char fmt[8] = "8N1";
+            int de = -1;
+            unsigned long baud = 9600;
+            int got = sscanf(rest.c_str() + 4, "%d %d %lu %7s %d", &c.tx, &c.rx, &baud, fmt, &de);
+            if (got < 3) {  // T132: "rs485 set <baud> [format]" = the board's own transceiver (GPIO 26 / 27, schematic)
+                const int g2 = sscanf(rest.c_str() + 4, "%lu %7s", &baud, fmt);
+                c.tx = RS485_TX, c.rx = RS485_RX;
+                got = g2 >= 1 ? 3 + (g2 >= 2) : 0;
+            }
+            c.baud = (uint32_t)baud;
+            c.de = got >= 5 ? de : -1;
+            snprintf(c.format, sizeof(c.format), "%s", got >= 4 ? fmt : "8N1");
+            const char* err = got >= 3 ? gRs485.configure(c)
+                                       : "usage: rs485 set <baud> [8N1|8E1|8O1|8N2] (board RS485) | rs485 set <tx> <rx> <baud> [fmt] [de]";
+            Serial.println(err ? (String("ERR ") + err) : String("OK rs485 (the modbus tool is in the next AI session)"));
+        } else if (rest == "off") {
+            gRs485.disable();
+            Serial.println("OK rs485 off");
+        } else {
+            const Rs485Config& c = gRs485.config();
+            Serial.printf("rs485 %s | TX %d RX %d DE %d | %lu %s | %lu transactions, %lu failed\n", gRs485.ready() ? "on" : "off",
+                          c.tx, c.rx, c.de, (unsigned long)c.baud, c.format, (unsigned long)gRs485.transactions(),
+                          (unsigned long)gRs485.failures());
+        }
+    } else if (cmd == "modbus") {  // modbus read <slave> <table> <addr> [count] | modbus write <slave> <table> <addr> <value>
+        char act[8] = "", table[12] = "";
+        int slave = 0, addr = -1;
+        long x = 1;
+        const int got = sscanf(rest.c_str(), "%7s %d %11s %d %ld", act, &slave, table, &addr, &x);
+        modbus::Table t;
+        if (got < 4 || !modbus::parseTable(table, t) || slave < 1 || slave > 247 || addr < 0 || addr > 0xFFFF) {
+            Serial.println("ERR usage: modbus read <slave> <holding|input|coil|discrete> <addr> [count] | "
+                           "modbus write <slave> <holding|coil> <addr> <value>");
+        } else if (!strcmp(act, "read")) {
+            uint16_t v[modbus::kMaxCount];
+            const int count = got >= 5 ? (int)x : 1;
+            const char* err = count < 1 || count > (int)modbus::kMaxCount ? "count 1..64"
+                              : gRs485.read((uint8_t)slave, t, (uint16_t)addr, (uint16_t)count, v);
+            if (err) {
+                Serial.printf("ERR %s\n", err);
+            } else {
+                Serial.printf("OK modbus %d %s %d:", slave, modbus::tableName(t), addr);
+                for (int i = 0; i < count; i++) Serial.printf(" %u", (unsigned)v[i]);
+                Serial.println();
+            }
+        } else if (!strcmp(act, "write") && got >= 5) {
+            const uint16_t v = (uint16_t)x;
+            const char* err = gRs485.write((uint8_t)slave, t, (uint16_t)addr, &v, 1);
+            Serial.println(err ? (String("ERR ") + err) : String("OK modbus written"));
+        } else {
+            Serial.println("ERR modbus: read or write (write needs a value)");
+        }
     } else if (cmd == "sdremount") {  // T125: test the SD card recovery (the agent task mounts it again)
         Storage::requestRemount();
         Serial.println("OK sdremount requested");
@@ -1637,6 +1694,7 @@ void setup() {
     gPhone.begin();  // before the agent: a paired phone declares the `navigate` tool (wiki 18)
     agent.begin(&audio, &gFace, &storage);
     gVehicle.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // after the devices (GPIO 43/44)
+    gRs485.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // T131: off until "rs485 set"
 
     // Firmware updates from GitHub Releases: quiet the assistant for the download, restart through the
     // agent (clean Live close + memory flush), report on the face. Also confirms / reports a fresh update.

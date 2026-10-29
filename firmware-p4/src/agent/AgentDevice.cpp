@@ -5,6 +5,7 @@
  */
 
 #include "AgentInternal.h"
+#include "../system/Rs485.h"
 
 #include <esp_random.h>
 
@@ -531,6 +532,79 @@ bool AgentController::applyAssistantChange(const AssistantChange& c, JsonObject 
 // ============================================================
 // Devices on the free ports (system/Peripherals, agent/devices.json - wiki 15)
 // ============================================================
+
+// ---- RS485 Modbus RTU (T131): the `modbus` tool ----
+
+bool AgentController::modbusReady() { return gRs485.ready(); }
+
+const char* AgentController::modbusAction(const char* action, int slave, const char* table, int address, int count,
+                                          JsonVariantConst value, JsonObject r) {
+    modbus::Table t;
+    if (!modbus::parseTable(table, t)) return "table must be holding, input, coil or discrete";
+    if (slave < 1 || slave > 247) return "slave must be 1..247";
+    if (address < 0 || address > 0xFFFF) return "address must be 0..65535 (0-based: 40001 -> 0)";
+    r["slave"] = slave;
+    r["table"] = modbus::tableName(t);
+    r["address"] = address;
+    uint16_t v[modbus::kMaxCount];
+    if (!strcmp(action, "read")) {
+        if (count < 1 || count > (int)modbus::kMaxCount) return "count must be 1..64";
+        if (const char* e = gRs485.read((uint8_t)slave, t, (uint16_t)address, (uint16_t)count, v)) return e;
+        JsonArray a = r["values"].to<JsonArray>();
+        for (int i = 0; i < count; i++) a.add(v[i]);
+        if (!modbus::isBits(t)) {  // the same words read the other common ways: the model picks by the device's manual
+            JsonArray s = r["as_int16"].to<JsonArray>();
+            for (int i = 0; i < count; i++) s.add((int16_t)v[i]);
+            if (count >= 2 && count % 2 == 0) {
+                JsonArray u = r["as_uint32_hi_first"].to<JsonArray>();
+                JsonArray f = r["as_float32_hi_first"].to<JsonArray>();
+                for (int i = 0; i + 1 < count; i += 2) {
+                    const uint32_t w = (uint32_t)v[i] << 16 | v[i + 1];
+                    float x;
+                    memcpy(&x, &w, sizeof(x));
+                    u.add(w);
+                    f.add(x);
+                }
+            }
+            r["note"] = "raw register values: apply the device's scale (e.g. x0.1 V) before saying them";
+        }
+        return nullptr;
+    }
+    // write: "123", 123, "1,2,3", [1,2,3]; coils on/off/true/false
+    int n = 0;
+    auto add = [&](const char* s) -> bool {
+        while (*s == ' ') s++;
+        if (n >= (int)modbus::kMaxCount) return false;
+        if (!strcasecmp(s, "on") || !strcasecmp(s, "true")) return (v[n++] = 1), true;
+        if (!strcasecmp(s, "off") || !strcasecmp(s, "false")) return (v[n++] = 0), true;
+        char* end = nullptr;
+        const long x = strtol(s, &end, 0);
+        if (end == s || x < -32768 || x > 65535) return false;
+        v[n++] = (uint16_t)x;
+        return true;
+    };
+    if (value.is<JsonArrayConst>()) {
+        for (JsonVariantConst x : value.as<JsonArrayConst>()) {
+            if (!add(x.is<const char*>() ? x.as<const char*>() : String(x.as<long>()).c_str())) return "value: a number -32768..65535";
+        }
+    } else if (value.is<const char*>()) {
+        String s = value.as<const char*>();
+        int from = 0;
+        while (from <= (int)s.length()) {
+            int comma = s.indexOf(',', from);
+            if (comma < 0) comma = s.length();
+            if (!add(s.substring(from, comma).c_str())) return "value: numbers -32768..65535 separated by commas";
+            from = comma + 1;
+        }
+    } else if (value.is<long>() || value.is<double>()) {
+        if (!add(String(value.as<long>()).c_str())) return "value: a number -32768..65535";
+    }
+    if (n == 0) return "write needs a value";
+    if (n > 1 && t != modbus::Table::Holding) return "several values: holding registers only";
+    if (const char* e = gRs485.write((uint8_t)slave, t, (uint16_t)address, v, (uint16_t)n)) return e;
+    r["written"] = n;
+    return nullptr;
+}
 
 int AgentController::deviceCount() { return gPeriph.count(); }
 
