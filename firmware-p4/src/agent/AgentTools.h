@@ -85,6 +85,13 @@ public:
         (void)action, (void)name, (void)value, (void)result;
         return "no devices are configured";
     }
+    // ---- the board's camera (T133, ESP32-P4 board) ----
+    virtual bool cameraReady() { return false; }  // false = the `camera` tool is not declared at all
+    /** Take a picture and put it into the live session ("look"). nullptr = ok, else why not. */
+    virtual const char* cameraLook(JsonObject result) {
+        (void)result;
+        return "no camera";
+    }
     // ---- RS485 Modbus RTU (T131, ESP32-P4 board) ----
     virtual bool modbusReady() { return false; }  // false = the `modbus` tool is not declared at all
     /** action "read" (count values) / "write" (value: a number or a list). nullptr = ok, else why not. */
@@ -201,6 +208,7 @@ private:
     bool stopRadio(JsonObjectConst a, JsonObject r, const char*& e);
     bool device(JsonObjectConst a, JsonObject r, const char*& e);
     bool modbus(JsonObjectConst a, JsonObject r, const char*& e);
+    bool camera(JsonObjectConst a, JsonObject r, const char*& e);
     bool vehicle(JsonObjectConst a, JsonObject r, const char*& e);
     bool navigate(JsonObjectConst a, JsonObject r, const char*& e);
     bool playRadio(JsonObjectConst a, JsonObject r, const char*& e);

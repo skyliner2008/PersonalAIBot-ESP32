@@ -5,6 +5,7 @@
  */
 
 #include "AgentInternal.h"
+#include "../camera/Camera.h"
 #include "../system/Rs485.h"
 
 #include <esp_random.h>
@@ -532,6 +533,26 @@ bool AgentController::applyAssistantChange(const AssistantChange& c, JsonObject 
 // ============================================================
 // Devices on the free ports (system/Peripherals, agent/devices.json - wiki 15)
 // ============================================================
+
+// ---- the board's camera (T133): the `camera` tool ----
+
+bool AgentController::cameraReady() { return gCamera.ready(); }
+
+const char* AgentController::cameraLook(JsonObject r) {
+    _face->setHint("กำลังดูจากกล้อง...", 2000);
+    const uint8_t* jpeg = nullptr;
+    size_t len = 0;
+    const uint32_t t0 = millis();
+    if (const char* e = gCamera.capture(jpeg, len)) return e;
+    // the picture goes into the live context before this tool's answer: the model sees it when it replies
+    if (!_gemini.sendImage(jpeg, len)) return "the picture could not be sent (connection busy) - try again";
+    Serial.printf("[Camera] picture %u KB sent (%lu ms)\n", (unsigned)(len / 1024), (unsigned long)(millis() - t0));
+    r["picture"] = "sent";
+    r["size"] = String(Camera::kOutW) + "x" + Camera::kOutH;
+    r["note"] = "the picture from the camera is now in this conversation: answer from what you see in it, say plainly "
+                "if it is too dark or blurry";
+    return nullptr;
+}
 
 // ---- RS485 Modbus RTU (T131): the `modbus` tool ----
 

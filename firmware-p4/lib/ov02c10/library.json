@@ -1,0 +1,12 @@
+{
+  "name": "ov02c10",
+  "version": "2.1.0",
+  "description": "Espressif esp_cam_sensor driver for the OmniVision OV02C10 (vendored from the Guition JC4880P443C_I_W package)",
+  "license": "Apache-2.0",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src"
+  }
+}

@@ -605,6 +605,19 @@ bool GeminiLiveClient::sendAudio(const int16_t* pcm, size_t samples, uint32_t sa
     return enqueue(_tx, (size_t)n, 0, true);
 }
 
+// T133: one camera frame (JPEG) into the live context - the model "sees" it like the audio it hears
+bool GeminiLiveClient::sendImage(const uint8_t* jpeg, size_t bytes) {
+    if (_state != GeminiState::Ready || !jpeg || bytes == 0) return false;
+    const size_t need = b64::encodedLength(bytes) + 128;
+    void* buf = _tx;
+    if (!ensure(buf, _txCap, need)) return false;
+    _tx = (char*)buf;
+    int n = snprintf(_tx, _txCap, "{\"realtimeInput\":{\"video\":{\"mimeType\":\"image/jpeg\",\"data\":\"");
+    n += (int)b64::encode(jpeg, bytes, _tx + n);
+    n += snprintf(_tx + n, _txCap - n, "\"}}}");
+    return enqueue(_tx, (size_t)n, 500, false);  // not mic audio: waits a little for room instead of being dropped
+}
+
 bool GeminiLiveClient::sendClientText(const char* text, bool turnComplete) {
     if (_state != GeminiState::Ready || !text) return false;
     JsonDocument doc(JsonPsramAllocator::instance());

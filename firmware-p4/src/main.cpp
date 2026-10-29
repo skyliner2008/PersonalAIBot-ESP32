@@ -40,6 +40,7 @@
 #include "system/I2cBus.h"
 #include "system/OtaUpdater.h"
 #include "system/Peripherals.h"
+#include "camera/Camera.h"
 #include "system/Rs485.h"
 #include "system/Storage.h"
 #include "ui/CardScreen.h"
@@ -1364,6 +1365,28 @@ static void handleConsoleLine(String line) {
         sdDel(rest);
     } else if (cmd == "sdmkdir") {  // sdmkdir <path>
         sdMkdir(rest);
+    } else if (cmd == "camera") {  // T133: camera (take a test picture) | camera save (-> <agentDir>/camera.jpg)
+        if (!gCamera.ready()) {
+            Serial.println("ERR camera not available (see the [Camera] line at boot)");
+        } else {
+            const uint8_t* jpg = nullptr;
+            size_t len = 0;
+            const uint32_t t0 = millis();
+            const char* err = gCamera.capture(jpg, len);
+            if (err) {
+                Serial.printf("ERR camera: %s\n", err);
+            } else if (rest == "save" && storage.kind() != StorageKind::None) {
+                String path = String(storage.agentDir()) + "/camera.jpg";
+                FILE* f = fopen(path.c_str(), "wb");
+                const bool ok = f && fwrite(jpg, 1, len, f) == len;
+                if (f) fclose(f);
+                if (ok) Serial.printf("OK camera %u bytes -> %s (%lu ms)\n", (unsigned)len, path.c_str(), (unsigned long)(millis() - t0));
+                else Serial.printf("ERR camera: cannot write %s\n", path.c_str());
+            } else {
+                Serial.printf("OK camera %dx%d JPEG %u bytes (%lu ms)\n", Camera::kOutW, Camera::kOutH, (unsigned)len,
+                              (unsigned long)(millis() - t0));
+            }
+        }
     } else if (cmd == "rs485") {  // T131: rs485 | rs485 set <tx> <rx> <baud> [8N1|8E1|8O1|8N2] [de] | rs485 off
         if (rest.startsWith("set ")) {
             Rs485Config c;
@@ -1695,6 +1718,7 @@ void setup() {
     agent.begin(&audio, &gFace, &storage);
     gVehicle.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // after the devices (GPIO 43/44)
     gRs485.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // T131: off until "rs485 set"
+    gCamera.begin();  // T133: after the display (it powers the MIPI PHY LDO) and Wire; before the first AI session
 
     // Firmware updates from GitHub Releases: quiet the assistant for the download, restart through the
     // agent (clean Live close + memory flush), report on the face. Also confirms / reports a fresh update.

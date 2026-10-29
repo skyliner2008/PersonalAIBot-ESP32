@@ -151,6 +151,7 @@ const AgentTools::Entry AgentTools::kHandlers[] = {
     {"play_radio", &AgentTools::playRadio},
     {"device", &AgentTools::device},
     {"modbus", &AgentTools::modbus},
+    {"camera", &AgentTools::camera},
     {"vehicle", &AgentTools::vehicle},
     {"navigate", &AgentTools::navigate},
     {"about_me", &AgentTools::aboutMe},
@@ -326,6 +327,11 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
             {"value", "STRING", "set: on/off, or 0-100 for a dimmer.", false, nullptr},
         };
         declare(d, b, "device", "Read or switch the devices wired to the board (relay, dimmer, sensor).", devp, 3);
+    }
+    if (_device.cameraReady()) {  // T133: the board's camera found at boot
+        declare(d, b, "camera",
+                "Look through the board's front camera: takes a picture you then see. Use when the user asks what you "
+                "see, to look at / read / identify something they hold up.");
     }
     if (_device.modbusReady()) {  // T131: only once the RS485 port is set up (console rs485 set ...)
         static const char* const kModbusActions[] = {"read", "write", nullptr};
@@ -893,6 +899,11 @@ bool AgentTools::device(JsonObjectConst a, JsonObject r, const char*& e) {
     const char* name = a["name"] | "";
     if (!*name) return (e = "name is required"), false;
     if (const char* why = _device.deviceAction(action, name, a["value"], r)) return (e = why), false;
+    return true;
+}
+
+bool AgentTools::camera(JsonObjectConst, JsonObject r, const char*& e) {
+    if (const char* why = _device.cameraLook(r)) return (e = why), false;
     return true;
 }
 

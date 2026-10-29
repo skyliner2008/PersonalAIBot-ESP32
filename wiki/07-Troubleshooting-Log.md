@@ -92,6 +92,17 @@ This page documents common issues encountered during development and their solut
 
 ---
 
+## T133: ESP32-P4 — กล้อง OV02C10 + AI มองเห็นภาพ (tool `camera`)
+
+**วันที่:** 2026-10-29 · **ผู้ใช้:** "Commit + ทำกล้องต่อ"
+**ปัญหาที่ต้องแก้:** (1) OV02C10 ไม่มีใน SDK → ใช้ไดรเวอร์ Espressif (Apache-2.0) จากแพ็กผู้ผลิต (`firmware-p4/lib/ov02c10/`, แก้ prototype
+`sc2336_detect` → `ov02c10_detect` ที่ผู้ผลิตพิมพ์ผิด) · (2) `esp_cam_sensor` 2.4.0 ใน SDK ใช้ detect array แบบฝังตอน build → `esp_video_init` หา
+OV02C10 ไม่เจอ → เรียก `ov02c10_detect()` เอง + `esp_video_create_csi_video_device()` (API ภายในที่ export) · (3) header SCCB ไม่มี `extern "C"`
+· (4) IPA (AE/AWB) ไม่มีค่าของ OV02C10 → hook แบบ weak รอไฟล์ที่สร้างจาก JSON ผู้ผลิต
+**ทำ:** `camera/Camera` (V4L2 RGB565 → PPA ตัด/ย่อ/กลับด้าน → JPEG ฮาร์ดแวร์ 640×360) · `GeminiLiveClient::sendImage()` (`realtimeInput.video`) ·
+tool `camera` (declare เมื่อเจอกล้องตอนบูต) · console `camera` / `camera save` · build flags `CONFIG_CAMERA_OV02C10*`
+**ทดสอบ:** `pio run -d firmware-p4` ✓ (esp32p4 83.3 %, esp32p4-r3 85.3 %) · host tests 3,069 ✓ · ⏳ ไม่มีบอร์ด · ⏳ IPA
+
 ## T132: ESP32-P4 — ยืนยันขาจากผังวงจร + แพ็กผู้ผลิต (UART/RS485 = 26/27, ไม่มี LED, JP1, กล้อง)
 
 **วันที่:** 2026-10-29 · **ผู้ใช้:** "ไฟล์ JC4880P443C_I_W อยู่ที่ E:\APP-JARVIS\ESP32-AI\JC4880P443C_I_W" + ลิงก์

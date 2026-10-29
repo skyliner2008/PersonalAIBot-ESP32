@@ -97,6 +97,8 @@ public:
 
     /** Stream mic PCM (16-bit mono). Returns false if not ready or the send queue is full. */
     bool sendAudio(const int16_t* pcm, size_t samples, uint32_t sampleRate);
+    /** One camera frame (JPEG) as realtimeInput.video (T133). */
+    bool sendImage(const uint8_t* jpeg, size_t bytes);
 
     /** Tell the server the mic stream paused (flushes its voice activity detection). */
     bool sendAudioStreamEnd();

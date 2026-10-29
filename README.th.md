@@ -289,7 +289,7 @@ wiki/          คลังความรู้ Obsidian: ฮาร์ดแว
 | [12 วิทยุออนไลน์](wiki/12-Internet-Radio.md) | สตรีม, ผสม/ลดเสียง, ปลุกด้วยเสียงขณะเปิดเพลง |
 | [13 อัปเดตเฟิร์มแวร์ (OTA)](wiki/13-OTA-Update.md) | ผ่าน Wi-Fi จาก GitHub Releases, ตรวจไฟล์, กลับเวอร์ชันเดิมอัตโนมัติ |
 | [16 หน้าปัดรถ](wiki/16-Vehicle-Dash.md) | OBD-II (ELM327 สาย; Bluetooth LE อยู่ในเฟิร์มแวร์ release ตั้งแต่ T118), Honda K-Line, ตัวจำลอง; การต่อสาย, layout, tool `vehicle`, งบ RAM |
-| [19 เฟิร์มแวร์ ESP32-P4](wiki/19-ESP32-P4-JC4880P443C.md) | เฟิร์มแวร์แยกสำหรับ Guition JC4880P443C (ESP32-P4 + C6, จอ 4.3" MIPI-DSI): `pio run -d firmware-p4`; tool Modbus RTU ผ่าน RS485 (T131), สถานะและแผน (กล้อง) |
+| [19 เฟิร์มแวร์ ESP32-P4](wiki/19-ESP32-P4-JC4880P443C.md) | เฟิร์มแวร์แยกสำหรับ Guition JC4880P443C (ESP32-P4 + C6, จอ 4.3" MIPI-DSI): `pio run -d firmware-p4`; AI มองเห็นผ่านกล้อง OV02C10 (tool `camera`, T133), tool Modbus RTU ผ่าน RS485 (T131) |
 | [18 เชื่อมมือถือ + นำทาง](wiki/18-Phone-Link-Navigation-Plan.md) | GPS มือถือบนหน้าปัด, นำทาง Google Maps บนจอบอร์ด, AI พูดเตือนก่อนเลี้ยว, สั่ง "นำทางไป…" ด้วยเสียง (Wi-Fi / USB) |
 | [17 แอปมือถือ](wiki/17-Mobile-Flasher.md) | แอป Android ผ่านสาย USB-C: แฟลช (อัปเดตโดยเก็บการตั้งค่า, ตรวจไฟล์), สถานะ, log, ตั้งค่า, แชท |
 
