@@ -89,6 +89,7 @@ private:
     volatile bool _radioShown = false;     // "now playing" line drawn (tap on it opens the radio player)
     volatile bool _radioBtnShown = false;  // radio/MP3 shortcut button drawn (next to dash button)
     volatile bool _dashShown = false;      // dash shortcut drawn (bottom right)
+    volatile bool _micShown = false;       // mic button drawn (bottom left, hidden under subtitles)
 
     void layout();
     void drawStatus(LGFX_Sprite& c, const UiStatus& s);

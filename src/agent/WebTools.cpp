@@ -812,8 +812,12 @@ void WebTools::loop() {
                     if (card.kind == CardData::Weather && out["error"].isNull()) {
                         const char* locLabel = out["result"]["location"] | cfg.weatherCity;
                         storeClockWeather(card.w, locLabel);
+                        Serial.printf("[Weather] clock face: %s %.1f C, PM2.5 %d\n", locLabel, card.w.temp,
+                                      (int)card.w.pm25);
                         nextWxCheck = millis() + 20 * 60000;
                     } else {
+                        Serial.printf("[Weather] clock face refresh failed (%s) - again in 1 min\n",
+                                      out["error"] | "no weather card");
                         nextWxCheck = millis() + 60000;
                     }
                 }

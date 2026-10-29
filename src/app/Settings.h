@@ -43,7 +43,9 @@ struct SettingsData {
     uint8_t sleepMinutes = 3;      // 0 = never
     uint8_t clockMinutes = 5;      // asleep this long -> power save: clock face + dimmed screen (0 = never)
     uint8_t dimBrightness = 8;     // screen brightness % while in power save
-    uint8_t clockTheme = 0;        // power-save clock theme: 0 Weather Hub, 1 Smartwatch Ring, 2 Cyber Flip, 3 Classic
+    uint8_t clockTheme = 0;        // power-save clock theme: 0 Weather Hub, 1 Smartwatch Ring, 2 Cyber Flip, 3 Classic,
+                                   // 4 Analog, 5 Big digits, 6 Sun & Moon (T135)
+    uint8_t clockColor = 0;        // power-save clock neon colour (T136): 0 cyan ... 8 = the eye colour, kClockColorCount
     uint8_t batteryMode = 0;       // 0 Auto (USB float vs LiPo), 1 Always show %, 2 Always show USB
     char weatherCity[48] = "";     // "" = auto IP location, else Thai province / city name for clock weather
     bool financeTools = true;      // declare the market / finance tools (they cost tokens every turn)
@@ -78,7 +80,11 @@ const char* aiLanguageId(uint8_t lang);      // "th" / "en" / "auto"
 const char* aiLanguageLabel(uint8_t lang);   // "ไทย (ล็อก)", ...
 const char* clockThemeLabel(uint8_t theme);  // "ดิจิทัล + อากาศ", ...
 const char* batteryModeLabel(uint8_t mode);  // "อัตโนมัติ (USB/แบต)", ...
-constexpr uint8_t kClockThemeCount = 4;
+constexpr uint8_t kClockThemeCount = 7;
+constexpr uint8_t kClockColorCount = 9;
+const char* clockColorLabel(uint8_t color);   // "ฟ้านีออน", ...
+/** RGB565 of a clock colour; 0 = follow the eye colour (the last entry). */
+uint16_t clockColorRgb565(uint8_t color);
 constexpr uint8_t kBatteryModeCount = 3;
 
 class Settings {

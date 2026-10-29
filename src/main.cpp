@@ -404,6 +404,7 @@ static void printConfig() {
     d["dimlevel"] = s.dimBrightness;
     d["clocktheme"] = s.clockTheme;
     d["batmode"] = s.batteryMode;
+    d["clockcolor"] = s.clockColor;
     d["city"] = s.weatherCity;
     d["rotation"] = s.rotation;
     d["invert"] = s.lcdInvert;
@@ -830,7 +831,7 @@ static bool handleSet(const String& field, const String& value) {
     static const char* const kFields[] = {"ssid", "pass", "key", "agent", "user", "voice", "profile",
                                           "personality", "gender", "eye", "model", "thinking", "language", "textmodel",
                                           "volume", "aivolume", "brightness", "sleep", "clock", "dimlevel", "clocktheme",
-                                          "batmode", "city", "rotation", "invert", "consolidate",
+                                          "clockcolor", "batmode", "city", "rotation", "invert", "consolidate",
                                           "search", "micgain", "touch", "finance", "water", "wake", "wakeword", "wakethreshold"};
     bool known = false;
     for (const char* f : kFields) known |= field == f;
@@ -884,6 +885,7 @@ static bool handleSet(const String& field, const String& value) {
         else if (field == "clock") d.clockMinutes = (uint8_t)constrain(value.toInt(), 0, 120);
         else if (field == "dimlevel") d.dimBrightness = (uint8_t)constrain(value.toInt(), 1, 60);
         else if (field == "clocktheme") d.clockTheme = (uint8_t)constrain(value.toInt(), 0, (int)kClockThemeCount - 1);
+        else if (field == "clockcolor") d.clockColor = (uint8_t)constrain(value.toInt(), 0, (int)kClockColorCount - 1);
         else if (field == "batmode") d.batteryMode = (uint8_t)constrain(value.toInt(), 0, (int)kBatteryModeCount - 1);
         else if (field == "city") {
             if (value == "auto" || value == "ip" || value == "-") d.weatherCity[0] = '\0';
@@ -1584,6 +1586,9 @@ void setup() {
     rgbLed.setBrightness(50);
     rgbLed.setPixelColor(0, rgbLed.Color(50, 50, 50));
     rgbLed.show();
+    // T135: the clock survives a reset (RTC) but the zone did not - the clock face showed UTC until Wi-Fi was up
+    setenv("TZ", TIME_TZ, 1);
+    tzset();
     analogReadResolution(12);
     (void)analogReadMilliVolts(VBAT_ADC_PIN);  // attaches ADC channel cleanly at 11 dB without HAL warning
 

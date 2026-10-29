@@ -704,13 +704,32 @@ void openClockThemes() {
     gPicker.setup("ธีมพักหน้าจอ", [](ListScreen& l) {
         const SettingsData s = gSettings.get();
         static const char* const kHints[] = {"เวลาใหญ่ + การ์ดสภาพอากาศ & PM2.5", "หน้าปัดวงแหวน 60 วิ + วัน & อากาศ",
-                                             "การ์ดตัวเลขพับคู่ + แถบสภาพอากาศ", "ตาหลับคลาสสิก + เวลาใหญ่ + สรุปอากาศ"};
+                                             "การ์ดตัวเลขพับคู่ + แถบสภาพอากาศ", "ตาหลับคลาสสิก + เวลาใหญ่ + สรุปอากาศ",
+                                             "หน้าปัดเข็ม + วันที่ & อากาศด้านข้าง", "เวลาตัวใหญ่สีฟ้าเต็มจอ + วันที่ วัน & อุณหภูมิ",
+                                             "โค้งท้องฟ้า + อีกกี่ชั่วโมงตะวันขึ้น/ตก"};
+        static_assert(sizeof(kHints) / sizeof(kHints[0]) == kClockThemeCount, "one hint per clock theme");
         for (uint8_t i = 0; i < kClockThemeCount; i++) {
             ListScreen::Item& it = l.add(clockThemeLabel(i), kHints[i], [i]() {
                 gSettings.update([&](SettingsData& d) { d.clockTheme = i; });
                 gUi.pop();
             });
             it.checked = (s.clockTheme % kClockThemeCount) == i;
+        }
+    });
+    gUi.push(&gPicker);
+}
+
+void openClockColors() {  // T136
+    gPicker.setup("สีนาฬิกา (นีออน)", [](ListScreen& l) {
+        const SettingsData s = gSettings.get();
+        for (uint8_t i = 0; i < kClockColorCount; i++) {
+            ListScreen::Item& it = l.add(clockColorLabel(i), clockColorRgb565(i) ? "" : "สีเดียวกับดวงตา", [i]() {
+                gSettings.update([&](SettingsData& d) { d.clockColor = i; });
+                gUi.pop();
+            });
+            it.checked = s.clockColor == i;
+            it.hasSwatch = clockColorRgb565(i) != 0;
+            it.swatch = clockColorRgb565(i);
         }
     });
     gUi.push(&gPicker);
@@ -920,6 +939,8 @@ void openCatDisplay() {
     gMenu.setup("หน้าจอ & พักหน้าจอ", [](ListScreen& l) {
         const SettingsData s = gSettings.get();
         l.addSubmenu("ธีมพักหน้าจอ", clockThemeLabel(s.clockTheme), openClockThemes);
+        ListScreen::Item& col = l.addSubmenu("สีนาฬิกา (นีออน)", clockColorLabel(s.clockColor), openClockColors);
+        if (clockColorRgb565(s.clockColor)) col.valueColor = clockColorRgb565(s.clockColor);  // the name in its colour
         l.addSubmenu("เมืองสภาพอากาศ", s.weatherCity[0] ? s.weatherCity : "อัตโนมัติ (ตาม IP)", openWeatherCity);
         l.add("ดูตัวอย่างพักหน้าจอ", "แตะเพื่อแสดงตอนนี้", []() {
             gUi.popToRoot();
@@ -1537,6 +1558,7 @@ bool openPage(const char* page) {
     else if (!strcmp(page, "audio")) openCatAudio();
     else if (!strcmp(page, "display")) openCatDisplay();
     else if (!strcmp(page, "clocktheme")) openClockThemes();
+    else if (!strcmp(page, "clockcolor")) openClockColors();
     else if (!strcmp(page, "city")) openWeatherCity();
     else if (!strcmp(page, "profile")) openProfiles();
     else if (!strcmp(page, "voice")) openVoices();

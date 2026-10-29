@@ -186,10 +186,19 @@ const char* thinkingLevelId(uint8_t l) { return kThinking[l < 3 ? l : 0]; }
 static const char* const kLangIds[] = {"th", "en", "auto"};
 static const char* const kLangLabels[] = {"ไทย (ล็อก)", "English (ล็อก)", "ตามภาษาที่ผู้ใช้พูด"};
 static const char* const kClockThemeLabels[] = {"ดิจิทัล + สภาพอากาศ", "สมาร์ทวอช วงแหวน", "ฟลิปการ์ด ไซเบอร์",
-                                                "คลาสสิก มินิมอล"};
+                                                "คลาสสิก มินิมอล", "อนาล็อก เข็มนาฬิกา", "ตัวเลขใหญ่ ตั้งโต๊ะ",
+                                                "ดวงอาทิตย์ & ดวงจันทร์"};
 static const char* const kBatteryModeLabels[] = {"อัตโนมัติ (USB / แบต)", "แสดง % แบตเสมอ", "แสดง USB เสมอ"};
 const char* aiLanguageId(uint8_t l) { return kLangIds[l < (uint8_t)AiLanguage::Count ? l : 0]; }
 const char* aiLanguageLabel(uint8_t l) { return kLangLabels[l < (uint8_t)AiLanguage::Count ? l : 0]; }
+// T136: neon colours that read well in a dark room (the screen is dimmed in power save)
+static const char* const kClockColorLabels[] = {"ฟ้านีออน", "เขียวนีออน", "ชมพูนีออน", "ส้มนีออน", "เหลืองนีออน",
+                                                "ม่วงนีออน", "แดงนีออน", "ขาวนวล", "ตามสีดวงตา"};
+static const uint16_t kClockColors[] = {0x073F, 0x3FE2, 0xF89E, 0xFBC0, 0xFF80, 0xB1FF, 0xF8E7, 0xF79E, 0};
+static_assert(sizeof(kClockColors) / sizeof(kClockColors[0]) == kClockColorCount, "one RGB565 per clock colour");
+static_assert(sizeof(kClockColorLabels) / sizeof(kClockColorLabels[0]) == kClockColorCount, "one label per colour");
+const char* clockColorLabel(uint8_t c) { return kClockColorLabels[c < kClockColorCount ? c : 0]; }
+uint16_t clockColorRgb565(uint8_t c) { return kClockColors[c < kClockColorCount ? c : 0]; }
 const char* clockThemeLabel(uint8_t t) { return kClockThemeLabels[t < kClockThemeCount ? t : 0]; }
 const char* batteryModeLabel(uint8_t m) { return kBatteryModeLabels[m < kBatteryModeCount ? m : 0]; }
 
@@ -270,11 +279,13 @@ void Settings::load() {
     d.dimBrightness = p.getUChar("dimbri", d.dimBrightness);
     d.clockTheme = p.getUChar("clktheme", d.clockTheme);
     d.batteryMode = p.getUChar("batmode", d.batteryMode);
+    d.clockColor = p.getUChar("clkcolor", d.clockColor);
     if (p.isKey("wxcity")) p.getString("wxcity", d.weatherCity, sizeof(d.weatherCity));
     if (d.clockMinutes > 120) d.clockMinutes = 5;
     if (d.dimBrightness < 1 || d.dimBrightness > 60) d.dimBrightness = 8;
     if (d.clockTheme >= kClockThemeCount) d.clockTheme = 0;
     if (d.batteryMode >= kBatteryModeCount) d.batteryMode = 0;
+    if (d.clockColor >= kClockColorCount) d.clockColor = 0;
     d.micGain = p.getUChar("mgain", d.micGain);
     d.micMuted = p.getBool("muted", d.micMuted);
     d.wakeMode = p.getUChar("wakemode", d.wakeMode);
@@ -419,6 +430,7 @@ void Settings::save(const SettingsData& d) {
     p.putUChar("dimbri", d.dimBrightness);
     p.putUChar("clktheme", d.clockTheme);
     p.putUChar("batmode", d.batteryMode);
+    p.putUChar("clkcolor", d.clockColor);
     p.putString("wxcity", d.weatherCity);
     p.putUChar("mgain", d.micGain);
     p.putBool("muted", d.micMuted);

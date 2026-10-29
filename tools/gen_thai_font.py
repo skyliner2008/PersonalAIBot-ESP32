@@ -7,6 +7,11 @@ Generate a LovyanGFX/TFT_eSPI compatible VLW font (Thai + ASCII) as a C array.
 
 (--ttf defaults to TH Sarabun New in the per-user or system Windows font folder)
 
+A digits-only clock font (T135: the big-digit clock face; Oswald, SIL OFL - from github.com/google/fonts ofl/oswald,
+licence in src/display/fonts/oswald/OFL.txt; Windows fonts such as Bahnschrift may not be redistributed):
+
+    python tools/gen_thai_font.py --size 116 --name ClockDigits116 --chars "0123456789:-" --ttf "Oswald[wght].ttf" --variation Bold
+
 Default font: TH Sarabun New (SIPA, free Thai national font).
 Requires Pillow. Glyphs are rendered with the BASIC layout engine so that
 Thai combining marks keep their own (zero-advance, negative-offset) metrics,
@@ -48,13 +53,15 @@ def glyph_missing(font, ch, notdef_mask):
     return mask.size == notdef_mask.size and bytes(mask) == bytes(notdef_mask)
 
 
-def build(ttf, size):
+def build(ttf, size, chars=None, variation=None):
     font = ImageFont.truetype(ttf, size, layout_engine=ImageFont.Layout.BASIC)
+    if variation:  # a named instance of a variable font ("Bold Condensed")
+        font.set_variation_by_name(variation)
     ascent, descent = font.getmetrics()
     notdef = font.getmask("\uffff")
 
     glyphs = []
-    for cp in code_points():
+    for cp in (sorted(set(map(ord, chars))) if chars else code_points()):
         ch = chr(cp)
         if glyph_missing(font, ch, notdef):
             continue
@@ -152,19 +159,22 @@ def main():
     ap.add_argument("--name", default="ThaiFont26")
     ap.add_argument("--out", default="src/display/fonts")
     ap.add_argument("--preview")
+    ap.add_argument("--chars", help="only these characters (default: ASCII + Thai)")
+    ap.add_argument("--variation", help="named instance of a variable font, e.g. \"Bold Condensed\"")
     args = ap.parse_args()
 
-    glyphs, ascent, descent = build(args.ttf, args.size)
+    glyphs, ascent, descent = build(args.ttf, args.size, args.chars, args.variation)
     vlw = to_vlw(glyphs, args.size, ascent, descent)
     header, source = write_c(vlw, args.name, args.out, args.ttf, args.size, len(glyphs))
     print(f"{len(glyphs)} glyphs, {len(vlw)} bytes -> {header}, {source}")
     if args.preview:
-        lh = render_preview(glyphs, args.preview, [
+        lines = [args.chars] if args.chars else [
             "สวัสดีครับ ผมชื่อไข่มุก",
             "ผู้ใช้ชอบกาแฟดำ น้ำตาลไม่ใส่",
             "กำลังฟัง... แตะเพื่อหยุด",
             "Ready 12:30 ฿99 ๑๒๓",
-        ])
+        ]
+        lh = render_preview(glyphs, args.preview, lines, scale=1 if args.chars else 2, width=max(240, args.size * 8))
         print(f"line height {lh}px, preview -> {args.preview}")
 
 
