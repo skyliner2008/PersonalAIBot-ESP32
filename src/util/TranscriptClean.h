@@ -65,13 +65,29 @@ void stripToolScaffolding(const char* in, Str& out) {
  * "สวัสดีค่ะ" (3.8 Live began saying them on 2026-10-27, T109; kept in the conversation log they were fed back into
  * the next session's prompt and copied again). A call = identifier with an underscore ("get_weather"), then
  * "(...)" closed on the same line; the blanks after it go too. Plain words with brackets stay ("ราคา (บาท)").
+ * T138: also "set_expression{emotion:thinking}<div>ขอเช็คราคา...</div>" - the call in braces, and HTML-like tags
+ * ("<div>", "</div>", "<br/>") anywhere: a tag = "<" + optional "/" + a letter, closed by ">" within 40 bytes on the line.
  */
+inline size_t htmlTagLength(const char* s, size_t n) {
+    size_t k = 1;
+    if (k < n && s[k] == '/') k++;
+    if (k >= n || !isalpha((unsigned char)s[k])) return 0;
+    while (k < n && k < 40 && s[k] != '>' && s[k] != '<' && s[k] != '\n') k++;
+    return k < n && s[k] == '>' ? k + 1 : 0;
+}
+
 template <class Str>
 void stripToolCallText(const char* in, Str& out) {
     out.clear();
     const size_t n = strlen(in);
     size_t i = 0;
     while (i < n) {
+        if (in[i] == '<') {
+            if (const size_t tag = htmlTagLength(in + i, n - i)) {
+                i += tag;
+                continue;
+            }
+        }
         size_t j = i;
         bool underscore = false;
         if (isalpha((unsigned char)in[i]) && (i == 0 || !isalnum((unsigned char)in[i - 1]))) {
@@ -80,10 +96,11 @@ void stripToolCallText(const char* in, Str& out) {
                 j++;
             }
         }
-        if (j > i && underscore && j < n && in[j] == '(') {
+        if (j > i && underscore && j < n && (in[j] == '(' || in[j] == '{')) {
+            const char close = in[j] == '(' ? ')' : '}';
             size_t k = j + 1;
-            while (k < n && in[k] != ')' && in[k] != '\n') k++;
-            if (k < n && in[k] == ')') {
+            while (k < n && in[k] != close && in[k] != '\n') k++;
+            if (k < n && in[k] == close) {
                 k++;
                 while (k < n && (in[k] == ' ' || in[k] == '\n' || in[k] == '\r')) k++;
                 i = k;

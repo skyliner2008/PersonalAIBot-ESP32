@@ -289,7 +289,7 @@ TEST(tool_declarations_per_model) {
     size_t count;
     bool search;
     const size_t bytes = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)44);  // about_me + 25 core (incl. configure_device, rest_screen, mute_microphone, play_radio, stop_radio) + 5 live data + 6 utilities + water + 6 finance
+    CHECK_EQ(count, (size_t)43);  // about_me + 24 core (T140: no set_expression) (incl. configure_device, rest_screen, mute_microphone, play_radio, stop_radio) + 5 live data + 6 utilities + water + 6 finance
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
@@ -303,7 +303,7 @@ TEST(tool_declarations_per_model) {
         }
     }
     CHECK(search);
-    CHECK(recall == "BLOCKING" && expr == "NON_BLOCKING");
+    CHECK(recall == "BLOCKING" && expr.empty());  // T140: set_expression not declared
     // billed every turn: keep the declarations compact (+200 for about_me, T096; +470 for water, T100 -
     // switched off with "set water 0" like the finance pack; +100 for play_radio "music" = the SD-card songs, T122)
     CHECK(bytes < 15800);
@@ -312,7 +312,7 @@ TEST(tool_declarations_per_model) {
     // the vehicle dash: the board always declares it, so "เปิดหน้าปัด" works before a source is set (T079)
     rig.dev.vehicleOn = true;
     const size_t withVehicle = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)45);
+    CHECK_EQ(count, (size_t)44);
     // one tool for the dash, live values, health, trip and trouble codes (T112: +scan / explain / clear_codes)
     CHECK(withVehicle - bytes < 600);
     CHECK(withVehicle < 16400);  // what the board really sends every session
@@ -354,7 +354,7 @@ TEST(tool_declarations_per_model) {
     // the phone app (wiki 18): `navigate` only once a phone was paired, small like the dash tool
     rig.dev.phoneOn = true;
     const size_t withPhone = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)45);
+    CHECK_EQ(count, (size_t)44);
     CHECK(withPhone - bytes < 450);
     printf("    + navigate tool: %u bytes JSON\n", (unsigned)(withPhone - bytes));
     JsonDocument nr;
@@ -366,13 +366,13 @@ TEST(tool_declarations_per_model) {
     CHECK(!callTool(rig.tools, "navigate", "{\"action\":\"fly\"}", nr));
     rig.dev.phoneOn = false;
 
-    // optional finance pack off -> 38 (no trading tools exist at all)
+    // optional finance pack off -> 37 (no trading tools exist at all)
     rig.tools.setFinancePack(false);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)38);
+    CHECK_EQ(count, (size_t)37);
     rig.tools.setFinancePack(true);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)44);
+    CHECK_EQ(count, (size_t)43);
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
@@ -382,9 +382,9 @@ TEST(tool_declarations_per_model) {
     }
 
     behaviors(ToolBehavior::NonBlocking, false, expr, recall, count, search);
-    CHECK(recall == "NON_BLOCKING" && expr == "NON_BLOCKING" && !search);
+    CHECK(recall == "NON_BLOCKING" && expr.empty() && !search);
     behaviors(ToolBehavior::Unspecified, true, expr, recall, count, search);
-    CHECK(recall == "(none)" && expr == "(none)");
+    CHECK(recall == "(none)" && expr.empty());
 }
 
 // T071: a NON_BLOCKING call answered without "scheduling" (or with it inside "response") defaults to
@@ -423,7 +423,7 @@ TEST(about_me_lists_what_is_declared) {
     CHECK(listed == declaredNames());
     CHECK_EQ(r["result"]["tool_count"].as<size_t>(), listed.size());
     CHECK(listed.count("about_me") == 0);
-    CHECK(groups.count("finance (TradingView, not investment advice)") == 1);
+    CHECK(groups.count("finance (TradingView data)") == 1);
     CHECK(groups.count("connected hardware, car and phone") == 0);  // nothing connected in the rig
     CHECK(r["result"]["connected"]["google_search"] == false);
     const size_t bytes = measureJson(r);
@@ -489,7 +489,7 @@ TEST(tool_response_scheduling) {
     CHECK(recallBlocking);
     CHECK(calcBlocking);
     CHECK(background >= 10);  // the finance + water packs are on in the rig
-    CHECK_EQ(nonBlocking, background + 1);
+    CHECK_EQ(nonBlocking, background);  // T140: set_expression (the one silent tool) is no longer declared
 }
 
 TEST(tools_memory_roundtrip) {
@@ -1164,6 +1164,15 @@ TEST(transcript_tool_call_text) {
     CHECK(out == "open_radio(station=3");  // not closed: stays
     transcript::stripToolCallText("ผู้ช่วย: set_expression(emotion=neutral)\nวันนี้วันอังคารค่ะ", out);
     CHECK(out == "ผู้ช่วย: วันนี้วันอังคารค่ะ");  // inside the recent-conversation block of the prompt
+    // T138 (board log): the call in braces + HTML tags around the answer
+    transcript::stripToolCallText("set_expression{emotion:thinking}<div>ขอเช็คราคาทองคำให้แป๊บนึงนะคะ</div>", out);
+    CHECK(out == "ขอเช็คราคาทองคำให้แป๊บนึงนะคะ");
+    transcript::stripToolCallText("ได้ค่ะ<br/>พรุ่งนี้ฝนตก<p class=\"x\">ค่ะ", out);
+    CHECK(out == "ได้ค่ะพรุ่งนี้ฝนตกค่ะ");
+    transcript::stripToolCallText("ถ้า a < b และ 3<5 หรือ x <y> z", out);  // not tags: "<" + blank / digit, "<y>" is
+    CHECK(out == "ถ้า a < b และ 3<5 หรือ x  z");
+    transcript::stripToolCallText("เซต {a, b} และ snake_case{ ไม่ปิด", out);
+    CHECK(out == "เซต {a, b} และ snake_case{ ไม่ปิด");  // no underscore name / not closed: stays
 }
 
 TEST(transcript_scaffolding) {
@@ -2243,4 +2252,23 @@ TEST(time_short_stamp) {
     CHECK(!strcmp(buf, "เมื่อวาน"));
     timefmt::shortStamp(nullptr, buf, sizeof(buf));
     CHECK(!buf[0]);
+}
+
+// ============================================================
+// T140: the eyes follow the reply's words (set_expression is no longer the model's)
+// ============================================================
+
+#include "util/EmotionCue.h"
+
+TEST(emotion_cue_from_reply) {
+    Emotion e = Emotion::Neutral;
+    CHECK(emotioncue::find("ขอบคุณที่ถามนะคะ", e) && e == Emotion::Happy);
+    CHECK(emotioncue::find("ขอเช็คราคาทองคำให้แป๊บนึงนะคะ", e) && e == Emotion::Thinking);
+    CHECK(emotioncue::find("ขอโทษค่ะ ดึงข้อมูลไม่สำเร็จ", e) && e == Emotion::Worried);
+    CHECK(emotioncue::find("ว้าว เยี่ยมไปเลยค่ะ", e) && e == Emotion::Surprised);  // the more specific group first
+    CHECK(emotioncue::find("ราตรีสวัสดิ์ ฝันดีนะคะ", e) && e == Emotion::Sleepy);  // not "สวัสดี" = happy
+    CHECK(emotioncue::find("I'm sorry to hear that", e) && e == Emotion::Sad);
+    e = Emotion::Love;
+    CHECK(!emotioncue::find("ราคา Bitcoin อยู่ที่ 80,847 ดอลลาร์ค่ะ", e) && e == Emotion::Love);  // nothing: unchanged
+    CHECK(!emotioncue::find("", e) && !emotioncue::find(nullptr, e));
 }

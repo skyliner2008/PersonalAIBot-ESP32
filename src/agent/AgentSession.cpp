@@ -302,7 +302,7 @@ void AgentController::buildSystemPrompt(PsString& p) {
          "ห้ามเร่งความเร็วการพูดรัวขึ้นในช่วงกลางหรือช่วงท้ายของคำตอบยาวๆ เด็ดขาด "
          "ห้ามดัดเสียง ห้ามบีบเสียงแหลมหรือกดเสียงทุ้ม ห้ามเปลี่ยนโทนเสียงไปมาตามอารมณ์ของเรื่องหรือหลังเรียกใช้ tool "
          "ใช้สำเนียงภาษาไทยมาตรฐานที่ชัดถ้อยชัดคำ เป็นธรรมชาติ ห้ามพูดติดสำเนียงต่างชาติ/สำเนียงฝรั่ง ห้ามดัดลิ้น "
-         "(การแสดงอารมณ์หรือความขี้เล่นตามนิสัยให้สื่อผ่านการเลือกใช้คำพูดและดวงตา set_expression เท่านั้น ห้ามเปลี่ยนเนื้อเสียงหรือเร่งจังหวะการพูด)";
+         "(การแสดงอารมณ์หรือความขี้เล่นตามนิสัยให้สื่อผ่านการเลือกใช้คำพูดเท่านั้น ห้ามเปลี่ยนเนื้อเสียงหรือเร่งจังหวะการพูด)";
     // waking it = calling its name: "จาวิส" alone was taken for a question (search_knowledge "jawit") or
     // replayed an old request (it opened the radio)
     // T124 (board logs): "Jarvis" came back as "Chaves", "¿Ya ves?", "¿Sabes?", "Jawez" - 3.8 then followed the Thai lock
@@ -346,7 +346,8 @@ void AgentController::buildSystemPrompt(PsString& p) {
     p += voiceName;
     p += " ให้เหมือนเดิมทุกครั้ง ใช้คำหลากหลาย ไม่ขึ้นต้นแบบเดิมซ้ำๆ ";
     p += persona::politeParticle(gender);
-    p += " แปลงตาราง/รายการเป็นประโยคพูด ไม่อ่านสัญลักษณ์ ห้ามพูดชื่อ tool หรือคำสั่งแบบ ชื่อ(...) ออกมา (เรียก tool อย่างเงียบๆ)\n";
+    p += " แปลงตาราง/รายการเป็นประโยคพูด ไม่อ่านสัญลักษณ์ ห้ามพูดชื่อ tool หรือคำสั่งแบบ ชื่อ(...) / ชื่อ{...} ออกมา (เรียก tool อย่างเงียบๆ) "
+         "ห้ามใส่ tag HTML / markdown เช่น <div> (เป็นเสียงพูด ไม่ใช่หน้าเว็บ)\n";  // T138: "set_expression{...}<div>"
     p += "การทำงานแบบเอเจนต์: คำขอชัดเจนให้ลงมือเรียก tool ทันทีใน turn นั้น ไม่ต้องถามยืนยันเรื่องเล็ก ห้ามพูดว่าเดี๋ยวดูให้แล้วไม่เรียก "
          "• งานหลายขั้นให้เรียกหลาย tool ต่อกันเองจนได้คำตอบครบ (เช่น ดึงราคาแล้ว calculate) • ถามหลายเรื่องในครั้งเดียว ตอบให้ครบทุกเรื่อง "
          "• tool ไม่ได้ผล ลอง tool อื่นหรือคำค้นอื่นก่อนบอกว่าทำไม่ได้ • คิดล่วงหน้าแทนผู้ใช้: ถ้ามีขั้นต่อไปที่ช่วยได้ชัดๆ "
@@ -364,7 +365,8 @@ void AgentController::buildSystemPrompt(PsString& p) {
         p += " ทำงานเบื้องหลังหลายวินาที: ตอนเรียกให้พูดรับคำสั้นๆ อย่างเป็นธรรมชาติ (เช่น ขอเช็คให้แป๊บนึง) แล้วหยุดรอ "
              "ผลมาถึงแล้วค่อยเล่า ห้ามพูดตัวเลขหรือข้อเท็จจริงก่อนได้ผล\n";
     }
-    p += "ดวงตา: คุณมีดวงตาบนจอ เรียก set_expression ให้เข้ากับอารมณ์ที่กำลังพูดอย่างเงียบๆ\n"
+    // T140: no "เรียก set_expression" any more - the board moves the eyes from the words said (EmotionCue)
+    p += "ดวงตา: ดวงตาบนจอแสดงอารมณ์ตามคำที่คุณพูดเอง ไม่ต้องเรียก tool ใดๆ\n"
          "ความจำ: เรียก save_memory/save_relation ทันทีที่รู้ข้อมูลสำคัญของผู้ใช้ และ recall_memory "
          "ก่อนตอบเรื่องส่วนตัว ห้ามแต่งความจำ บันทึกเฉพาะสิ่งที่ผู้ใช้พูดถึงตัวเองชัดเจน "
          "(ไม่ใช่เสียงไม่ชัด เสียงวิทยุ/ทีวี หรือคนอื่นคุยกัน)\n"
@@ -382,8 +384,12 @@ void AgentController::buildSystemPrompt(PsString& p) {
     }
     if (_cfg.financeTools) {
         p += "การเงิน: ภาพรวมตลาด = market_overview, วิเคราะห์เทคนิค = market_analysis, หุ้นเด่น/ร่วง = market_scan, "
-             "ข่าวเศรษฐกิจ = economic_calendar, ขนาด lot = position_size, แจ้งเตือนราคา = price_alert "
-             "(บอกเสมอว่าไม่ใช่คำแนะนำการลงทุน) ";
+             "ข่าวเศรษฐกิจ = economic_calendar, ขนาด lot = position_size, แจ้งเตือนราคา = price_alert · "
+             // T139 (the user): "อย่างไรก็ตาม ข้อมูลนี้ไม่ใช่คำแนะนำการลงทุน" closed every finance answer - not wanted
+             "ห้ามปิดท้ายด้วยคำเตือนว่าไม่ใช่คำแนะนำการลงทุน แต่ปิดท้ายด้วยข้อเสนอที่ช่วยต่อได้จริง 1 อย่างที่เข้ากับสิ่งที่ถาม "
+             "เช่น ตั้งแจ้งเตือนเมื่อราคาถึงระดับสำคัญ (บอกระดับจากข้อมูล), ดูวิเคราะห์เทคนิค/หลายกรอบเวลา, เทียบกับสินทรัพย์ที่เกี่ยวข้อง, "
+             "ดูข่าวเศรษฐกิจที่อาจกระทบ หรือคำนวณขนาด lot · สลับข้อเสนอไม่ซ้ำเดิมทุกครั้ง · ถ้าผู้ใช้ถามว่าควรซื้อ/ขายไหม "
+             "ให้วิเคราะห์จากข้อมูลจริง (แนวโน้ม ตัวชี้วัด แนวรับ-แนวต้าน) แล้วสรุปมุมมองตรงๆ ";
     }
     p += searchAvailable() ? "เรื่องอื่นที่ต้องใช้ข้อมูลล่าสุดใช้ Google Search "
                            : "ไม่มีการค้นเว็บทั่วไป: เรื่องล่าสุด (ผลกีฬา หวย เหตุการณ์ ราคาทองตามประกาศสมาคมฯ) ใช้ get_news ระบุ topic "
@@ -901,9 +907,19 @@ void AgentController::onOutputTranscript(const char* raw) {
     if (!_userTurn.empty()) flushUserTurn();
     if (_agentTurn.empty()) _agentTurnTs = nowEpoch();
     _agentTurn += text;
+    autoExpression();
     _awaitingReply = false;
     markAnswered();
     _face->pushTranscript('a', text);
+}
+
+// T140: the eyes follow what is said - the new words plus a little before them (a word split across chunks)
+void AgentController::autoExpression() {
+    if (_cueFrom > _agentTurn.size()) _cueFrom = 0;  // a new turn
+    const size_t from = _cueFrom > 36 ? _cueFrom - 36 : 0;
+    Emotion e;
+    if (emotioncue::find(_agentTurn.c_str() + from, e)) _face->setExpression(e, AGENT_EXPRESSION_HOLD_MS);
+    _cueFrom = _agentTurn.size();
 }
 
 // T111: the model went on by itself (speech, a tool call) or the user spoke again - the pending nudge is not needed

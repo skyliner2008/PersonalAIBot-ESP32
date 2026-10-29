@@ -60,7 +60,8 @@ status: implemented
 - **มองไปมา** แบบสุ่ม (saccade) + กะพริบตอนกลอกตาไกล, หายใจ (ขยับขึ้นลง ±1.6 px)
 - **พูด**: squash & stretch ตามระดับเสียง (RMS) ของลำโพง
 
-### อารมณ์ (14) — `set_expression` จาก AI หรืออัตโนมัติตามสถานะ
+### อารมณ์ (14) — บอร์ดเลือกจากคำที่ AI พูด (`util/EmotionCue.h`, T140) หรืออัตโนมัติตามสถานะ
+(T140: ไม่ declare tool `set_expression` ให้โมเดลแล้ว — 3.8 Live หลุดพูดชื่อ tool ออกเสียง)
 `neutral` `happy` `excited` `love` `sad` `worried` `angry` `surprised` `sleepy` `thinking` `curious` `confused` `shy` `wink`
 (ภาพจริงจากบอร์ด: happy = เสี้ยว+แก้มแดง, love = หัวใจชมพู, angry/sad = เปลือกตาเอียงตรงข้าม, surprised = กลมโต, wink/shy/confused/thinking ไม่สมมาตร)
 
@@ -154,7 +155,7 @@ status: implemented
 
 | คำสั่ง | ผล |
 |---|---|
-| `expr love` | แสดงอารมณ์ (ผ่าน tool `set_expression`) |
+| `expr love` | แสดงอารมณ์ (ผ่าน handler `set_expression` — ทดสอบได้ แม้โมเดลไม่เห็น tool นี้แล้ว) |
 | `say a ข้อความ` | ซับไตเติลทดสอบ |
 | `ui tap x y` / `ui drag ...` / `ui open menu` / `ui type ...` | สั่ง UI โดยไม่ต้องแตะจอ |
 | `screenshot` | ส่ง frame RGB565 (ถ่ายระหว่างเฟรมใน UI task — ไม่ฉีก) · ดูสด + แตะจาก PC ได้ใน [[10-PC-Studio-App]] |

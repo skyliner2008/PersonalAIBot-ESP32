@@ -26,6 +26,7 @@
 #include "../ui/RadioScreen.h"
 #include "../ui/UiManager.h"
 #include "../util/Deadline.h"
+#include "../util/EmotionCue.h"
 #include "../util/JsonAlloc.h"
 #include "../util/TimeFmt.h"
 #include "../util/TranscriptClean.h"

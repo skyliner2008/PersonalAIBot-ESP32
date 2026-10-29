@@ -75,7 +75,8 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 | `position_size(balance, entry, stop_loss, risk_percent?, symbol?, contract_size?)` | ขนาด lot ตามความเสี่ยง (XAU 100 oz, XAG 5000, FX 100k, หุ้น/คริปโต 1) | คำนวณบนบอร์ด |
 | `price_alert(action, symbol?, above?, below?, id?)` | ตั้งเตือนราคา (สูงสุด 10) — task webTools ตรวจ **ทุก 2 นาที** (batch เดียว) แล้ว AI **พูดแจ้งเตือน** + เสียงกริ่ง + ข้อความบนหน้าตา (ปลุกจากโหมดพักด้วย) | `<agentDir>/alerts.json` + `/global/scan` |
 
-ทุก tool การเงินใส่ note ให้ AI บอกว่า "ไม่ใช่คำแนะนำการลงทุน"
+ทุก tool การเงินใส่ note ให้ AI ปิดท้ายด้วยข้อเสนอที่ช่วยต่อได้ 1 อย่าง (ตั้งแจ้งเตือนราคา วิเคราะห์เพิ่ม เทียบตัวอื่น ข่าวที่กระทบ) —
+**ไม่ลงท้ายด้วย "ไม่ใช่คำแนะนำการลงทุน"** แล้ว (T139: ผู้ใช้ไม่ต้องการ; เดิมทุกคำตอบลงท้ายแบบนี้)
 
 ![[images/card-overview.png]] ![[images/card-analysis.png]]
 ![[images/card-analysis-multi.png]] ![[images/card-scan.png]]

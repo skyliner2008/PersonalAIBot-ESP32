@@ -524,7 +524,7 @@ void runQuote(JsonObjectConst args, JsonDocument& out, CardData& card) {
         copyStr(card.title, sizeof(card.title), "ราคาตลาด");
         copyStr(card.subtitle, sizeof(card.subtitle), "TradingView • เปลี่ยนแปลงวันนี้");
     }
-    out["result"]["note"] = "จอแสดงกราฟประกอบ เล่าราคา (ตัวเลขตรงตามผล) การเปลี่ยนแปลงวันนี้ ช่วงราคา และแนวโน้มที่สำคัญ ไม่ใช่คำแนะนำการลงทุน "
+    out["result"]["note"] = "จอแสดงกราฟประกอบ เล่าราคา (ตัวเลขตรงตามผล) การเปลี่ยนแปลงวันนี้ ช่วงราคา และแนวโน้มที่สำคัญ แล้วชวนต่อด้วยข้อเสนอ 1 อย่าง (ตั้งแจ้งเตือนราคา วิเคราะห์เพิ่ม เทียบตัวอื่น ข่าวที่กระทบ) ห้ามปิดด้วยคำเตือนการลงทุน "
                             "ถ้า market_open=false ให้บอกว่าเป็นราคาปิดล่าสุด (price_time) ไม่ใช่ราคาตอนนี้";
     // T110: a Thai user's "ราคาทอง" is Thai gold (baht per baht weight) - estimated here, so the model needs no
     // second lookup or arithmetic of its own (with only the news it said "no price announced yet, cannot compute")

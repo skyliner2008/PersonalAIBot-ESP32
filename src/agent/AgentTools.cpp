@@ -266,8 +266,9 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
     group("yourself, the screen, sound and radio");
     declare(d, b, "get_device_status",
             "Current date/time, battery, Wi-Fi, volume, assistant settings, memory/reminder/task counts.");
-    static const Param expr[] = {{"emotion", "STRING", nullptr, true, emotionNames()}};
-    declare(d, b, "set_expression", "Show an emotion with your eyes on the screen while you talk.", expr, 1);
+    // T140: set_expression is not declared any more - 3.8 Live wrote the call as text and said it out loud
+    // ("set_expression{emotion:thinking}", spoken audio cannot be taken back); the eyes follow the reply's words
+    // (util/EmotionCue.h). The handler stays for the console "expr" command.
     static const Param cfg[] = {
         {"profile", "STRING", "Preset id from list_assistant_options.", false, nullptr},
         {"voice", "STRING", "Gemini voice name.", false, nullptr},
@@ -438,7 +439,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
 
     // ---- Finance pack ----
     if (_finance) {
-        group("finance (TradingView, not investment advice)");
+        group("finance (TradingView data)");
         declare(d, b, "market_overview",
                 "Snapshot of key markets: SET index, S&P 500, Nasdaq, gold, WTI oil, bitcoin, USD/THB + crypto Fear&Greed. "
                 "Shows a card. Use for 'ตลาดวันนี้เป็นยังไง'.");
@@ -450,7 +451,7 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
         };
         declare(d, b, "market_analysis",
                 "Technical analysis from TradingView (RSI, MACD, Stochastic, EMA20/50/200, ADX, buy/sell rating) "
-                "with a gauge card. Say it is not investment advice.", ta, 3);
+                "with a gauge card.", ta, 3);
         static const char* const kMarkets[] = {"thailand", "america", "crypto", nullptr};
         static const char* const kScans[] = {"gainers", "losers", "volume", "oversold", "overbought", nullptr};
         static const Param scan[] = {

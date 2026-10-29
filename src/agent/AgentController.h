@@ -296,6 +296,7 @@ private:
     PsString _nudgeText;
     const char* _nudgeWhy = "";
     void cancelNudge();
+    void autoExpression();  // T140: the eyes follow the words of the reply
     uint32_t _reasoningAt = 0;         // turnComplete IN_PROGRESS (Extended Thinking reasoning on) at, 0 = idle (T108)
     bool _replyReportPending = false;  // print the per-reply audio line once playback ends
     uint32_t _replyT0 = 0, _replyLastMs = 0, _replyBytes0 = 0, _replyNeedMs = 0;
@@ -306,6 +307,7 @@ private:
     uint32_t _lastUserSpeech = 0, _lastVoice = 0, _lastActivity = 0, _lastAgentAudio = 0;
     deadline::Timer _toolBusy;  // a tool is running: show "thinking"
     PsString _userTurn, _agentTurn;
+    size_t _cueFrom = 0;  // T140: _agentTurn up to here was read for the eyes (autoExpression)
     uint32_t _userTurnTs = 0, _agentTurnTs = 0;
 
     // Mic path
