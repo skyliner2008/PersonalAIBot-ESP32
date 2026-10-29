@@ -58,3 +58,6 @@ dist/
 
 # T115: OBD logs pulled from the board (tools/obd_log.py) - a car's VIN and drives, not for the repo
 logs/
+
+# ESP32-P4 firmware (firmware-p4/): its own secrets file and build folder
+firmware-p4/include/secrets.h

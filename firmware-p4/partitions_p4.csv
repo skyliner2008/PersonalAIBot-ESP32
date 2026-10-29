@@ -1,0 +1,12 @@
+# PersonalAIBot ESP32-P4 (JC4880P443C) - 16 MB flash
+# app 2 x 6 MB: the firmware is ~4.7 MB with ESP-SR + the MIPI-DSI / camera drivers (5 MB was 89 % full).
+# model 3.25 MB = the ESP-SR pack for the ESP32-P4 (tools/pio_sr_model.py). LittleFS ("spiffs") 640 KB is only the
+# fallback without an SD card. nvs / otadata at the default offsets.
+# Name,   Type, SubType,  Offset,   Size,     Flags
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xe000,   0x2000,
+app0,     app,  ota_0,    0x10000,  0x600000,
+app1,     app,  ota_1,    0x610000, 0x600000,
+model,    data, spiffs,   0xC10000, 0x340000,
+spiffs,   data, spiffs,   0xF50000, 0xA0000,
+coredump, data, coredump, 0xFF0000, 0x10000,

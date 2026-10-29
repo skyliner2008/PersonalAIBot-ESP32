@@ -152,7 +152,8 @@ struct ImageWriter {
                 lastData = millis();
             }
             if (done == 0 && !dryRun) {
-                if (const char* e = ota::checkImageHeader(buf, fill, ESP_CHIP_ID_ESP32S3)) {
+                // the chip this firmware was built for (was ESP_CHIP_ID_ESP32S3: a P4 board refused its own images)
+                if (const char* e = ota::checkImageHeader(buf, fill, CONFIG_IDF_FIRMWARE_CHIP_ID)) {
                     fail(e);
                     goto out;
                 }

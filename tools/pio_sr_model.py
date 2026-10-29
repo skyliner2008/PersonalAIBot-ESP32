@@ -23,6 +23,8 @@ table = os.path.join(project, env.GetProjectOption("board_build.partitions", "")
 offset, size = model_offset(table) if os.path.isfile(table) else (None, 0)
 if offset:
     own = os.path.join(project, "models", "srmodels.bin")
+    if not os.path.isfile(own):  # firmware-p4/ uses the repo's pack too ("Jarvis": the ESP32-P4 SDK pack has only Hi ESP)
+        own = os.path.join(project, os.pardir, "models", "srmodels.bin")
     bundled = os.path.join(env.subst("$PROJECT_PACKAGES_DIR"), "framework-arduinoespressif32-libs",  # noqa: F821
                            env.BoardConfig().get("build.mcu", "esp32s3"), "esp_sr", "srmodels.bin")  # noqa: F821
     image = own if os.path.isfile(own) else bundled

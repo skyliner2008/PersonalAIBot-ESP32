@@ -1,0 +1,1687 @@
+/**
+ * @file main.cpp
+ * @brief ESP32-AI Personal Assistant v3 — boot sequence, UI/LED tasks, serial console
+ * @see wiki/00-Home-Dashboard.md
+ * @see wiki/04-System-Architecture.md
+ *
+ * Tasks:
+ *   Core 0: audioOut (P6), audioIn (P6), textModel (P1), led (P1), [Wi-Fi/lwIP]
+ *   Core 1: agent (P4), ui (P3), memWriter (P2), loopTask (console)
+ *   any:    websocket (P5)
+ */
+
+#include <Adafruit_NeoPixel.h>
+#include <Arduino.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <ArduinoJson.h>
+#include <ff.h>
+#include <WiFi.h>
+#include <esp_heap_caps.h>
+#include <esp_memory_utils.h>
+#include <mbedtls/platform.h>
+
+#include "agent/AgentController.h"
+#include "agent/Personas.h"
+#include "app/AppConfig.h"
+#include "app/Settings.h"
+#include "audio/AudioManager.h"
+#include "audio/RadioPlayer.h"
+#include "audio/MusicLibrary.h"
+#include "audio/RadioStations.h"
+#include "pins_config.h"
+#if defined(BOARD_JC4880P443C)
+#include "display/LGFX_JC4880P443C.hpp"
+#include "display/TouchGT911.h"
+#else
+#include "display/LGFX_ES3C28P.hpp"
+#include "display/TouchFT6336.h"
+#endif
+#include "system/I2cBus.h"
+#include "system/OtaUpdater.h"
+#include "system/Peripherals.h"
+#include "system/Storage.h"
+#include "ui/CardScreen.h"
+#include "ui/DashScreen.h"
+#include "ui/NavScreen.h"
+#include "ui/FaceScreen.h"
+#include "ui/KeyboardScreen.h"
+#include "ui/RadioScreen.h"
+#include "ui/SettingsScreens.h"
+#include "ui/UiManager.h"
+#include "util/Base64.h"
+#include "util/JsonFile.h"
+#include "util/JsonAlloc.h"
+#include "util/PsramAlloc.h"
+#include "util/Sha256.h"
+#include "util/Utf8.h"
+#include "vehicle/VehicleLog.h"
+#include "phone/PhoneLink.h"
+#include "vehicle/Vehicle.h"
+
+#if defined(BOARD_JC4880P443C)
+static LGFX_JC4880P443C lcd;
+static TouchGT911 touch;
+#else
+static LGFX_ES3C28P lcd;
+static TouchFT6336 touch;
+#endif
+static I2cBus i2c;
+static AudioManager audio;
+static Storage storage;
+static AgentController agent;
+#if RGB_LED_COUNT > 0
+static Adafruit_NeoPixel rgbLed(RGB_LED_COUNT, RGB_LED_PIN, NEO_GRB + NEO_KHZ800);
+#endif
+
+// ============================================================
+// UI commands from the serial console (executed in the UI task)
+// ============================================================
+
+struct UiCommand {
+    enum Type : uint8_t { Tap, Long, Drag, Open, Type, Back, Home, Shot, Rotate, Invert } type;
+    int16_t x0, y0, x1, y1;
+    char text[200];
+};
+static QueueHandle_t uiQueue;
+static volatile bool shotRequested = false;
+
+// Dump the sprite right after a complete frame (called from the UI task)
+static void dumpScreenshot() {
+    size_t len = 0;
+    const uint8_t* fb = gUi.frameBuffer(len);
+    Serial.printf("SCREENSHOT %d %d %u\n", ui::W, ui::H, (unsigned)len);
+    // One write: HWCDC keeps its TX lock for the whole frame, so other tasks' log lines wait
+    // (≤ tx timeout) instead of landing inside the image. The PC app checks the END trailer.
+    if (fb) Serial.write(fb, len);
+    Serial.print("\nEND\n");
+}
+
+static void postUi(const UiCommand& c) {
+    UiCommand* p = new UiCommand(c);
+    if (xQueueSend(uiQueue, &p, 0) != pdTRUE) delete p;
+}
+
+static void runUiCommands() {
+    UiCommand* c;
+    while (xQueueReceive(uiQueue, &c, 0) == pdTRUE) {
+        switch (c->type) {
+            case UiCommand::Tap: gUi.injectTap(c->x0, c->y0); break;
+            case UiCommand::Long: gUi.injectLongPress(c->x0, c->y0); break;
+            case UiCommand::Drag: gUi.injectDrag(c->x0, c->y0, c->x1, c->y1); break;
+            case UiCommand::Open: settingsui::openPage(c->text); break;
+            case UiCommand::Type:
+                if (gUi.top() == &gKeyboard) gKeyboard.typeText(c->text);
+                break;
+            case UiCommand::Back: gUi.pop(); break;
+            case UiCommand::Home: gUi.popToRoot(); break;
+            case UiCommand::Shot: shotRequested = true; break;
+            case UiCommand::Rotate: gUi.setRotation((uint8_t)c->x0); break;
+            case UiCommand::Invert: gUi.setInvert(c->x0 != 0); break;
+        }
+        delete c;
+    }
+}
+
+// ============================================================
+// Battery (LiPo via 1:2 divider on GPIO 9)
+// ============================================================
+
+static int lipoPercent(uint32_t mv) {
+    static const uint16_t kCurve[][2] = {{4200, 100}, {4100, 90}, {4000, 80}, {3900, 65}, {3800, 50},
+                                         {3700, 30},  {3600, 15}, {3500, 5},  {3300, 0}};
+    if (mv >= kCurve[0][0]) return 100;
+    for (size_t i = 1; i < sizeof(kCurve) / sizeof(kCurve[0]); i++) {
+        if (mv >= kCurve[i][0]) {
+            const int v0 = kCurve[i][0], v1 = kCurve[i - 1][0];
+            const int p0 = kCurve[i][1], p1 = kCurve[i - 1][1];
+            return p0 + (int)((mv - v0) * (p1 - p0) / (v1 - v0));
+        }
+    }
+    return 0;
+}
+
+static int readBatteryPercent() {
+    static float filtered = -1.0f;
+    static bool sawBatteryLoad = false;
+    static uint8_t batteryLoadTicks = 0;
+    const uint8_t mode = gSettings.get().batteryMode;
+    if (mode == 2) return -1;  // forced USB-only display
+    uint32_t sumMv = 0;
+    for (int i = 0; i < 4; i++) sumMv += analogReadMilliVolts(VBAT_ADC_PIN);
+    const float mv = (sumMv * 0.25f) * VBAT_DIVIDER;
+    if (mv < 2500.0f) {
+        filtered = -1.0f;
+        return -1;
+    }
+    filtered = filtered < 0 ? mv : filtered * 0.85f + mv * 0.15f;
+    // On ES3C28P, when powered via USB with NO battery plugged in, the onboard LiPo charger IC regulates the
+    // unloaded BAT+ pin to its ~4.12-4.20V CV float voltage (~92-98%). A real LiPo battery under board load or
+    // normal discharge drops below 4.02V (<82%) for sustained readings, latching sawBatteryLoad = true.
+    if (filtered >= 3000.0f && filtered < 4020.0f) {
+        if (batteryLoadTicks < 10) batteryLoadTicks++;
+        if (batteryLoadTicks >= 5) sawBatteryLoad = true;
+    } else {
+        batteryLoadTicks = 0;
+    }
+    if (mode == 0 && !sawBatteryLoad && filtered >= 4020.0f) return -1;  // Auto: unloaded USB charger float -> USB
+    return lipoPercent((uint32_t)filtered);
+}
+
+// ============================================================
+// Tasks
+// ============================================================
+
+/** UI task — core 1: touch, BOOT button, console UI commands, rendering. */
+static void uiTask(void*) {
+    bool bootDown = false;
+    uint32_t bootAt = 0, lastBattery = 0;
+    bool bootLong = false;
+    for (;;) {
+        const uint32_t now = millis();
+        runUiCommands();
+
+        int16_t rx = 0, ry = 0;
+        const bool down = touch.read(rx, ry);
+        gUi.handleRawTouch(down, rx, ry, now);
+
+        // BOOT button: short = tap (or back in menus), long (1.5 s) = settings menu
+        const bool b = digitalRead(BOOT_BUTTON) == LOW;
+        if (b && !bootDown) {
+            bootDown = true;
+            bootAt = now;
+            bootLong = false;
+        } else if (b && !bootLong && now - bootAt > 1500) {
+            bootLong = true;
+            if (gUi.atRoot()) settingsui::openMenu();  // always reachable, even with bad touch
+        } else if (!b && bootDown) {
+            bootDown = false;
+            if (!bootLong && now - bootAt > 30) {
+                if (gUi.atRoot()) agent.uiTap();
+                else gUi.pop();
+            }
+        }
+
+        // info cards from the web tools: over the face only (never over a menu), closed after a while
+        if (gCard.hasPending()) {
+            if (gUi.top() == &gCard) {
+                gCard.activate();
+            } else if (gUi.atRoot() || gUi.top() == &gRadioUi) {
+                gCard.activate();
+                gUi.push(&gCard);
+            }
+        } else if (gUi.top() == &gCard && (gCard.expired(now) || agent.powerSave())) {
+            gUi.pop();  // power save: the clock face must not stay hidden under a card
+        }
+
+        // vehicle dash: opened / closed by voice, console or its menu entry (wiki 16)
+        if (gVehicle.takeOpenRequest() && gUi.top() != &gDashUi) {
+            gUi.popToRoot();
+            gUi.push(&gDashUi);
+        }
+        if (gVehicle.takeCloseRequest() && gUi.top() == &gDashUi) gUi.pop();
+
+        // navigation from the phone (wiki 18): its screen over the face (the dash shows a strip instead)
+        // (taken only over the face: from a menu it opens once the user is back, if still navigating)
+        if (!agent.powerSave() && (gUi.atRoot() || gUi.top() == &gCard || gUi.top() == &gRadioUi) &&
+            gPhone.takeNavStarted() && gPhone.nav().fresh(millis())) {
+            gUi.popToRoot();
+            gUi.push(&gNavUi);
+        }
+        if (gPhone.takeNavEnded() && gUi.top() == &gNavUi) gUi.pop();
+
+        // radio player screen: opens when a station starts (voice or console) over the face; the power-save
+        // clock is the face itself, so the player steps aside while dimmed and comes back on wake
+        static bool radioWas = false, radioHidden = false;
+        const bool radioOn = gRadio.active();
+        if (agent.powerSave()) {
+            if (gUi.top() == &gRadioUi) {
+                gUi.pop();
+                radioHidden = true;
+            }
+        } else if (radioOn && gUi.atRoot() && (!radioWas || radioHidden)) {
+            gUi.push(&gRadioUi);
+            radioHidden = false;
+        }
+        if (!radioOn) radioHidden = false;
+        radioWas = radioOn;
+
+        if (now - lastBattery > 1000) {
+            lastBattery = now;
+            agent.setBattery(readBatteryPercent());
+        }
+        // power save: the clock face changes once a second - redraw (SPI push) only then, poll slower
+        static uint32_t lastFrame = 0;
+        const bool clockFace = agent.powerSave() && gUi.atRoot();
+        if (!clockFace || now - lastFrame >= 500 || shotRequested) {
+            lastFrame = now;
+            gUi.frame(now);
+        }
+        if (shotRequested) {
+            shotRequested = false;
+            dumpScreenshot();
+        }
+        vTaskDelay(pdMS_TO_TICKS(clockFace ? 40 : 16));
+    }
+}
+
+/** LED task — core 0: status colors (or the color chosen by control_led). */
+static void ledTask(void*) {
+    for (;;) {
+        const uint32_t now = millis();
+        uint32_t rgb;
+#if RGB_LED_COUNT > 0
+        if (agent.ledOverride(rgb)) {
+            rgbLed.setPixelColor(0, rgbLed.Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF));
+        } else {
+            const int pulse = (int)(sinf(now / 300.0f) * 50 + 50);
+            switch (agent.state()) {
+                case AVATAR_BOOT: rgbLed.setPixelColor(0, rgbLed.Color(50, 50, 50)); break;
+                case AVATAR_SETUP: rgbLed.setPixelColor(0, (now / 800 % 2) ? rgbLed.Color(60, 60, 60) : 0); break;
+                case AVATAR_CONNECTING: rgbLed.setPixelColor(0, (now / 500 % 2) ? rgbLed.Color(0, 0, 100) : 0); break;
+                case AVATAR_IDLE:
+                    rgbLed.setPixelColor(0, agent.micMuted() ? rgbLed.Color(40, 0, 20) : rgbLed.Color(0, 30, 0));
+                    break;
+                case AVATAR_LISTENING: rgbLed.setPixelColor(0, rgbLed.Color(0, 0, 150)); break;
+                case AVATAR_THINKING: rgbLed.setPixelColor(0, rgbLed.Color(pulse, pulse, 0)); break;
+                case AVATAR_SPEAKING: rgbLed.setPixelColor(0, rgbLed.Color(0, pulse, 0)); break;
+                case AVATAR_SLEEP: rgbLed.setPixelColor(0, rgbLed.Color(pulse / 8, 0, pulse / 5)); break;
+                case AVATAR_ERROR: rgbLed.setPixelColor(0, (now / 250 % 2) ? rgbLed.Color(150, 0, 0) : 0); break;
+            }
+        }
+        rgbLed.show();
+#elif BUILTIN_LED_PIN >= 0
+        bool on = false;
+        if (agent.ledOverride(rgb)) {
+            on = (rgb & 0xFFFFFF) != 0;
+        } else {
+            switch (agent.state()) {
+                case AVATAR_BOOT:
+                case AVATAR_LISTENING:
+                case AVATAR_SPEAKING: on = true; break;
+                case AVATAR_SETUP: on = (now / 800 % 2) != 0; break;
+                case AVATAR_CONNECTING: on = (now / 500 % 2) != 0; break;
+                case AVATAR_THINKING: on = (now / 200 % 2) != 0; break;
+                case AVATAR_ERROR: on = (now / 250 % 2) != 0; break;
+                default: on = false; break;
+            }
+        }
+        digitalWrite(BUILTIN_LED_PIN, on ? HIGH : LOW);
+#else
+        (void)now;
+        (void)rgb;
+#endif
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
+// ============================================================
+// Serial console: type "help"
+// ============================================================
+
+static void printStatus() {
+    const SettingsData s = gSettings.get();
+    Serial.printf("fw %s | state %d | wifi %s | storage %s | agent \"%s\" voice %s | model %s\n", FIRMWARE_VERSION,
+                  (int)agent.state(), agent.wifiConnected() ? "up" : "down", storage.kindName(), s.agentName,
+                  s.voice, liveModelId(s.model));
+    Serial.printf("heap %u KB (min %u KB) | psram %u KB free | codec %s | touch %s | volume %d | mic %.4f\n",
+                  ESP.getFreeHeap() / 1024, ESP.getMinFreeHeap() / 1024, ESP.getFreePsram() / 1024,
+                  audio.codecReady() ? "ok" : "FAIL", touch.ok() ? "ok" : "FAIL", audio.volume(), audio.micLevel());
+}
+
+// ---- Machine-readable replies for the PC app (tools/pc_app): one line "<TAG> <json>" ----
+
+// console RX queue: lines with Thai JSON exceed the 256-byte default; a song upload from Studio (T123) borrows more
+constexpr size_t kRxBuf = 2048, kRxBufUpload = 12288;
+
+// One Serial.write per line: HWCDC holds its TX lock for a whole write, so log lines printed by
+// other tasks cannot land in the middle of the JSON (chunked writes let them, breaking the PC app).
+static void printTagged(const char* tag, const String& json) {
+    String line;
+    line.reserve(strlen(tag) + json.length() + 3);
+    line += tag;
+    line += ' ';
+    line += json;
+    line += '\n';
+    Serial.write((const uint8_t*)line.c_str(), line.length());
+}
+
+// T115: a log file from the SD card over the console - "obdlog get <name|latest> [offset] [length]":
+//   OBDLOGFILE <name> <size> <offset> <length>, OBDLOGDATA <offset> <base64 of up to 768 bytes> ..., OBDLOGEND <name>
+//   <offset> <sent> <sha256 of the range>. Each line stands alone: a line lost on the way (other log lines, the TX
+//   timeout) shows as a gap and tools/obd_log.py asks for that range again.
+static void obdlogGet(const String& arg) {
+    String name = arg;
+    long off = 0, len = -1;
+    const int sp = arg.indexOf(' ');
+    if (sp > 0) {
+        name = arg.substring(0, sp);
+        String r = arg.substring(sp + 1);
+        r.trim();
+        off = r.toInt();
+        const int sp2 = r.indexOf(' ');
+        if (sp2 > 0) len = r.substring(sp2 + 1).toInt();
+    }
+    char path[128];
+    FILE* f = gVehicleLog.path(name.c_str(), path, sizeof(path)) ? fopen(path, "rb") : nullptr;
+    if (!f) {
+        Serial.printf("OBDLOGERR %s: no such log\n", name.c_str());
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    const long size = ftell(f);
+    if (off < 0 || off > size) off = size;
+    if (len < 0 || off + len > size) len = size - off;
+    fseek(f, off, SEEK_SET);
+    const char* base = strrchr(path, '/') + 1;
+    Serial.printf("OBDLOGFILE %s %ld %ld %ld\n", base, size, off, len);
+    sha256::Hash h;
+    uint8_t chunk[768];
+    char line[1100];
+    long pos = off;
+    while (pos < off + len) {
+        const size_t want = (size_t)(off + len - pos) < sizeof(chunk) ? (size_t)(off + len - pos) : sizeof(chunk);
+        const size_t got = fread(chunk, 1, want, f);
+        if (!got) break;
+        h.update(chunk, got);
+        int n = snprintf(line, sizeof(line), "OBDLOGDATA %ld ", pos);
+        n += (int)b64::encode(chunk, got, line + n);
+        line[n++] = '\n';
+        for (int i = 0; i < 250 && Serial.availableForWrite() < n; i++) delay(2);  // the host reads at its pace
+        Serial.write((const uint8_t*)line, (size_t)n);
+        pos += (long)got;
+    }
+    fclose(f);
+    uint8_t digest[32];
+    char hex[65];
+    h.finish(digest);
+    sha256::toHex(digest, hex);
+    Serial.printf("OBDLOGEND %s %ld %ld %s\n", base, off, pos - off, hex);
+}
+
+static void printTagged(const char* tag, const JsonDocument& doc) {
+    String s;
+    serializeJson(doc, s);
+    printTagged(tag, s);
+}
+
+static void printConfig() {
+    const SettingsData s = gSettings.get();
+    JsonDocument d;
+    d["fw"] = FIRMWARE_VERSION;
+    d["ssid"] = s.wifiSsid;
+    d["passSet"] = s.wifiPass[0] != '\0';  // secrets are never printed
+    const wifiknown::List known = gSettings.knownWifi();  // T099: names only
+    JsonArray kn = d["knownWifi"].to<JsonArray>();
+    for (size_t i = 0; i < known.size(); i++) kn.add((const char*)known.at(i).ssid);
+    d["keySet"] = gSettings.hasApiKey();
+    // enough to recognise which key is stored without printing it
+    const size_t keyLen = strlen(s.apiKey);
+    d["keyLen"] = (uint32_t)keyLen;
+    d["keyHint"] = keyLen >= 12 ? String(s.apiKey).substring(0, 3) + "..." + String(s.apiKey + keyLen - 4) : String();
+    d["agent"] = s.agentName;
+    d["user"] = s.userName;
+    d["voice"] = s.voice;
+    d["profile"] = s.profile;
+    d["gender"] = persona::genderId((persona::Gender)s.gender);
+    d["personality"] = persona::kPersonalities[s.personality % persona::kPersonalityCount].id;
+    d["eye"] = persona::kEyeColors[s.eyeColor % persona::kEyeColorCount].id;
+    d["model"] = s.model;
+    d["thinking"] = s.thinking;
+    d["language"] = s.language;  // AiLanguage (T116)
+    d["textmodel"] = s.textModel;
+    d["volume"] = s.volume;      // the radio
+    d["aivolume"] = s.aiVolume;  // the voice (locked)
+    d["brightness"] = s.brightness;
+    d["sleep"] = s.sleepMinutes;
+    d["clock"] = s.clockMinutes;
+    d["dimlevel"] = s.dimBrightness;
+    d["clocktheme"] = s.clockTheme;
+    d["batmode"] = s.batteryMode;
+    d["city"] = s.weatherCity;
+    d["rotation"] = s.rotation;
+    d["invert"] = s.lcdInvert;
+    d["consolidate"] = s.consolidate;
+    d["search"] = s.googleSearch;
+    d["micgain"] = s.micGain;
+    d["wake"] = s.wakeMode;  // 0 loudness, 1 wake word, 2 both
+    d["wakeword"] = s.wakeWord;  // 0 Jarvis, 1 Hi ESP, 2 both (at boot)
+    d["wakethreshold"] = s.wakeThreshold;  // x100
+    d["finance"] = s.financeTools;
+    d["water"] = s.waterTools;
+    d["secretsSealed"] = gSettings.secretsSealed();      // AES-GCM on flash (SecretBox)
+    d["secretsMigratedAtBoot"] = gSettings.migratedAtBoot();
+    d["secretsStore"] = gSettings.secretsStore();         // "sd" (agent/secrets.json) or "nvs"
+    d["setupFileImported"] = gSettings.importedSetupFile();
+    d["secretsMovedFromNvs"] = gSettings.movedFromNvs();
+    d["touchCal"] = s.touchCal;
+    printTagged("CONFIG", d);
+}
+
+static void printOptions() {
+    JsonDocument d;
+    JsonArray profiles = d["profiles"].to<JsonArray>();
+    for (size_t i = 0; i < persona::kProfileCount; i++) {
+        const persona::Profile& p = persona::kProfiles[i];
+        JsonObject o = profiles.add<JsonObject>();
+        o["id"] = p.id;
+        o["name"] = p.agentName;
+        o["voice"] = p.voice;
+        o["gender"] = persona::genderId(p.gender);
+        o["personality"] = p.personality;
+        o["eye"] = persona::kEyeColors[p.eyeColor % persona::kEyeColorCount].id;
+        o["summary"] = p.summaryTh;
+    }
+    JsonArray voices = d["voices"].to<JsonArray>();
+    for (size_t i = 0; i < persona::kVoiceCount; i++) {
+        const persona::VoiceInfo& v = persona::kVoices[i];
+        JsonObject o = voices.add<JsonObject>();
+        o["name"] = v.name;
+        o["gender"] = persona::genderId(v.gender);
+        o["style"] = v.styleTh;
+        o["styleEn"] = v.styleEn;
+    }
+    JsonArray pers = d["personalities"].to<JsonArray>();
+    for (size_t i = 0; i < persona::kPersonalityCount; i++) {
+        JsonObject o = pers.add<JsonObject>();
+        o["id"] = persona::kPersonalities[i].id;
+        o["name"] = persona::kPersonalities[i].nameTh;
+    }
+    JsonArray eyes = d["eyes"].to<JsonArray>();
+    for (size_t i = 0; i < persona::kEyeColorCount; i++) {
+        const persona::EyeColor& e = persona::kEyeColors[i];
+        char rgb[8];
+        snprintf(rgb, sizeof(rgb), "#%02X%02X%02X", e.r, e.g, e.b);
+        JsonObject o = eyes.add<JsonObject>();
+        o["id"] = e.id;
+        o["name"] = e.nameTh;
+        o["rgb"] = rgb;
+    }
+    JsonArray genders = d["genders"].to<JsonArray>();
+    for (uint8_t g = 0; g < persona::kGenderCount; g++) {
+        JsonObject o = genders.add<JsonObject>();
+        o["id"] = persona::genderId((persona::Gender)g);
+        o["name"] = persona::genderNameTh((persona::Gender)g);
+    }
+    JsonArray live = d["liveModels"].to<JsonArray>();
+    for (uint8_t m = 0; m < (uint8_t)LiveModel::Count; m++) {
+        JsonObject o = live.add<JsonObject>();
+        o["id"] = liveModelId(m);
+        o["label"] = liveModelLabel(m);
+    }
+    JsonArray text = d["textModels"].to<JsonArray>();
+    for (uint8_t m = 0; m < 2; m++) text.add(textModelId(m));
+    JsonArray thinking = d["thinking"].to<JsonArray>();
+    for (uint8_t t = 0; t < 3; t++) thinking.add(thinkingLevelId(t));
+    JsonArray langs = d["languages"].to<JsonArray>();
+    for (uint8_t i = 0; i < (uint8_t)AiLanguage::Count; i++) langs.add(aiLanguageLabel(i));
+    printTagged("OPTIONS", d);
+}
+
+static void printWifiScan() {
+    if (WiFi.getMode() == WIFI_OFF) WiFi.mode(WIFI_STA);
+    const int n = WiFi.scanNetworks(false, false);
+    JsonDocument d;
+    JsonArray a = d.to<JsonArray>();
+    for (int i = 0; i < n; i++) {
+        JsonObject o = a.add<JsonObject>();
+        o["ssid"] = WiFi.SSID(i);
+        o["rssi"] = WiFi.RSSI(i);
+        o["secure"] = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
+    }
+    WiFi.scanDelete();
+    printTagged("WIFISCAN", d);
+}
+
+// Internal RAM budget (wiki 14: ESP-SR needs headroom) and every task's stack: where it lives and how
+// much of it was never touched (high-water mark).
+// sdls: bytes and files under a folder (sub-folders up to 8 deep; the path lives in PSRAM, little stack per level)
+static void sdTotal(PsString& path, int depth, uint64_t& bytes, uint32_t& files) {
+    DIR* d = opendir(path.c_str());
+    if (!d) return;
+    const size_t base = path.size();
+    while (const struct dirent* e = readdir(d)) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        path += '/';
+        path += e->d_name;
+        if (e->d_type == DT_DIR) {
+            if (depth < 8) sdTotal(path, depth + 1, bytes, files);
+        } else {
+            struct stat st;
+            if (stat(path.c_str(), &st) == 0) bytes += (uint64_t)st.st_size;
+            files++;
+        }
+        path.resize(base);
+    }
+    closedir(d);
+}
+
+static String normSdPath(const String& path) {
+    String p = path;
+    p.trim();
+    if (p.indexOf("..") >= 0) return "";
+    if (!p.startsWith("/sdcard")) {
+        if (p.startsWith("/")) p = "/sdcard" + p;
+        else p = "/sdcard/" + p;
+    }
+    while (p.length() > 8 && p.endsWith("/")) p.remove(p.length() - 1);
+    return p;
+}
+
+static void sdList(const String& dir) {
+    if (!dir.startsWith("/sdcard")) {
+        Serial.println("ERR sdls: only under /sdcard");
+        return;
+    }
+    DIR* d = opendir(dir.c_str());
+    if (!d) {
+        Serial.printf("ERR sdls: cannot open %s\n", dir.c_str());
+        return;
+    }
+    Serial.printf("SDLS %s\n", dir.c_str());
+    uint64_t sum = 0;
+    PsString path;
+    while (const struct dirent* e = readdir(d)) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        path = dir.c_str();
+        path += '/';
+        path += e->d_name;
+        uint64_t bytes = 0;
+        uint32_t files = 0;
+        if (e->d_type == DT_DIR) {
+            sdTotal(path, 1, bytes, files);
+            Serial.printf("  <DIR> %10.1f MB  %6lu files  %s\n", bytes / 1048576.0, (unsigned long)files, e->d_name);
+        } else {
+            struct stat st;
+            if (stat(path.c_str(), &st) == 0) bytes = (uint64_t)st.st_size;
+            Serial.printf("        %10.1f MB               %s\n", bytes / 1048576.0, e->d_name);
+        }
+        sum += bytes;
+    }
+    closedir(d);
+    Serial.printf("SDLS END %.1f MB in %s (card: %llu MB used of %llu MB)\n", sum / 1048576.0, dir.c_str(),
+                  storage.usedBytes() >> 20, storage.totalBytes() >> 20);
+}
+
+// SD card JSON list for PC Studio (tag SDLIST)
+static void printSdList(const String& dir) {
+    if (storage.kind() != StorageKind::SdCard) {
+        Serial.println("SDLIST {\"error\":\"ไม่มี SD card หรือ SD card ไม่ได้ mount\"}");
+        return;
+    }
+    const String dpath = normSdPath(dir.length() ? dir : String("/sdcard"));
+    if (dpath.isEmpty() || !dpath.startsWith("/sdcard")) {
+        Serial.println("SDLIST {\"error\":\"invalid path\"}");
+        return;
+    }
+    DIR* d = opendir(dpath.c_str());
+    if (!d) {
+        Serial.printf("SDLIST {\"error\":\"cannot open %s\"}\n", dpath.c_str());
+        return;
+    }
+    JsonDocument doc(JsonPsramAllocator::instance());
+    doc["path"] = dpath;
+    doc["free_mb"] = (uint32_t)((storage.totalBytes() - storage.usedBytes()) >> 20);
+    doc["total_mb"] = (uint32_t)(storage.totalBytes() >> 20);
+    JsonArray entries = doc["entries"].to<JsonArray>();
+
+    PsString path;
+    while (const struct dirent* e = readdir(d)) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        path = dpath.c_str();
+        if (!dpath.endsWith("/")) path += '/';
+        path += e->d_name;
+        JsonObject item = entries.add<JsonObject>();
+        item["name"] = String(e->d_name);
+        struct stat st;
+        if (stat(path.c_str(), &st) == 0) {
+            item["dir"] = S_ISDIR(st.st_mode);
+            item["size"] = S_ISDIR(st.st_mode) ? 0 : (uint32_t)st.st_size;
+            item["mtime"] = (uint32_t)st.st_mtime;
+        } else {
+            item["dir"] = (e->d_type == DT_DIR);
+            item["size"] = 0;
+            item["mtime"] = 0;
+        }
+    }
+    closedir(d);
+    String json;
+    serializeJson(doc, json);
+    printTagged("SDLIST", json);
+}
+
+// SD card file download for PC Studio: sdget <path> [offset] [length]
+static void sdGet(const String& arg) {
+    if (storage.kind() != StorageKind::SdCard) {
+        Serial.println("SDGETERR no SD card mounted");
+        return;
+    }
+    String rawPath = arg;
+    long off = 0, len = -1;
+    const int sp = arg.indexOf(' ');
+    if (sp > 0) {
+        rawPath = arg.substring(0, sp);
+        String r = arg.substring(sp + 1);
+        r.trim();
+        off = r.toInt();
+        const int sp2 = r.indexOf(' ');
+        if (sp2 > 0) len = r.substring(sp2 + 1).toInt();
+    }
+    const String path = normSdPath(rawPath);
+    if (path.isEmpty() || !path.startsWith("/sdcard/")) {
+        Serial.printf("SDGETERR %s: invalid path\n", rawPath.c_str());
+        return;
+    }
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) {
+        Serial.printf("SDGETERR %s: cannot open file\n", path.c_str());
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    const long size = ftell(f);
+    if (off < 0 || off > size) off = size;
+    if (len < 0 || off + len > size) len = size - off;
+    fseek(f, off, SEEK_SET);
+
+    Serial.printf("SDGETFILE %s %ld %ld %ld\n", path.c_str(), size, off, len);
+    sha256::Hash h;
+    uint8_t chunk[768];
+    char line[1100];
+    long pos = off;
+    while (pos < off + len) {
+        const size_t want = (size_t)(off + len - pos) < sizeof(chunk) ? (size_t)(off + len - pos) : sizeof(chunk);
+        const size_t got = fread(chunk, 1, want, f);
+        if (!got) break;
+        h.update(chunk, got);
+        int n = snprintf(line, sizeof(line), "SDGETDATA %ld ", pos);
+        n += (int)b64::encode(chunk, got, line + n);
+        line[n++] = '\n';
+        for (int i = 0; i < 250 && Serial.availableForWrite() < n; i++) delay(2);
+        Serial.write((const uint8_t*)line, (size_t)n);
+        pos += (long)got;
+    }
+    fclose(f);
+    uint8_t digest[32];
+    char hex[65];
+    h.finish(digest);
+    sha256::toHex(digest, hex);
+    Serial.printf("SDGETEND %s %ld %ld %s\n", path.c_str(), off, pos - off, hex);
+}
+
+// Clear FAT attributes (Read-Only 0x01, Hidden 0x02, System 0x04, Archive 0x20)
+// Often left on files created by cameras/dashcams (e.g. GoPro).
+static void clearFatReadOnly(const char* vfsPath) {
+    const char* rel = vfsPath;
+    if (strncmp(rel, "/sdcard", 7) == 0) {
+        rel += 7;
+        if (*rel == '\0') rel = "/";
+    }
+    char fatPath[160];
+    snprintf(fatPath, sizeof(fatPath), "0:%s", (rel[0] == '/') ? rel : "");
+    if (rel[0] != '/') snprintf(fatPath, sizeof(fatPath), "0:/%s", rel);
+
+    const BYTE mask = AM_RDO | AM_HID | AM_SYS | AM_ARC;
+    f_chmod(fatPath, 0, mask);
+    if (rel[0] == '/') {
+        f_chmod(rel, 0, mask);
+    }
+}
+
+static int safeUnlink(const char* vfsPath) {
+    clearFatReadOnly(vfsPath);
+    int ret = unlink(vfsPath);
+    if (ret != 0) {
+        // Fallback: try f_unlink directly
+        const char* rel = vfsPath;
+        if (strncmp(rel, "/sdcard", 7) == 0) rel += 7;
+        char fatPath[160];
+        snprintf(fatPath, sizeof(fatPath), "0:%s", (rel[0] == '/') ? rel : "");
+        if (rel[0] != '/') snprintf(fatPath, sizeof(fatPath), "0:/%s", rel);
+        if (f_unlink(fatPath) == FR_OK || f_unlink(rel) == FR_OK) {
+            ret = 0;
+        }
+    }
+    return ret;
+}
+
+// SD card file / recursive dir delete
+static bool sdRmTree(const char* path, int depth = 0) {
+    if (depth > 10) return false;
+    DIR* d = opendir(path);
+    if (!d) return safeUnlink(path) == 0;
+    while (const struct dirent* e = readdir(d)) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        char sub[160];
+        snprintf(sub, sizeof(sub), "%s/%s", path, e->d_name);
+        struct stat st;
+        if (stat(sub, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) sdRmTree(sub, depth + 1);
+            else safeUnlink(sub);
+        }
+    }
+    closedir(d);
+    clearFatReadOnly(path);
+    int r = rmdir(path);
+    if (r != 0) {
+        const char* rel = path;
+        if (strncmp(rel, "/sdcard", 7) == 0) rel += 7;
+        char fatPath[160];
+        snprintf(fatPath, sizeof(fatPath), "0:%s", (rel[0] == '/') ? rel : "");
+        if (rel[0] != '/') snprintf(fatPath, sizeof(fatPath), "0:/%s", rel);
+        if (f_unlink(fatPath) == FR_OK || f_unlink(rel) == FR_OK) r = 0;
+    }
+    return r == 0;
+}
+
+static void sdDel(const String& rawPath) {
+    if (storage.kind() != StorageKind::SdCard) {
+        Serial.println("ERR sddel: no SD card mounted");
+        return;
+    }
+    const String path = normSdPath(rawPath);
+    if (path.isEmpty() || !path.startsWith("/sdcard/")) {
+        Serial.println("ERR sddel: invalid path");
+        return;
+    }
+    if (path == "/sdcard" || path == "/sdcard/agent" || path == "/sdcard/music") {
+        Serial.println("ERR sddel: cannot delete system directory");
+        return;
+    }
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) {
+        Serial.printf("ERR sddel: not found %s\n", path.c_str());
+        return;
+    }
+    const bool isDir = S_ISDIR(st.st_mode);
+    int ret = isDir ? (sdRmTree(path.c_str()) ? 0 : -1) : safeUnlink(path.c_str());
+    if (ret == 0) {
+        Serial.printf("OK sddel %s\n", path.c_str());
+    } else {
+        Serial.printf("ERR sddel: failed (%d)\n", errno);
+    }
+}
+
+// SD card directory creation
+static void sdMkdir(const String& rawPath) {
+    if (storage.kind() != StorageKind::SdCard) {
+        Serial.println("ERR sdmkdir: no SD card mounted");
+        return;
+    }
+    const String path = normSdPath(rawPath);
+    if (path.isEmpty() || !path.startsWith("/sdcard/")) {
+        Serial.println("ERR sdmkdir: invalid path");
+        return;
+    }
+    int ret = mkdir(path.c_str(), 0755);
+    if (ret == 0) {
+        Serial.printf("OK sdmkdir %s\n", path.c_str());
+    } else {
+        Serial.printf("ERR sdmkdir: failed (%d)\n", errno);
+    }
+}
+
+// T123: the song list for ESP32-AI Studio's music tab
+static void printMusicList() {
+    JsonDocument d(JsonPsramAllocator::instance());
+    gMusic.toJson(d.to<JsonObject>());
+    if (storage.kind() == StorageKind::SdCard) d["free_mb"] = (uint32_t)((storage.totalBytes() - storage.usedBytes()) >> 20);
+    String json;
+    serializeJson(d, json);
+    printTagged("MUSICLIST", json);
+}
+
+static void printMemory() {
+    JsonDocument d;
+    d["internal_free_kb"] = heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
+    d["internal_min_kb"] = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024;
+    d["internal_largest_kb"] = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024;
+    d["psram_free_kb"] = heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024;
+    d["card_in_psram"] = esp_ptr_external_ram(&gCard);  // T113: made at static init - PSRAM must be up by then
+    const UBaseType_t n = uxTaskGetNumberOfTasks();
+    TaskStatus_t* tasks = (TaskStatus_t*)heap_caps_malloc((n + 4) * sizeof(TaskStatus_t), MALLOC_CAP_SPIRAM);
+    if (tasks) {
+        const UBaseType_t got = uxTaskGetSystemState(tasks, n + 4, nullptr);
+        JsonArray a = d["tasks"].to<JsonArray>();
+        for (UBaseType_t i = 0; i < got; i++) {
+            JsonObject o = a.add<JsonObject>();
+            o["name"] = tasks[i].pcTaskName;
+            o["prio"] = tasks[i].uxCurrentPriority;
+            o["unused"] = tasks[i].usStackHighWaterMark;  // bytes (IDF: StackType_t is uint8_t)
+            o["psram"] = esp_ptr_external_ram(tasks[i].pxStackBase);
+        }
+        heap_caps_free(tasks);
+    }
+    printTagged("MEM", d);
+}
+
+static int indexOrFind(const String& v, int (*find)(const char*)) {
+    if (v.length() && isDigit(v[0])) return v.toInt();
+    return find(v.c_str());
+}
+
+// set <field> <value> — returns false for an unknown field / invalid value
+static bool handleSet(const String& field, const String& value) {
+    static const char* const kFields[] = {"ssid", "pass", "key", "agent", "user", "voice", "profile",
+                                          "personality", "gender", "eye", "model", "thinking", "language", "textmodel",
+                                          "volume", "aivolume", "brightness", "sleep", "clock", "dimlevel", "clocktheme",
+                                          "batmode", "city", "rotation", "invert", "consolidate",
+                                          "search", "micgain", "touch", "finance", "water", "wake", "wakeword", "wakethreshold"};
+    bool known = false;
+    for (const char* f : kFields) known |= field == f;
+    if (!known) return false;
+    if (field == "voice" && !persona::findVoice(value.c_str())) return false;
+    if (field == "profile" && !persona::findProfile(value.c_str())) return false;
+    const int pers = field == "personality" ? indexOrFind(value, persona::findPersonality) : 0;
+    const int eye = field == "eye" ? indexOrFind(value, persona::findEyeColor) : 0;
+    if (pers < 0 || pers >= (int)persona::kPersonalityCount || eye < 0 || eye >= (int)persona::kEyeColorCount) return false;
+
+    uint8_t rotation = 0;
+    int invert = -1;
+    const bool on = value == "1" || value == "on" || value == "true";
+    gSettings.update([&](SettingsData& d) {
+        auto copy = [&](char* dst, size_t n) {  // never half a Thai character (invalid UTF-8 in the prompt)
+            const size_t len = utf8::clampToBoundary(value.c_str(), value.length(), n - 1);
+            memcpy(dst, value.c_str(), len);
+            dst[len] = '\0';
+        };
+        auto markCustom = [&]() { strncpy(d.profile, "custom", sizeof(d.profile)); };
+        if (field == "ssid") copy(d.wifiSsid, sizeof(d.wifiSsid));
+        else if (field == "pass") copy(d.wifiPass, sizeof(d.wifiPass));
+        else if (field == "key") copy(d.apiKey, sizeof(d.apiKey));
+        else if (field == "agent") copy(d.agentName, sizeof(d.agentName));
+        else if (field == "user") copy(d.userName, sizeof(d.userName));
+        else if (field == "voice") {
+            strncpy(d.voice, persona::findVoice(value.c_str())->name, sizeof(d.voice) - 1);
+            markCustom();
+        } else if (field == "profile") Settings::applyProfile(d, value.c_str());
+        else if (field == "personality") {
+            d.personality = (uint8_t)pers;
+            markCustom();
+        } else if (field == "gender") {
+            d.gender = isDigit(value[0]) ? (uint8_t)constrain(value.toInt(), 0, (int)persona::kGenderCount - 1)
+                                         : (uint8_t)persona::parseGender(value.c_str());
+            markCustom();
+        } else if (field == "eye") d.eyeColor = (uint8_t)eye;
+        else if (field == "model") d.model = (uint8_t)constrain(value.toInt(), 0, (int)LiveModel::Count - 1);
+        else if (field == "thinking") d.thinking = (uint8_t)constrain(value.toInt(), 0, 2);
+        else if (field == "language") {  // 0/1/2 or th/en/auto
+            for (uint8_t i = 0; i < (uint8_t)AiLanguage::Count; i++) {
+                if (value == aiLanguageId(i)) d.language = i;
+            }
+            if (isDigit(value[0])) d.language = (uint8_t)constrain(value.toInt(), 0, (int)AiLanguage::Count - 1);
+        }
+        else if (field == "textmodel") d.textModel = (uint8_t)constrain(value.toInt(), 0, 1);
+        else if (field == "volume") d.volume = (uint8_t)constrain(value.toInt(), 0, 100);
+        else if (field == "aivolume") d.aiVolume = (uint8_t)constrain(value.toInt(), 10, 100);
+        else if (field == "brightness") d.brightness = (uint8_t)constrain(value.toInt(), 5, 100);
+        else if (field == "sleep") d.sleepMinutes = (uint8_t)constrain(value.toInt(), 0, 120);
+        else if (field == "clock") d.clockMinutes = (uint8_t)constrain(value.toInt(), 0, 120);
+        else if (field == "dimlevel") d.dimBrightness = (uint8_t)constrain(value.toInt(), 1, 60);
+        else if (field == "clocktheme") d.clockTheme = (uint8_t)constrain(value.toInt(), 0, (int)kClockThemeCount - 1);
+        else if (field == "batmode") d.batteryMode = (uint8_t)constrain(value.toInt(), 0, (int)kBatteryModeCount - 1);
+        else if (field == "city") {
+            if (value == "auto" || value == "ip" || value == "-") d.weatherCity[0] = '\0';
+            else copy(d.weatherCity, sizeof(d.weatherCity));
+        }
+        else if (field == "rotation") rotation = d.rotation = value.toInt() == 3 ? 3 : 1;
+        else if (field == "invert") invert = d.lcdInvert = on;
+        else if (field == "consolidate") d.consolidate = on;
+        else if (field == "search") d.googleSearch = on;
+        else if (field == "micgain") d.micGain = (uint8_t)constrain(value.toInt(), 0, 7);
+        else if (field == "finance") d.financeTools = on;
+        else if (field == "water") d.waterTools = on;
+        else if (field == "wakethreshold") d.wakeThreshold = (uint8_t)constrain(value.toFloat() < 1.0f ? value.toFloat() * 100.0f + 0.5f : value.toFloat(), 40, 99);
+        else if (field == "wakeword") d.wakeWord = value == "jarvis" || value == "0" ? 0 : value == "both" || value == "2" ? 2 : 1;  // at boot
+        else if (field == "wake") d.wakeMode = value == "level" ? 0 : value == "word" ? 1 : value == "both" ? 2 : (uint8_t)constrain(value.toInt(), 0, 2);
+        else if (field == "touch") d.touchMap = (uint8_t)constrain(value.toInt(), 0, 7);
+    });
+    if (field == "search" && on) agent.retrySearch();  // try Google Search again now, not in 6 h
+    if (field == "city") webtools::requestClockWeatherRefresh();
+    if (rotation) {  // the LCD belongs to the UI task
+        UiCommand c{};
+        c.type = UiCommand::Rotate;
+        c.x0 = rotation;
+        postUi(c);
+    }
+    if (invert >= 0) {
+        UiCommand c{};
+        c.type = UiCommand::Invert;
+        c.x0 = invert;
+        postUi(c);
+    }
+    return true;
+}
+
+static void handleConsoleLine(String line) {
+    line.trim();
+    if (line.isEmpty()) return;
+    const int sp = line.indexOf(' ');
+    const String cmd = sp < 0 ? line : line.substring(0, sp);
+    String rest = sp < 0 ? String() : line.substring(sp + 1);
+    rest.trim();
+
+    if (cmd == "help") {
+        Serial.println("status | audio | tone [hz] [ms] | mic [sec] | vol <0-100> | i2c | regs | reg <r> [v]");
+        Serial.println("tool <name> [json] | say <u|a|s> <text> | expr <emotion> | sleep | powersave | wake | screenshot | radio [<n>|<url> [name]|stop]");
+        Serial.println("music [list|rescan|next|prev|pause|resume|<n>|<words>] (MP3 from /sdcard/music)");
+        Serial.println("sd card: sdls [path] | sdlist [path] | sdget <path> [off] [len] | sddel <path> | sdmkdir <path> | sdremount");
+        Serial.println("ask <text> (type to the assistant) | mute (toggle mic) | retry | new (fresh session) | memclear <facts|history>");
+        Serial.println("rec [sec] (record what the mic sends to Gemini: RECINFO <json> + RECORD <rate> <bytes> + PCM + END)");
+        Serial.println("recref [sec] (raw mic + echo reference, interleaved: RECPAIRS <rate> <bytes> + PCM + END)");
+        Serial.println("ui tap x y | ui long x y | ui drag x0 y0 x1 y1 | ui open <menu|wifi|apikey|agent|user|profile|voice|info>");
+        Serial.println("ui type <text> | ui back | ui home");
+        Serial.println("set <ssid|pass|key|agent|user|voice|profile|personality|gender|eye|model|thinking|language(th|en|auto)|textmodel|");
+        Serial.println("     volume(radio)|aivolume(voice)|brightness|sleep|clock|dimlevel|rotation|invert|consolidate|search|micgain(0-7)|touch|finance|water|wake(level|word|both)|wakeword(hiesp|jarvis|both, reboot)|wakethreshold(0.40-0.99)> <value>");
+        Serial.println("PC app: config | options | tools | diag | wifiscan | apitest  (reply: '<TAG> <json>')");
+        Serial.println("wifi (remembered networks: WIFIKNOWN <json>) | wifi forget <ssid>");
+        Serial.println("diagnostics: keymode <query|header> | setupmode <full|nosearch|min|searchonly|onetool> | searchretry | trace [on|off]");
+        Serial.println("time <unix-epoch> (set clock offline) | devices [reload | save <json>] | device <name> [on|off|0-100] | mem (internal RAM + task stacks) | wakeword [threshold x | test [sec]] | reboot");
+        Serial.println("ota (status: OTA <json>) | ota check | ota install | ota rollback | ota fetch <https-url> | ota selftest");
+        Serial.println("radio list: radiolist | radioadd name|url|genre | radioedit <n> name|url|genre | radiodel <n> | radiomove <from> <to> | radioreset | radio <n>");
+        Serial.println("vehicle dash: dash (DASH <json>) | dash open|close | dash source <off|sim|touch|kline|obd_ble|obd_uart|serial>");
+        Serial.println("     dash style <race|digital|classic|info> | dash kind <car|moto> | dash shift <rpm> | dash max <rpm> | dash kdump | dash ble forget | dash baud <elm|text> <n>");
+        Serial.println("     dash diag (codes, VIN, readiness, health, trip) | dash scan | dash clear | dash code <P0171> | dash trip reset");
+        Serial.println("     dash replay [name|latest] [speed] | obdlog [on|off|list|get <name|latest> [off] [len]|rm <name|all>|note <text>]");
+        Serial.println("phone app (wiki 18): phone (PHONEINFO <json>) | phone {json} (from the app) | phone nav <place> | phone stop | phone unpair");
+    } else if (cmd == "config") {
+        printConfig();
+    } else if (cmd == "options") {
+        printOptions();
+    } else if (cmd == "tools") {
+        String s;
+        agent.describeTools(s);
+        printTagged("TOOLS", s);
+    } else if (cmd == "diag") {
+        String r;
+        printTagged("DIAG", agent.runTool("_diag", "{}", r) ? r : String("{\"error\":\"busy\"}"));
+    } else if (cmd == "wifiscan") {
+        printWifiScan();
+    } else if (cmd == "wifi") {  // wifi [forget <ssid>] -> WIFIKNOWN {"connected","known":[...]} (T099, no passwords)
+        if (rest.startsWith("forget ")) {
+            const String ssid = rest.substring(7);
+            Serial.println(gSettings.forgetWifi(ssid.c_str()) ? "OK forgotten" : "ERR not remembered");
+        }
+        const wifiknown::List known = gSettings.knownWifi();
+        JsonDocument d;
+        d["connected"] = WiFi.status() == WL_CONNECTED ? WiFi.SSID() : String("");
+        JsonArray a = d["known"].to<JsonArray>();
+        for (size_t i = 0; i < known.size(); i++) {
+            JsonObject o = a.add<JsonObject>();
+            o["ssid"] = (const char*)known.at(i).ssid;
+            o["open"] = known.at(i).pass[0] == '\0';
+            o["used"] = known.at(i).used;
+        }
+        printTagged("WIFIKNOWN", d);
+    } else if (cmd == "wakeword") {  // wakeword [threshold <0.4-0.9999>] -> WAKEWORD <json>
+        WakeWord& w = agent.wakeWord();
+        if (rest.startsWith("test")) {  // the speaker into the wake word for N s (then: ask it to say "Jarvis")
+            const int sec = rest.length() > 5 ? rest.substring(5).toInt() : 20;
+            agent.wakeWordTest((uint32_t)constrain(sec, 3, 120) * 1000u);
+            Serial.println("OK wakeword test");
+        } else if (rest.startsWith("threshold ")) {
+            const float t = rest.substring(10).toFloat();
+            Serial.println(w.setThreshold(t) ? "OK wakeword threshold" : "ERR wakeword threshold (0.4-0.9999, engine running?)");
+        }
+        JsonDocument d;
+        d["ready"] = w.ready();
+        d["model"] = w.model();
+        d["mode"] = gSettings.get().wakeMode;
+        d["heard"] = w.detections();
+        d["dropped"] = w.dropped();
+        d["threshold"] = w.threshold();
+        d["last_dbfs"] = w.lastVolumeDb();
+        d["peak_dbfs"] = w.takePeakDb();
+        printTagged("WAKEWORD", d);
+    } else if (cmd == "devices") {  // devices [reload] -> DEVICES {"count", "devices":[...], "errors"} (wiki 15)
+        char path[96];
+        snprintf(path, sizeof(path), "%s/devices.json", storage.agentDir());
+        bool reload = rest == "reload";
+        if (rest.startsWith("save ")) {  // devices save {"devices":[...]} - written to the SD card, then loaded
+            JsonDocument in;
+            if (storage.kind() == StorageKind::None || deserializeJson(in, rest.substring(5)) || !in["devices"].is<JsonArray>()) {
+                Serial.println("ERR devices save: needs storage and {\"devices\":[...]}");
+            } else {
+                reload = jsonfile::save(path, in);
+                Serial.println(reload ? "OK devices saved" : "ERR devices save: write failed");
+            }
+        }
+        if (reload) {
+            gPeriph.begin(storage.kind() != StorageKind::None ? path : "");
+            agent.uiNewSession();  // the tool list and the prompt changed
+        }
+        JsonDocument d;
+        d["count"] = gPeriph.count();
+        gPeriph.describe(d["devices"].to<JsonArray>());
+        d["errors"] = gPeriph.errors();
+        printTagged("DEVICES", d);
+    } else if (cmd == "device") {  // device <name> <on|off|0-100> (or just <name> to read)
+        const int sp2 = rest.lastIndexOf(' ');
+        JsonDocument d, v;
+        const String name = sp2 > 0 ? rest.substring(0, sp2) : rest;
+        const char* why;
+        if (sp2 > 0) {
+            v.set(rest.substring(sp2 + 1));
+            why = gPeriph.set(name.c_str(), v.as<JsonVariantConst>(), d.to<JsonObject>());
+        } else {
+            why = gPeriph.read(name.c_str(), d.to<JsonObject>());
+        }
+        if (why) d["error"] = why;
+        printTagged("DEVICE", d);
+    } else if (cmd == "phone") {  // the phone app (wiki 18): its messages over USB, status, tests
+        if (rest.startsWith("{")) {
+            gPhone.onLine(rest.c_str(), PhoneLink::Via::Usb);  // GPS 1 Hz: no echo
+            return;
+        }
+        JsonDocument d;
+        if (rest == "unpair") {
+            gPhone.unpair();
+        } else if (rest.startsWith("nav ")) {
+            String to = rest.substring(4);
+            to.trim();
+            if (!gPhone.request("navigate", to.c_str())) d["error"] = "no phone connected";
+        } else if (rest == "stop") {
+            if (!gPhone.request("stop")) d["error"] = "no phone connected";
+        }
+        if (!d.is<JsonObject>()) d.to<JsonObject>();  // keeps an "error" already set
+        gPhone.describe(d.as<JsonObject>());
+        printTagged("PHONEINFO", d);
+    } else if (cmd == "dash") {  // vehicle dash (wiki 16): status / open / source / settings
+        const int sp2 = rest.indexOf(' ');
+        const String sub = sp2 < 0 ? rest : rest.substring(0, sp2);
+        String arg = sp2 < 0 ? String() : rest.substring(sp2 + 1);
+        arg.trim();
+        JsonDocument d;
+        if (sub == "open") {
+            gVehicle.requestOpen();
+        } else if (sub == "close") {
+            gVehicle.requestClose();
+        } else if (sub == "source") {
+            vehicle::SourceId id;
+            if (!vehicle::parseSource(arg.c_str(), id)) d["error"] = "unknown source";
+            else if (const char* why = gVehicle.setSource(id)) d["error"] = why;
+        } else if (sub == "style") {  // race | digital | classic
+            vehicle::DashStyle st;
+            if (vehicle::parseStyle(arg.c_str(), st)) gVehicle.setStyle(st);
+            else d["error"] = "style: race | digital | classic";
+        } else if (sub == "kind") {
+            gVehicle.setKind(arg.startsWith("m") ? vehicle::Kind::Motorcycle : vehicle::Kind::Car);
+        } else if (sub == "shift") {
+            gVehicle.setShiftRpm(arg.toInt());
+        } else if (sub == "max") {
+            gVehicle.setRpmMax(arg.toInt());
+        } else if (sub == "kdump") {  // raw Honda K-Line table: which byte is what on this bike
+            d["kline_table"] = gVehicle.klineDump();
+        } else if (sub == "ble" && arg == "forget") {
+            gVehicle.forgetBleAdapter();
+        } else if (sub == "baud") {
+            const int sp3 = arg.indexOf(' ');
+            gVehicle.setBaud(arg.startsWith("elm"), (uint32_t)(sp3 > 0 ? arg.substring(sp3 + 1).toInt() : 0));
+        } else if (sub == "scan") {  // read the trouble codes again (T112); `dash diag` a moment later shows them
+            if (!gVehicle.requestScan()) d["error"] = "no trouble codes on this source / not connected to the ECU";
+        } else if (sub == "clear") {
+            uint32_t seq;
+            if (const char* why = gVehicle.requestClear(seq)) d["error"] = why;
+        } else if (sub == "code") {  // the meaning of a trouble code, no car needed
+            uint16_t raw;
+            if (!vehicle::obd::parseDtc(arg.c_str(), raw)) {
+                d["error"] = "dash code P0171";
+            } else {
+                const vehicle::obd::DtcInfo info = vehicle::obd::describeDtc(raw);
+                d["code"] = arg;
+                d["meaning"] = (const char*)info.text;
+                d["system"] = info.system;
+                d["severity"] = info.severity;
+                d["generic"] = info.generic;
+                printTagged("DASH", d);
+                return;
+            }
+        } else if (sub == "trip" && arg == "reset") {
+            gVehicle.resetTrip();
+        } else if (sub == "replay") {  // T115: dash replay [name|latest] [speed] - a recorded drive from the SD card
+            const int sp3 = arg.indexOf(' ');
+            const String file = sp3 < 0 ? arg : arg.substring(0, sp3);
+            const float speed = sp3 < 0 ? 1.0f : arg.substring(sp3 + 1).toFloat();
+            if (const char* why = gVehicle.startReplay(file.length() ? file.c_str() : "latest", speed)) d["error"] = why;
+            else gVehicle.requestOpen();
+        } else if (sub.length() && sub != "diag") {
+            d["error"] = "dash open|close|source|style|kind|shift|max|kdump|ble forget|baud|scan|clear|code|diag|trip reset|replay";
+        }
+        if (!d.is<JsonObject>()) d.to<JsonObject>();  // keeps an "error" set above
+        gVehicle.describe(d.as<JsonObject>(), sub == "diag" || sub == "scan");
+        printTagged("DASH", d);
+    } else if (cmd == "obdlog") {  // T115: the OBD log on the SD card (wiki 16; tools/obd_log.py pulls the files)
+        const int sp2 = rest.indexOf(' ');
+        const String sub = sp2 < 0 ? rest : rest.substring(0, sp2);
+        String arg = sp2 < 0 ? String() : rest.substring(sp2 + 1);
+        arg.trim();
+        if (sub == "get") {
+            obdlogGet(arg);
+            return;
+        }
+        JsonDocument d;
+        if (sub == "on" || sub == "off") {
+            gVehicle.setLogEnabled(sub == "on");
+        } else if (sub == "note") {  // a mark in the file being written ("rough idle now")
+            if (gVehicleLog.active()) gVehicleLog.recordf('E', "note: %s", arg.c_str());
+            else d["error"] = "not recording now";
+        } else if (sub == "rm") {
+            d["removed"] = gVehicleLog.remove(arg.c_str());
+        } else if (sub.length() && sub != "list") {
+            d["error"] = "obdlog [on|off|list|get <name|latest> [offset] [length]|rm <name|all>|note <text>]";
+        }
+        if (!d.is<JsonObject>()) d.to<JsonObject>();
+        gVehicleLog.describe(d.as<JsonObject>());
+        constexpr size_t kListed = 60;
+        auto* files = (VehicleLog::FileInfo*)psramMalloc(kListed * sizeof(VehicleLog::FileInfo));
+        const size_t n = files ? gVehicleLog.list(files, kListed) : 0;
+        JsonArray fl = d["files"].to<JsonArray>();  // newest first
+        for (size_t i = 0; i < n; i++) {
+            JsonObject o = fl.add<JsonObject>();
+            o["name"] = (const char*)files[i].name;
+            o["bytes"] = files[i].bytes;
+        }
+        printTagged("OBDLOG", d);
+        psramFree(files);
+    } else if (cmd == "mem") {
+        printMemory();
+    } else if (cmd == "ota") {  // firmware update from GitHub Releases (see system/OtaUpdater.h)
+        const int sp = rest.indexOf(' ');
+        const String sub = sp < 0 ? rest : rest.substring(0, sp);
+        const String arg = sp < 0 ? String() : rest.substring(sp + 1);
+        bool ok = true;
+        String why;
+        if (sub == "check") ok = gOta.requestCheck();
+        else if (sub == "install") ok = gOta.requestInstall();
+        else if (sub == "fetch") ok = gOta.requestFetch(arg.c_str());
+        else if (sub == "selftest") ok = gOta.requestSelfTest();
+        else if (sub == "rollback") {
+            ok = gOta.rollbackNow(why);
+            if (ok) agent.uiRestart();  // clean close, then boot the other slot
+        } else if (sub.length()) {
+            Serial.println("ota [check|install|rollback|fetch <url>|selftest]");
+            return;
+        }
+        if (!ok) Serial.printf("ERR ota %s%s%s\n", sub.c_str(), why.length() ? ": " : " (busy / nothing to install)", why.c_str());
+        JsonDocument d;
+        gOta.describe(d.to<JsonObject>());
+        String s;
+        serializeJson(d, s);
+        printTagged("OTA", s);
+    } else if (cmd == "searchretry") {
+        agent.retrySearch();
+    } else if (cmd == "rec") {
+        agent.requestRecording((uint8_t)(rest.isEmpty() ? 5 : rest.toInt()));  // reply: RECINFO + RECORD
+    } else if (cmd == "recref") {  // raw mic + echo reference (reply: RECPAIRS <rate> <bytes> + PCM + END)
+        agent.requestRecording((uint8_t)(rest.isEmpty() ? 10 : rest.toInt()), true);
+    } else if (cmd == "ask") {
+        Serial.println(agent.ask(rest.c_str()) ? "OK ask" : "ERR ask: empty or queue full");
+    } else if (cmd == "keymode") {
+        if (rest == "header" || rest == "query") agent.setKeyInHeader(rest == "header");
+        else Serial.println("keymode <query|header>  (how the Live API key is sent; not saved)");
+    } else if (cmd == "setupmode") {
+        if (rest == "full") agent.setSetupMode(0);
+        else if (rest == "nosearch") agent.setSetupMode(1);
+        else if (rest == "min") agent.setSetupMode(2);
+        else if (rest == "searchonly") agent.setSetupMode(3);
+        else if (rest == "onetool") agent.setSetupMode(4);  // T108: does the model call even one tool?
+        else Serial.println("setupmode <full|nosearch|min|searchonly|onetool>  (diagnostic Live API setup; not saved)");
+    } else if (cmd == "trace") {  // trace [on|off]: one [Trace] line per Live API event / client JSON message
+        agent.setTrace(rest.isEmpty() ? !agent.trace() : (rest == "on" || rest == "1"));
+        Serial.printf("OK trace %s\n", agent.trace() ? "on" : "off");
+    } else if (cmd == "apitest") {
+        agent.uiApiTest();  // reply: "APITEST <json>" a few seconds later
+    } else if (cmd == "mute") {
+        agent.uiToggleMic();
+    } else if (cmd == "retry") {
+        agent.requestRetry();
+    } else if (cmd == "new") {
+        agent.uiNewSession();
+    } else if (cmd == "memclear") {
+        if (rest == "facts") agent.uiClearMemory();
+        else if (rest == "history") agent.uiClearHistory();
+        else Serial.println("memclear <facts|history>");
+    } else if (cmd == "status") {
+        printStatus();
+    } else if (cmd == "audio") {
+        Serial.printf("i2s rx blocks %lu | raw L %.5f R %.5f | slot %s | mic16k %.5f | playing %d\n",
+                      (unsigned long)audio.inBlocks(), audio.rawLevelLeft(), audio.rawLevelRight(),
+                      audio.micOnRight() ? "R" : "L", audio.micLevel(), audio.isPlaying());
+    } else if (cmd == "tone") {
+        int hz = 1000, ms = 500, amp = 6000;  // tone [hz] [ms] [amplitude 1-32000]
+        sscanf(rest.c_str(), "%d %d %d", &hz, &ms, &amp);
+        audio.playTone((uint16_t)hz, (uint16_t)ms, (int16_t)constrain(amp, 1, 32000));
+    } else if (cmd == "radiotone") {  // radiotone [hz] [ms] [amp]: a tone through the radio path (the mic
+                                      // stays open, unlike "tone"): speaker linearity / echo tests with recref
+        int hz = 200, ms = 2000, amp = 12000;
+        sscanf(rest.c_str(), "%d %d %d", &hz, &ms, &amp);
+        amp = constrain(amp, 1, 32000);
+        static int16_t block[480];
+        const size_t total = (size_t)AUDIO_I2S_RATE * (size_t)constrain(ms, 100, 3500) / 1000;
+        for (size_t done = 0; done < total;) {
+            const size_t n = total - done < 480 ? total - done : 480;
+            for (size_t i = 0; i < n; i++) {
+                block[i] = (int16_t)(amp * sinf(2.0f * (float)M_PI * hz * (float)(done + i) / AUDIO_I2S_RATE));
+            }
+            done += audio.writeRadio(block, n);
+            if (audio.radioFree() < 480) delay(5);
+        }
+    } else if (cmd == "mic") {
+        const int sec = rest.isEmpty() ? 3 : rest.toInt();
+        float peak = 0;
+        for (int i = 0; i < sec * 10; i++) {
+            const float l = audio.micLevel();
+            peak = l > peak ? l : peak;
+            Serial.printf("%.4f %.*s\n", l, (int)min(60.0f, l * 400), "############################################################");
+            delay(100);
+        }
+        Serial.printf("peak %.4f\n", peak);
+    } else if (cmd == "vol") {
+        String r;
+        agent.runTool("set_volume", (String("{\"level\":") + rest.toInt() + "}").c_str(), r);
+        Serial.println(r);
+    } else if (cmd == "i2c") {
+        for (uint8_t a = 1; a < 127; a++) {
+            if (i2c.probe(a)) Serial.printf("i2c device at 0x%02X\n", a);
+        }
+    } else if (cmd == "reg") {
+        unsigned r = 0, v = 0;
+        const int n = sscanf(rest.c_str(), "%x %x", &r, &v);
+        if (n == 2) audio.codec().write((uint8_t)r, (uint8_t)v);
+        if (n >= 1) Serial.printf("ES8311[0x%02X] = 0x%02X\n", r, audio.codec().read((uint8_t)r));
+    } else if (cmd == "regs") {
+        for (unsigned r = 0; r <= 0x45; r++) {
+            Serial.printf("%02X:%02X%s", r, audio.codec().read((uint8_t)r), (r % 8 == 7) ? "\n" : " ");
+        }
+        Serial.println();
+    } else if (cmd == "tool") {
+        const int s2 = rest.indexOf(' ');
+        const String name = s2 < 0 ? rest : rest.substring(0, s2);
+        const String args = s2 < 0 ? String("{}") : rest.substring(s2 + 1);
+        String result;
+        if (!agent.runTool(name.c_str(), args.c_str(), result)) result = "{\"error\":\"busy\"}";
+        printTagged((String("TOOL ") + name).c_str(), result);
+    } else if (cmd == "say") {
+        const char role = rest.length() ? rest[0] : 's';
+        gFace.pushTranscript(role, rest.length() > 2 ? rest.c_str() + 2 : "");
+    } else if (cmd == "expr") {
+        String r;
+        agent.runTool("set_expression", (String("{\"emotion\":\"") + rest + "\"}").c_str(), r);
+        Serial.println(r);
+    } else if (cmd == "sleep") {
+        String r;
+        agent.runTool("go_to_sleep", "{}", r);
+        Serial.println(r);
+    } else if (cmd == "radio") {  // radio <url> [name] | radio stop | radio (status)
+        if (rest == "stop") {
+            gRadio.stop();
+        } else if (rest.length() && rest.toInt() > 0) {  // number in the station list
+            Serial.println(gStations.play((size_t)rest.toInt() - 1) ? "OK radio" : "ERR radio");
+        } else if (rest.startsWith("http")) {
+            const int s2 = rest.indexOf(" ");
+            const String url = s2 < 0 ? rest : rest.substring(0, s2);
+            const String name = s2 < 0 ? String("console") : rest.substring(s2 + 1);
+            Serial.println(gRadio.play(url.c_str(), name.c_str()) ? "OK radio" : "ERR radio");
+        } else {
+            char rn[128], rt[128];
+            gRadio.info(rn, sizeof(rn), rt, sizeof(rt));
+            Serial.printf("radio %s | %s | %s | %s %lu Hz | buffered %u ms | %s\n", gRadio.stateName(), rn, rt, gRadio.codec(),
+                          (unsigned long)gRadio.sampleRate(), (unsigned)(audio.radioBuffered() / 24), gRadio.lastError());
+        }
+    } else if (cmd == "music") {  // T122: MP3 from /sdcard/music - music [list|rescan|next|prev|pause|resume|<n>|<words>]
+        if (!gMusic.available()) {
+            Serial.println("ERR no SD card");
+        } else if (rest == "" || rest == "list" || rest == "rescan") {
+            if (rest == "rescan") gMusic.scan();
+            const size_t n = gMusic.count();
+            Serial.printf("music: %u song(s) in %s%s\n", (unsigned)n, gMusic.root(), gMusic.playing() ? " (playing)" : "");
+            char nm[96], fd[64];
+            for (size_t i = 0; i < n && i < 200; i++) {
+                if (gMusic.get(i, nm, sizeof(nm), fd, sizeof(fd))) {
+                    Serial.printf("%c%3u %s%s%s%s\n", (int)i == gMusic.current() ? '>' : ' ', (unsigned)(i + 1), nm,
+                                  fd[0] ? "  [" : "", fd, fd[0] ? "]" : "");
+                }
+            }
+        } else if (rest == "next" || rest == "prev") {
+            Serial.println(gMusic.step(rest == "next" ? 1 : -1) ? "OK music" : "ERR music");
+        } else if (rest == "pause") {
+            gMusic.pause();
+            Serial.println("OK music");
+        } else if (rest == "resume") {
+            Serial.println(gMusic.resume() ? "OK music" : "ERR music");
+        } else {
+            const int i = gMusic.find(rest.c_str());
+            Serial.println(i >= 0 && gMusic.play(i) ? "OK music" : "ERR no such song");
+        }
+    } else if (cmd == "sdls") {  // sdls [folder] (read-only): what is on the card - files, and folders with their total size
+        sdList(rest.length() ? rest : String("/sdcard"));
+    } else if (cmd == "sdlist") {  // sdlist [folder] -> SDLIST <json> for PC studio
+        printSdList(rest.length() ? rest : String("/sdcard"));
+    } else if (cmd == "sdget") {  // sdget <path> [offset] [length] -> SDGETFILE, SDGETDATA, SDGETEND
+        sdGet(rest);
+    } else if (cmd == "sddel") {  // sddel <path>
+        sdDel(rest);
+    } else if (cmd == "sdmkdir") {  // sdmkdir <path>
+        sdMkdir(rest);
+    } else if (cmd == "sdremount") {  // T125: test the SD card recovery (the agent task mounts it again)
+        Storage::requestRemount();
+        Serial.println("OK sdremount requested");
+    } else if (cmd == "musiclist") {
+        printMusicList();
+    } else if (cmd == "musicput") {  // T123: musicput <size> <file name> -> MUSICPUT READY 0 | MUSICPUT ERR <why>
+        const int sp2 = rest.indexOf(' ');
+        const long size = sp2 > 0 ? rest.substring(0, sp2).toInt() : 0;
+        const uint64_t freeBytes = storage.totalBytes() - storage.usedBytes();
+        const char* err = sp2 > 0 && size > 0 ? gMusic.uploadBegin(rest.substring(sp2 + 1).c_str(), (uint32_t)size, freeBytes)
+                                              : "usage: musicput <size> <file name>";
+        if (err) {
+            Serial.printf("MUSICPUT ERR %s\n", err);
+        } else {
+            // the PC keeps 8 chunk lines (~11 KB) in flight: the console's RX queue (internal RAM, one byte per item,
+            // bytes past its end are dropped) grows to 12 KB only while a song comes in - back to 2 KB in loop()
+            // (nothing is in the queue now: the PC waits for this READY)
+            Serial.setRxBufferSize(kRxBufUpload);
+            Serial.println("MUSICPUT READY 8");
+        }
+    } else if (cmd == "musicdata") {  // musicdata <offset> <length> <base64 of up to 1 KB> -> MUSICPUT ACK <bytes in>
+        // the length catches a line that lost bytes (RX buffer overrun) and ran into the next one: base64 skips the
+        // spaces, so "....musicend 00" would decode - such a chunk is not written, the PC sends it again
+        static uint8_t* bin = (uint8_t*)psramMalloc(1100);
+        const int sp2 = rest.indexOf(' ');
+        const int sp3 = sp2 > 0 ? rest.indexOf(' ', sp2 + 1) : -1;
+        if (!gMusic.uploading() || sp3 <= 0 || !bin) {
+            Serial.println(gMusic.uploading() ? "MUSICPUT ERR usage: musicdata <offset> <length> <base64>"
+                                              : "MUSICPUT ERR no upload in progress");
+        } else {
+            const char* b64 = rest.c_str() + sp3 + 1;
+            const size_t blen = strlen(b64);
+            const size_t want = (size_t)rest.substring(sp2 + 1, sp3).toInt();
+            const size_t n = blen <= 1400 ? b64::decode(b64, blen, bin) : b64::kError;
+            const uint32_t before = gMusic.uploadChunk(0xFFFFFFFF, nullptr, 0);  // (just the count)
+            const uint32_t got = n == b64::kError || n != want
+                                     ? before  // refused: the PC sends it again
+                                     : gMusic.uploadChunk((uint32_t)rest.substring(0, sp2).toInt(), bin, n);
+            // an ACK per 4 KB (and for a refused chunk, and the last one): replies written back to back took ~15 ms
+            // each, the PC keeps 8 lines in flight
+            const bool ack = got == before || got % 4096 == 0 || got == gMusic.uploadSize();
+            if (!gMusic.uploading()) Serial.println("MUSICPUT ERR SD card write failed");
+            else if (ack) Serial.printf("MUSICPUT ACK %lu\n", (unsigned long)got);
+        }
+    } else if (cmd == "musicend") {  // musicend <sha256 hex> -> MUSICPUT OK | MUSICPUT ERR <why>, then MUSICLIST
+        const char* err = gMusic.uploadEnd(rest.c_str());
+        if (err) Serial.printf("MUSICPUT ERR %s\n", err);
+        else Serial.println("MUSICPUT OK");
+        printMusicList();
+    } else if (cmd == "musicabort") {
+        if (gMusic.uploading()) gMusic.uploadAbort("cancelled from the PC");
+        Serial.println("MUSICPUT ABORTED");
+    } else if (cmd == "musicdel") {  // musicdel <n> (1-based)
+        const char* err = rest.toInt() > 0 ? gMusic.remove((size_t)rest.toInt() - 1) : "usage: musicdel <n>";
+        Serial.println(err ? (String("ERR ") + err) : String("OK deleted"));
+        printMusicList();
+    } else if (cmd.startsWith("radio")) {  // station list (ESP32-AI Studio radio tab); numbers are 1-based
+        const char* err = nullptr;
+        RadioStation st;
+        const int sp2 = rest.indexOf(' ');
+        if (cmd == "radioadd") {
+            err = RadioStations::parse(rest, st);
+            if (!err) err = gStations.add(st);
+        } else if (cmd == "radioedit") {
+            err = sp2 < 0 ? "radioedit <n> name|url|genre" : RadioStations::parse(rest.substring(sp2 + 1), st);
+            if (!err) err = gStations.update((size_t)(rest.toInt() - 1), st);
+        } else if (cmd == "radiodel") {
+            if (!gStations.remove((size_t)(rest.toInt() - 1))) err = "ไม่มีสถานีลำดับนี้";
+        } else if (cmd == "radiomove") {
+            if (sp2 < 0 || !gStations.move((size_t)(rest.toInt() - 1), (size_t)(rest.substring(sp2 + 1).toInt() - 1))) {
+                err = "radiomove <from> <to>";
+            }
+        } else if (cmd == "radioreset") {
+            gStations.resetDefaults();
+        } else if (cmd != "radiolist") {
+            err = "unknown radio command";
+        }
+        if (cmd != "radiolist") Serial.println(err ? String("ERR ") + err : String("OK"));
+        JsonDocument d;
+        gStations.toJson(d["stations"].to<JsonArray>());
+        char rn[64];
+        gRadio.info(rn, sizeof(rn), nullptr, 0);
+        d["playing"] = gRadio.active() ? gStations.indexOf(rn) + 1 : 0;
+        d["state"] = gRadio.stateName();
+        d["max"] = (int)RadioStations::kMax;
+        if (err) d["error"] = err;
+        printTagged("RADIOLIST", d);
+    } else if (cmd == "powersave") {
+        agent.requestPowerSave();  // sleep now + dim clock face (voice or a tap wakes it)
+    } else if (cmd == "wake") {
+        agent.requestWake();
+    } else if (cmd == "ui") {
+        UiCommand c{};
+        const int s2 = rest.indexOf(' ');
+        const String sub = s2 < 0 ? rest : rest.substring(0, s2);
+        const String arg = s2 < 0 ? String() : rest.substring(s2 + 1);
+        int a = 0, b = 0, x = 0, y = 0;
+        sscanf(arg.c_str(), "%d %d %d %d", &a, &b, &x, &y);
+        c.x0 = a, c.y0 = b, c.x1 = x, c.y1 = y;
+        if (sub == "tap") c.type = UiCommand::Tap;
+        else if (sub == "long") c.type = UiCommand::Long;
+        else if (sub == "drag") c.type = UiCommand::Drag;
+        else if (sub == "back") c.type = UiCommand::Back;
+        else if (sub == "home") c.type = UiCommand::Home;
+        else if (sub == "open" || sub == "type") {
+            c.type = sub == "open" ? UiCommand::Open : UiCommand::Type;
+            strncpy(c.text, arg.c_str(), sizeof(c.text) - 1);
+        } else {
+            Serial.println("ui: tap|long|drag|open|type|back|home");
+            return;
+        }
+        postUi(c);
+    } else if (cmd == "set") {
+        const int s2 = rest.indexOf(' ');
+        if (s2 < 0) {
+            Serial.println("set <field> <value>");
+            return;
+        }
+        const String field = rest.substring(0, s2);
+        if (handleSet(field, rest.substring(s2 + 1))) Serial.printf("OK set %s (saved to NVS)\n", field.c_str());
+        else Serial.printf("ERR set %s: unknown field or invalid value\n", field.c_str());
+    } else if (cmd == "screenshot") {
+        UiCommand c{};
+        c.type = UiCommand::Shot;
+        postUi(c);  // taken by the UI task between frames (no tearing)
+    } else if (cmd == "time") {
+        // time <unix epoch> : set the clock without NTP (offline testing)
+        struct timeval tv = {(time_t)strtoul(rest.c_str(), nullptr, 10), 0};
+        settimeofday(&tv, nullptr);
+        setenv("TZ", TIME_TZ, 1);
+        tzset();
+        Serial.printf("clock set to %lu\n", (unsigned long)tv.tv_sec);
+    } else if (cmd == "reboot") {
+        agent.uiRestart();  // closes the Live session cleanly, then restarts
+        // fallback if the agent task is stuck - after its own worst case (close handshake 3.5 s +
+        // memory flush 2 s + 0.2 s): 4 s cut it short, leaving a session open on the server
+        delay(8000);
+        ESP.restart();
+    } else {
+        Serial.println("unknown command - type help");
+    }
+}
+
+static void pollConsole() {
+    static String buf;
+    static bool tooLong = false;  // a cut line must not run as a command (half a `devices save`, `ask` ...)
+    // T123: in blocks - one read() per byte took the RX ring buffer's lock each time, ~50 ms for a 1.4 KB
+    // song chunk line (the upload ran at 14 KB/s)
+    char block[256];
+    int got;
+    while ((got = Serial.available()) > 0) {
+        got = (int)Serial.read((uint8_t*)block, got < (int)sizeof(block) ? (size_t)got : sizeof(block));
+        if (got <= 0) break;
+        int start = 0;
+        for (int i = 0; i < got; i++) {
+            const char c = block[i];
+            if (c != '\n' && c != '\r') continue;
+            if (i > start && !tooLong) {
+                if (buf.length() + (i - start) <= 1500) buf.concat(block + start, (unsigned)(i - start));
+                else tooLong = true;
+            }
+            start = i + 1;
+            if (tooLong) Serial.println("ERR line too long (max 1500 characters) - not run");
+            else if (buf.length()) handleConsoleLine(buf);
+            buf = "";
+            tooLong = false;
+        }
+        if (got > start && !tooLong) {  // the rest of the line comes in the next block
+            if (buf.length() + (got - start) <= 1500) buf.concat(block + start, (unsigned)(got - start));
+            else tooLong = true;
+        }
+    }
+}
+
+// ============================================================
+// Setup & loop
+// ============================================================
+
+// The prebuilt Arduino SDK has CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC: every TLS link (Gemini Live, web
+// tools, REST probe, consolidation) took ~40 KB of internal RAM, and two at once failed with
+// mbedtls_ssl_setup -0x7F00 (alloc failed). Buffers go to PSRAM; small objects stay internal (fast).
+// T113: with Bluetooth OBD running (BT controller kept) internal RAM is ~25 KB and a web lookup's handshake (thousands of
+// small certificate / bignum objects) took it down to 4 KB: then everything goes to PSRAM (somewhat slower handshakes).
+// T119: the same holds whenever internal RAM runs low (radio + Live + a web lookup + the OTA check at once): below
+// kTlsInternalFloor every TLS object goes to PSRAM, so a handshake never eats the last KB that Wi-Fi and the
+// esp-aes DMA buffers (internal only) need.
+constexpr size_t kTlsInternalFloor = 32 * 1024;
+
+static void* tlsCalloc(size_t n, size_t size) {
+    if (size && n > SIZE_MAX / size) return nullptr;  // n * size would wrap
+    const size_t bytes = n * size;
+    static const bool allPsram = Vehicle::bleKeptAtBoot();  // decided before setup(): bleInUse() in initArduino
+    const bool toPsram = bytes >= 512 || allPsram || heap_caps_get_free_size(MALLOC_CAP_INTERNAL) < kTlsInternalFloor;
+    void* p = toPsram ? heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : nullptr;
+    if (!p) p = heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!p) p = heap_caps_calloc(n, size, MALLOC_CAP_8BIT);
+    return p;
+}
+
+void setup() {
+    mbedtls_platform_set_calloc_free(tlsCalloc, heap_caps_free);  // before any TLS connection
+    Serial.setRxBufferSize(kRxBuf);  // console lines with Thai JSON exceed the 256-byte default
+    Serial.setTxBufferSize(4096);  // whole "<TAG> <json>" replies fit without blocking
+    // a reading host drains the 4 KB buffer in milliseconds; a host that holds the port without reading
+    // (ESP32-AI Studio busy/disconnected) made every log line wait 500 ms: the agent loop stalled 10 s and
+    // 45 s right after a wake (T065). Now such lines are dropped instead.
+    Serial.setTxTimeoutMs(20);
+    Serial.begin(115200);
+    const uint32_t t0 = millis();
+    while (!Serial && millis() - t0 < 1500) delay(10);
+
+    Serial.println("========================================");
+    Serial.printf("  ESP32-AI Personal Assistant v%s\n", FIRMWARE_VERSION);
+    Serial.printf("  Board: %s\n", BOARD_NAME);
+    Serial.println("========================================");
+    Serial.printf("[PSRAM] %u KB\n", ESP.getPsramSize() / 1024);
+
+    uiQueue = xQueueCreate(8, sizeof(UiCommand*));
+    WiFi.persistent(false);  // the driver must not keep its own plain-text copy of SSID + password in NVS
+    gSettings.begin();       // secrets are sealed with SecretBox (and old plain copies wiped once)
+    const SettingsData cfg = gSettings.get();
+
+    i2c.begin(TOUCH_SDA, TOUCH_SCL, TOUCH_I2C_FREQ);
+
+    lcd.init();
+    lcd.fillScreen(0x0000);
+    gUi.begin(&lcd, cfg.rotation, &agent);
+    gUi.setInvert(cfg.lcdInvert);
+    gUi.setBrightness(cfg.brightness);
+    gUi.setTouchTransform(cfg.touchMap);
+    if (cfg.touchCal) {
+        TouchCalibration cal;
+        cal.valid = true;
+        cal.xAxis = cfg.calXAxis;
+        cal.yAxis = cfg.calYAxis;
+        cal.xScale = cfg.calXs;
+        cal.xOffset = cfg.calXo;
+        cal.yScale = cfg.calYs;
+        cal.yOffset = cfg.calYo;
+        cal.rotation = cfg.calRot;
+        gUi.setCalibration(cal);
+    }
+    gFace.begin([]() { settingsui::openMenu(); }, []() { gUi.push(&gRadioUi); },
+                []() { gVehicle.openDash(); });  // the UI task's open request shows it (sim if no source yet)
+    gRadioUi.begin(&audio);
+    gCard.begin();
+    gUi.push(&gFace);
+    if (!cfg.touchCal) settingsui::openCalibration();  // first boot: fix the touch axes
+    gUi.frame(millis());
+
+    touch.begin(&i2c, TOUCH_RST, TOUCH_INT);
+    pinMode(BOOT_BUTTON, INPUT_PULLUP);
+#if RGB_LED_COUNT > 0
+    rgbLed.begin();
+    rgbLed.setBrightness(50);
+    rgbLed.setPixelColor(0, rgbLed.Color(50, 50, 50));
+    rgbLed.show();
+#elif BUILTIN_LED_PIN >= 0
+    pinMode(BUILTIN_LED_PIN, OUTPUT);
+    digitalWrite(BUILTIN_LED_PIN, HIGH);
+#endif
+    analogReadResolution(12);
+    (void)analogReadMilliVolts(VBAT_ADC_PIN);  // attaches ADC channel cleanly at 11 dB without HAL warning
+
+    storage.begin();
+    // Wi-Fi password / API key: sealed on the SD card when there is one (else NVS);
+    // also imports ai-setup.txt from the card root. Before agent.begin(), which reads the settings.
+    gSettings.attachSecretStore(storage.kind() == StorageKind::SdCard ? "/sdcard" : nullptr);
+    if (!audio.begin(&i2c)) gFace.setSystemText("ระบบเสียงผิดพลาด (ES8311 / I2S) ดู Serial log", 0);
+    gStations.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // radio_stations.json
+    gRadio.begin(&audio);  // Internet radio task (idle until play_radio)
+    gMusic.begin(storage.kind() == StorageKind::SdCard ? "/sdcard/music" : "");  // MP3 songs (T122)
+    gPhone.begin();  // before the agent: a paired phone declares the `navigate` tool (wiki 18)
+    agent.begin(&audio, &gFace, &storage);
+    gVehicle.begin(storage.kind() != StorageKind::None ? storage.agentDir() : "");  // after the devices (GPIO 43/44)
+
+    // Firmware updates from GitHub Releases: quiet the assistant for the download, restart through the
+    // agent (clean Live close + memory flush), report on the face. Also confirms / reports a fresh update.
+    gOta.onPrepare = []() {
+        gRadio.stop();
+        agent.requestSleepNow();
+    };
+    gOta.onReboot = []() { agent.uiRestart(); };
+    gOta.onNotice = [](const char* text, uint32_t holdMs) { gFace.setSystemText(text, holdMs); };
+    gOta.begin();
+
+    if (audio.i2sReady()) audio.startTasks();
+    agent.startTask();
+    // 1-hour soak: 7.4 of 10 KB never used; T113 (dash info page included): ~3 KB used of 8 -> 6 KB
+    xTaskCreatePinnedToCore(uiTask, "ui", 6144, nullptr, 3, nullptr, 1);
+    xTaskCreatePinnedToCore(ledTask, "led", 3072, nullptr, 1, nullptr, 0);
+
+    audio.playTone(660, 90, 3000);
+    audio.playTone(990, 120, 3000);
+    printStatus();
+    Serial.println("[Setup] Complete - type 'help' for console commands");
+}
+
+void loop() {
+    pollConsole();
+    static uint32_t lastReport = 0;
+    static size_t lastMin = SIZE_MAX;
+    if (millis() - lastReport > 60000) {
+        lastReport = millis();
+        // T119: the largest free block too - TLS / esp-aes fail on a fragmented heap long before "free" reaches 0
+        const size_t minFree = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+        Serial.printf("[Health] heap %u KB (min %u KB, largest %u KB), psram %u KB, state %d\n", ESP.getFreeHeap() / 1024,
+                      (unsigned)(minFree / 1024), (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024),
+                      ESP.getFreePsram() / 1024, (int)agent.state());
+        // a new low since boot under 16 KB: say what was running (the "min 10 KB / 15 KB" of T110 / T100 had no culprit)
+        if (minFree < 16 * 1024 && minFree < lastMin) {
+            Serial.printf("[Health] LOW internal RAM: min %u KB (state %d, radio %s, ota %s)\n", (unsigned)(minFree / 1024),
+                          (int)agent.state(), gRadio.active() ? "on" : "off", gOta.busy() ? "busy" : "idle");
+        }
+        lastMin = minFree;
+    }
+    gMusic.uploadTick(millis());
+    static bool uploadWas = false;
+    if (uploadWas && !gMusic.uploading()) Serial.setRxBufferSize(kRxBuf);  // the 10 KB back (the PC now waits for OK)
+    uploadWas = gMusic.uploading();
+    // a song from ESP32-AI Studio comes 1 KB per console line, each waiting for its ACK: poll fast meanwhile
+    vTaskDelay(pdMS_TO_TICKS(gMusic.uploading() ? 1 : 20));
+}
