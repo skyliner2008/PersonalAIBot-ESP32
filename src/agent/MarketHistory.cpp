@@ -236,6 +236,7 @@ bool fetchTradingView(std::vector<TvJob>& jobs, String& err) {
         tls.stop();
         return false;
     }
+    const uint32_t tConnect = millis() - t0;
     // one chart session per symbol, all on this connection: the replies come together
     setStage("market_chart: request");
     const uint32_t tag = esp_random() & 0xFFFFFF;
@@ -265,6 +266,7 @@ bool fetchTradingView(std::vector<TvJob>& jobs, String& err) {
     setStage("market_chart: read");
     PsString msg;
     size_t open = jobs.size();
+    uint32_t parseMs = 0;
     while (open && readMessage(tls, msg, deadline)) {
         size_t pos = 0, start = 0, n = 0;
         while (mkt::nextTvMessage(msg.data(), msg.size(), pos, start, n)) {
@@ -275,7 +277,10 @@ bool fetchTradingView(std::vector<TvJob>& jobs, String& err) {
             }
             if (n < 8 || *p != '{') continue;
             JsonDocument d(JsonPsramAllocator::instance());
-            if (deserializeJson(d, p, n)) continue;
+            const uint32_t tp = millis();
+            const bool bad = (bool)deserializeJson(d, p, n);
+            parseMs += millis() - tp;
+            if (bad) continue;
             const char* m = d["m"] | "";
             const char* sid = d["p"][0] | "";
             TvJob* job = nullptr;
@@ -313,11 +318,13 @@ bool fetchTradingView(std::vector<TvJob>& jobs, String& err) {
                 const char* mode = d["p"][3] | "";
                 if (!strncmp(mode, "delayed_streaming_", 18)) job->info.delayMin = atoi(mode + 18) / 60;
                 job->done = true;
+                job->doneMs = millis() - t0;
                 open--;
             } else if (!strcmp(m, "symbol_error") || !strcmp(m, "series_error")) {
                 job->badSymbol = !strcmp(m, "symbol_error");
                 job->err = String("TradingView ") + m;
                 job->done = true;
+                job->doneMs = millis() - t0;
                 open--;
             }
         }
@@ -325,13 +332,22 @@ bool fetchTradingView(std::vector<TvJob>& jobs, String& err) {
     sendFrame(tls, 0x8, "", 0);
     tls.stop();
     String line;
+    bool mixed = false;  // several timeframes in one request (market_chart signals): name each one's
+    for (const TvJob& j : jobs) mixed = mixed || j.tf != jobs[0].tf;
+    const uint32_t tTotal = millis() - t0;
     for (TvJob& j : jobs) {
         line += ' ';
+        if (mixed) {
+            line += j.tf->key;
+            line += '/';
+        }
         line += j.symbol;
         line += j.badSymbol ? "=unknown" : (j.out->empty() ? "=none" : "=" + String((unsigned)j.out->size()));
+        if (j.done) line += "@" + String(j.doneMs / 1000.0f, 1) + "s";
         if (!j.badSymbol && j.out->empty() && j.err.isEmpty()) j.err = j.done ? "TradingView: no bars" : "TradingView: timeout";
     }
-    Serial.printf("[Chart] %s:%s in %lu ms%s%s\n", jobs[0].tf->key, line.c_str(), (unsigned long)(millis() - t0),
+    Serial.printf("[Chart] %s:%s in %lu ms (connect %lu, json %lu)%s%s\n", mixed ? "mixed" : jobs[0].tf->key,
+                  line.c_str(), (unsigned long)tTotal, (unsigned long)tConnect, (unsigned long)parseMs,
                   err.length() ? " - " : "", err.c_str());
     return err.isEmpty();
 }

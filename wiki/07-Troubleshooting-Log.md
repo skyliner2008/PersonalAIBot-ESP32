@@ -92,6 +92,31 @@ This page documents common issues encountered during development and their solut
 
 ---
 
+## T143: SMC + สัญญาณกลยุทธ์ + sentiment / เศรษฐกิจ + แจ้งเตือนตาม indicator (พอร์ตจากแอปมือถือ เฟส 2)
+
+**วันที่:** 2026-10-30 · **ผู้ใช้:** "เริ่มทั้งหมดได้เลย" (ต่อจาก T142: SMC ที่ผู้ใช้เขียนเอง, strategy signals, sentiment, FRED, แจ้งเตือนตาม indicator — ไม่เอา backtest / Harmonic / Elliott)
+**ทำ:** `util/SmcMath.h` (พอร์ต `automation/smc` ทั้งชุด: structure + IDM, FVG, OB, liquidity + ดาว, sweeps, attack force, walls + confluence) ·
+`util/MarketSignals.h` (ADX, 5 กลยุทธ์ + gate แท่งยืนยัน + น้ำหนักตาม regime, fear & greed) · `util/IndicatorAlert.h` · `agent/MarketViews.cpp`
+(`market_chart` view smc / signals) · `agent/MarketSentiment.cpp` (`market_sentiment` tool ใหม่) · `price_alert condition/timeframe` · การ์ดกราฟมีกล่อง OB/FVG ·
+แถบ (Bars) ตั้งสเกลเต็มได้ (`g.ref[1]`) · จอกระดิ่งแสดงเงื่อนไข + แก้ระดับ RSI · `Wanted`/`loadAll` ย้ายเข้า `MarketHistory.h` (timeframe ต่อรายการ, `exact`)
+**ตรวจความตรงกับแอป:** เขียน unit test ชั่วคราวใน `composeApp` ให้ Kotlin `SmcEngine` dump ผลบนแท่งจริง 5 ชุด (BTC 1h, ทอง 4h, PTT 1d, AAPL 1d, ETH 15m) แล้วเทียบกับ C++ →
+**ตรงทุกค่า** (ต่างแค่หลักสุดท้ายของการพิมพ์ `%.6g`) — ลบเทสต์ชั่วคราวแล้ว; ทอง 4h + PTT 1d เก็บไว้เป็น fixture (`host_tests/data/`) ใน `smc_matches_the_app`
+**เจอระหว่างทำ:**
+- **CNN Fear & Greed** API ตอบ 418 "I'm a teapot. You're a bot." กับทุกอย่างที่ไม่ใช่เบราว์เซอร์ (แอปมือถือใส่ header ปลอมเป็น Chrome) — บอร์ดไม่ปลอมตัว →
+  คำนวณดัชนีเองจากองค์ประกอบเดียวกันบน TradingView (`SP:SPX`, `TVC:VIX`, `USI:PCC`, `NASDAQ:TLT`, `AMEX:HYG`, `NASDAQ:IEF`)
+- **FRED** `fredgraph.csv` ค้าง 15-20 วิ กับ User-Agent ที่ไม่ใช่ curl (แอปใส่ `curl/8.0`) → TradingView มีชุด `FRED:CPIAUCSL` / `ECONOMICS:USIRYY` … ผ่าน websocket เดิม (10 ชุดใน 1.7 วิ ไม่ต้องมี key ไม่ต้องเพิ่ม CA)
+- `smc::atr` ชนกับ `mkt::atr` (ADL หาเจอทั้งสองเพราะ `Bars` อยู่ใน namespace `mkt`) → `smc::atrOf`
+- แอปนับ OB เดียวกันซ้ำ (หลาย swing ที่ถูกทะลุชี้แท่ง OB เดียวกัน) — คงไว้เพื่อให้คะแนนตรงกับ indicator แต่ผลที่ส่งโมเดลรวม OB ที่แท่งซ้ำกันเป็นอันเดียว
+- **บั๊กในแอป (Kotlin):** `SmcWallBuilder` เขียน `if (near) 1 else 0 + if (event) 2 else 0` → เมื่อราคาอยู่ที่โซน คะแนน sweep/run 2 แต้มหายไป (operator precedence) —
+  บอร์ดนับทั้งสองตามที่ indicator ตั้งใจ (บนข้อมูลทดสอบยังไม่เจอกรณีนี้ คะแนนจึงตรงกัน) · แอปยังไม่ได้แก้
+- SMC ตอนราคาหลุดกรอบ structure แต่ยังไม่นับเป็น BOS (ยังไม่กวาด inducement) ได้ `position_pct` -152 % → ผลบอกเป็นข้อความ + subtitle "ใต้ structure low"
+- `AgentDevice.cpp` มี**ไบต์ NUL จริง**ใน `dst[n] = '<NUL>';` ตั้งแต่ T141 (สคริปต์ Python แปลง `\0`) — คอมไพล์ผ่านแต่ grep มองเป็นไฟล์ binary → แก้เป็น `'\0'`
+- คำอธิบาย tool +1,036 ไบต์ (15,882 → 16,918) → เพดานเทส 16,000 → 17,000 (+ vehicle 17,600) · ชุดการเงินปิดได้ด้วย `set finance 0`
+- log `[Chart]` บอกเวลาที่แต่ละสัญลักษณ์เสร็จ (`@3.2s`), เวลา connect และเวลา parse JSON — stocks 5.4 วิ เป็นเวลาที่ TradingView ส่ง (JSON บนบอร์ดแค่ 0.2 วิ)
+**ทดสอบบนบอร์ด (COM3):** SMC BTC 15m 1.6 วิ / ทอง 4h · signals BTC 4 กรอบ 3.9 วิ / PTT 1d · stocks F&G 18 (กลัวสุดขีด) · crypto ETH (L/S รายย่อย 2.94, รายใหญ่ 1.66) ·
+economy 10 ชุด + ย้อนหลังเงินเฟ้อสหรัฐ · ตั้งแจ้งเตือน RSI / MACD / CHoCH + condition ผิด → error · จอกระดิ่งแสดงเงื่อนไข · แก้ RSI จากจอ → รอบตรวจถัดไปพูดแจ้งเตือน ·
+`ask` ผ่าน AI 5 คำถามตอบถูกจากข้อมูล · ลบแจ้งเตือนทดสอบออกหมดแล้ว · host tests 3,209 ✓ · build 2 env ✓
+
 ## T142: กราฟแท่งเทียน + วิเคราะห์จากแท่งเทียนย้อนหลัง (`market_chart`) — พอร์ตจากแอปมือถือ
 
 **วันที่:** 2026-10-30 · **ผู้ใช้:** "ต้องการเพิ่ม tool ด้านวิเคราะห์การเงิน ซึ่งจะมีการดึงข้อมูลแท่งเทียนย้อนหลัง" → ตรวจ tool การเงิน 45 ตัวของแอปมือถือ

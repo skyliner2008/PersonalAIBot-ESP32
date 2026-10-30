@@ -74,7 +74,11 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 | `market_scan(market, type, limit?)` | หุ้นไทย / หุ้นสหรัฐ / คริปโต (Binance USDT): ขึ้นแรง, ลงแรง, วอลุ่มพุ่ง, RSI ขายมากเกิน/ซื้อมากเกิน | TradingView `POST /{thailand|america|crypto}/scan` + filter (ตัด `.R`/`.F` ซ้ำ) |
 | `economic_calendar(range?, impact?)` | ข่าวเศรษฐกิจสำคัญ today/tomorrow/week **เวลาไทย** (`date` + `when_th`) + forecast/previous — การ์ดแสดงเฉพาะที่ยังไม่ถึง; ไม่มีค่า actual; นาฬิกายังไม่ซิงก์ = ไม่ตอบ | `nfs.faireconomy.media/ff_calendar_thisweek.json` (แคช 30 นาที เพราะจำกัดจำนวนครั้ง) |
 | `position_size(balance, entry, stop_loss, risk_percent?, symbol?, contract_size?)` | ขนาด lot ตามความเสี่ยง (XAU 100 oz, XAG 5000, FX 100k, หุ้น/คริปโต 1) | คำนวณบนบอร์ด |
+| `market_chart(..., view: "smc")` **(T143)** | **SMC — indicator ของผู้ใช้เอง "SMC & Multi-TF Order Blocks Sweeps V8.3 / V11.29"** (พอร์ตจาก `automation/smc` ของแอปมือถือ → `util/SmcMath.h`, ผลตรงกับ Kotlin ทุกตัวเลขบนแท่งจริง 5 ชุด): โครงสร้าง BOS (SMS/BMS) / CHoCH + inducement, premium/discount, order block (ต้องมี FVG ยืนยัน, กรองตามทิศโครงสร้าง) 3 อันใกล้ราคาต่อฝั่ง, FVG, liquidity (equal highs/lows + swing, 0-5 ดาว), sweep / attack force ของแท่งล่าสุด, confluence ต่อฝั่ง /10 · **ค่าเริ่มต้น 15m** (main TF ของ indicator) · การ์ด = แท่งเทียน + กล่อง OB (ทึบ) / FVG (ขอบจุด) เขียว = demand แดง = supply + เส้นประ structure high/low | แท่งเทียนชุดเดียวกับ `market_chart` |
+| `market_chart(..., view: "signals")` **(T143)** | **5 กลยุทธ์โหวต** (แบบ `StrategySignalProvider` ของแอป): โมเมนตัม 20 แท่ง, ตามเทรนด์ EMA50/200, กลับตัว RSI 30/70 ที่ Bollinger, เบรก Donchian 20, ใกล้จุดสูงสุดของช่วง (≥ 98 % / ≤ 90 %) · นับเฉพาะเมื่อ**แท่งล่าสุดยืนยัน** (ตัวแท่ง/ATR, ตำแหน่งปิด, ไส้) · น้ำหนักตาม**สภาพตลาด** (ADX14 + ความกว้าง Bollinger: เทรนด์ / ไซด์เวย์ / ผันผวน) → ซื้อแรง…ขายแรง · ไม่ใส่ timeframe = **15m + 1h + 4h + 1d** ในตารางเดียว (+ สรุปว่าหลายกรอบเวลาตรงกันไหม) | เหมือนกัน (หลายกรอบเวลาใน connection เดียว) |
+| `market_sentiment(topic, symbol?)` **(T143)** | `stocks` = **ดัชนีกลัว/โลภหุ้นสหรัฐที่บอร์ดคำนวณเอง** จาก 5 องค์ประกอบแบบ CNN (S&P 500 เทียบเฉลี่ย 125 วัน, VIX เทียบ 50 วัน, put/call 5 วัน, หุ้นเทียบพันธบัตร 20 วัน, HYG/IEF 20 วัน — แต่ละตัว = เปอร์เซ็นไทล์ใน 1 ปี) การ์ดแถบ 0-100 · `crypto` = Fear & Greed (+ เมื่อวาน / 7 วันก่อน), มูลค่าตลาดรวม + dominance, **Binance futures long/short** (รายย่อย, รายใหญ่, taker) + การอ่านแบบแอป (squeeze / ไปทางเดียวกัน) · `economy` = เงินเฟ้อ (+ พื้นฐาน) ดอกเบี้ย Fed ว่างงาน NFP GDP ยีลด์ 10 ปี **สหรัฐ + เงินเฟ้อ ดอกเบี้ย GDP ไทย** · `symbol` = ย้อนหลัง 12 ค่าของชุดเดียว (`us_inflation`, `fed_rate`, `th_rate`, `FRED:UNRATE`, `ECONOMICS:USCCI` …) เป็นกราฟเส้น | TradingView websocket (`SP:SPX`, `TVC:VIX`, `USI:PCC`, `NASDAQ:TLT`, `AMEX:HYG`, `NASDAQ:IEF`, `ECONOMICS:*`, `FRED:*`) · `api.alternative.me/fng` · `api.coingecko.com/api/v3/global` · `fapi.binance.com/futures/data/*` (3 คำขอ TLS เดียว keep-alive) |
 | `price_alert(action, symbol?, above?, below?, id?)` | ตั้งเตือนราคา (สูงสุด 10) — task webTools ตรวจ **ทุก 2 นาที** (batch เดียว) แล้ว AI **พูดแจ้งเตือน** + เสียงกริ่ง + ข้อความบนหน้าตา (ปลุกจากโหมดพักด้วย) | `<agentDir>/alerts.json` + `/global/scan` |
+| `price_alert(..., condition, timeframe?)` **(T143)** | **แจ้งเตือนตาม indicator** บนแท่งที่ปิดแล้วของ timeframe (ค่าเริ่มต้น 1h): `rsi` (above/below = ระดับ RSI), `macd_up/down` (MACD ตัดเส้นสัญญาณ), `ema_up/down` (EMA20 ตัด EMA50), `choch_up/down` (SMC change of character) · เตือน**เมื่อเปลี่ยนเข้าเงื่อนไข** (เก็บ `state` ใน alerts.json) — ตั้งตอนเงื่อนไขเป็นจริงอยู่แล้ว = รอครั้งถัดไป (ผลบอก `already_true`) · ตรวจทุก 2 นาทีพร้อมแจ้งเตือนราคา: แท่งเทียนของทุกรายการใน connection เดียว · จอกระดิ่งแสดงเงื่อนไข แก้ระดับ RSI ได้ (เส้นตัดกันแก้ไม่ได้ ลบได้) | `util/IndicatorAlert.h` + TradingView websocket |
 
 ทุก tool การเงินใส่ note ให้ AI ปิดท้ายด้วยข้อเสนอที่ช่วยต่อได้ 1 อย่าง (ตั้งแจ้งเตือนราคา วิเคราะห์เพิ่ม เทียบตัวอื่น ข่าวที่กระทบ) —
 **ไม่ลงท้ายด้วย "ไม่ใช่คำแนะนำการลงทุน"** แล้ว (T139: ผู้ใช้ไม่ต้องการ; เดิมทุกคำตอบลงท้ายแบบนี้)
@@ -132,7 +136,8 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 | กล้อง / วิเคราะห์ภาพ / ไฟล์ในเครื่อง | บอร์ดไม่มีกล้อง; ไฟล์ใช้ `notes` แทน |
 | agent ซ้อน (`agent_task`, `system_*_agent_tool`) | Live API มี session เดียว + RAM จำกัด |
 | backtest / Harmonic / Elliott | ผู้ใช้ไม่ต้องการ (2026-10-30) — แท่งเทียนดึงได้แล้ว (`market_chart`, T142) |
-| SMC (order blocks, liquidity, sweeps, structure — indicator ของผู้ใช้เอง) / strategy signals / sentiment (CNN, CoinGecko, Binance) / FRED / แจ้งเตือนตาม indicator | แผนเฟสถัดไป: ใช้แท่งเทียนจาก `market_chart` (T142) |
+| SMC / strategy signals / sentiment / FRED / แจ้งเตือนตาม indicator | **ทำแล้ว (T143)**: `market_chart` view smc / signals, `market_sentiment`, `price_alert condition` · CNN Fear & Greed ของจริงใช้ไม่ได้ (API ตอบอุปกรณ์ว่า "You're a bot" 418 — บอร์ดไม่ปลอมตัวเป็นเบราว์เซอร์) → คำนวณเองจากองค์ประกอบเดียวกัน · FRED CSV ค้างทุก client ที่ไม่ใช่ curl → ใช้ชุด `FRED:` / `ECONOMICS:` ของ TradingView แทน (ไม่ต้องมี API key) |
+| SMC แบบหลายกรอบเวลา (MTF sweeps / liquidity ของแอป) | ยังไม่ทำ — `view smc` เป็นกรอบเวลาเดียว (ถามทีละกรอบได้) |
 | summarize / translate | โมเดล Gemini ทำได้เองโดยไม่ต้องมี tool |
 
 ## สถาปัตยกรรม
@@ -167,6 +172,10 @@ task webTools (core 1, prio 2 → 4 ระหว่างทำงานให�
 | `price_alert add` | ~1.3 วิ |
 | `market_chart` 1 สัญลักษณ์ (T142) | ~1.1–1.7 วิ (ชื่อย่อหุ้น = 3 ตัวเลือกใน connection เดียว ~1.8–3.5 วิ) |
 | `market_chart` + `compare` 4 ตัว | ~3.1–3.7 วิ (เดิมทีละ connection ~9 วิ) |
+| `market_chart` view smc (T143) | ~1.5–1.6 วิ (300 แท่ง) |
+| `market_chart` view signals 4 กรอบเวลา | ~3.9 วิ (1 กรอบ ~1–4 วิ ตามจำนวนตัวเลือกของชื่อย่อ) |
+| `market_sentiment` stocks / crypto / economy | ~5.4 วิ (6 × 420 แท่งรายวัน — TradingView ส่งช้าเอง, JSON บนบอร์ด 0.2 วิ) / ~4.3 วิ (2 handshake + Binance 3 คำขอใน TLS เดียว 0.9 วิ) / ~1.7 วิ (10 ชุด) |
+| `price_alert` add แบบ indicator | ~0.9–2.3 วิ · รอบตรวจ 2 นาทีที่มี indicator 3 รายการ ~2.7 วิ |
 | `get_oil_price` / `get_location` / `economic_calendar` | ~2–3 วิ |
 | `market_overview` (+ Fear&Greed) | ~3.5 วิ |
 | `search_knowledge` | ~8 วิ |
@@ -184,4 +193,9 @@ task webTools (core 1, prio 2 → 4 ระหว่างทำงานให�
 - (T142, 2026-10-30) "ดูกราฟทองคำ 4 ชั่วโมงให้หน่อย แนวรับแนวต้านอยู่ตรงไหน" → `market_chart {"symbol":"OANDA:XAUUSD","timeframe":"4h"}` →
   "ขาลงอย่างชัดเจน… แนวรับที่ใกล้ที่สุด… แนวต้าน 4,032… ตั้งแจ้งเตือนราคาเผื่อถึงแนวรับไหม" · "แล้วบิทคอยน์รายวันล่ะ มีความสัมพันธ์กับทองแค่ไหน" →
   `{"symbol":"BINANCE:BTCUSDT","compare":"OANDA:XAUUSD","timeframe":"1d"}` → "0.55 ไปทางเดียวกันเป็นส่วนใหญ่"
+- (T143, 2026-10-30) "วิเคราะห์ SMC บิทคอยน์ มี order block ตรงไหน" → `market_chart {"view":"smc","symbol":"BINANCE:BTCUSDT"}` → "โครงสร้างยังไม่ชัด…
+  Supply OB ที่ยังไม่ถูกทดสอบ 78,817–79,023… FVG ขาลง… ฝั่งขาลงได้เปรียบ… ตั้งแจ้งเตือนที่โซนนี้ไหม" · "ตลาดหุ้นอเมริกากลัวหรือโลภ" → `market_sentiment stocks`
+  → "กลัวสุดขีด 18 คะแนน…" · "เงินเฟ้อกับดอกเบี้ยสหรัฐล่าสุด แล้วของไทยล่ะ" → 3.7 % / 4 % / 2.82 % / 1 % (เรียกทีละชุด 4 ครั้ง → prompt บอกให้เรียก
+  ภาพรวมครั้งเดียว) · "ตั้งเตือนเมื่อ MACD ทองคำ 4 ชั่วโมงตัดขึ้น" → `price_alert {"condition":"macd_up","timeframe":"4h",...}` · แก้ระดับ RSI จากจอกระดิ่ง →
+  รอบตรวจถัดไปพูด "RSI 5 นาทีของบิทคอยน์ขึ้นไปแตะ…"
 - แจ้งเตือนราคา: ตั้ง BTC below 999999 → 20 วิต่อมา `[Alert] ราคาบิทคอยน์ ลงถึง …` แล้วรายการถูกลบเอง

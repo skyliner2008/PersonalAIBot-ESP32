@@ -18,10 +18,10 @@
 namespace webtools {
 
 namespace {
-
 constexpr uint16_t kUp = 0x2FE8, kDown = 0xF9E7;
 constexpr int kCorrBars = 100;  // returns compared for the correlation
 constexpr int kMaxCompare = 4;
+}  // namespace
 
 /** 6 significant digits: enough for any price, short in the JSON the model reads. */
 double sig6(double v) {
@@ -55,62 +55,47 @@ void fmtPrice(char* out, size_t n, double v) {
     }
 }
 
-/** One symbol the model named: its EXCHANGE:SYMBOL candidates (alias / ticker on SET, NASDAQ, NYSE) and bars. */
-struct Wanted {
-    String token;
-    String cands[3];
-    int nc = 0;
-    const char* alias = nullptr;
-    mkt::Bars bars[3];
-    // the outcome
-    bool ok = false;
-    String used, name, err;
-    BarsInfo info;
-    mkt::Bars* chosen = nullptr;
-};
-
-/**
- * Every candidate of every symbol in one TradingView request, the first candidate with bars wins; Yahoo
- * for a symbol only when TradingView could not answer for it (not when it said the symbol does not exist).
- */
-void loadAll(std::vector<Wanted>& want, const mkt::Timeframe& tf, uint16_t mainBars, uint16_t otherBars) {
+void loadAll(std::vector<Wanted>& want, bool exact) {
     std::vector<TvJob> jobs;
-    for (size_t w = 0; w < want.size(); w++) {
-        Wanted& x = want[w];
-        x.nc = tickerCandidates(x.token, x.cands, &x.alias);
+    for (Wanted& x : want) {
+        if (exact) {
+            x.cands[0] = x.token;
+            x.nc = 1;
+        } else {
+            x.nc = tickerCandidates(x.token, x.cands, &x.alias);
+        }
         for (int i = 0; i < x.nc; i++) {
             TvJob j;
             j.symbol = x.cands[i];
-            j.tf = &tf;
-            j.bars = w == 0 ? mainBars : otherBars;
-            j.out = &x.bars[i];
+            j.tf = x.tf;
+            j.bars = x.bars;
+            j.out = &x.got[i];
             jobs.push_back(j);
         }
     }
     String connErr;
     fetchTradingView(jobs, connErr);
     size_t k = 0;
-    for (size_t w = 0; w < want.size(); w++) {
-        Wanted& x = want[w];
+    for (Wanted& x : want) {
         bool allUnknown = x.nc > 0;
         for (int i = 0; i < x.nc; i++, k++) {
             const TvJob& j = jobs[k];
             allUnknown = allUnknown && j.badSymbol;
-            if (!x.ok && !x.bars[i].empty()) {
+            if (!x.ok && !x.got[i].empty()) {
                 x.ok = true;
                 x.used = x.cands[i];
                 x.info = j.info;
-                x.chosen = &x.bars[i];
+                x.chosen = &x.got[i];
             }
             if (x.err.isEmpty() && j.err.length()) x.err = j.err;
         }
         if (connErr.length()) x.err = connErr;
         for (int i = 0; i < x.nc && !x.ok && !allUnknown; i++) {
             String yErr;
-            if (fetchYahoo(x.cands[i], tf, w == 0 ? mainBars : otherBars, x.bars[i], x.info, yErr)) {
+            if (fetchYahoo(x.cands[i], *x.tf, x.bars, x.got[i], x.info, yErr)) {
                 x.ok = true;
                 x.used = x.cands[i];
-                x.chosen = &x.bars[i];
+                x.chosen = &x.got[i];
             } else if (i == x.nc - 1) {
                 x.err += " / " + yErr;
             }
@@ -123,11 +108,14 @@ void loadAll(std::vector<Wanted>& want, const mkt::Timeframe& tf, uint16_t mainB
     }
 }
 
+namespace {
 const char* posTh(double c, double e) { return c >= e ? "ราคาเหนือ" : "ราคาใต้"; }
-
 }  // namespace
 
 void runMarketChart(JsonObjectConst a, JsonDocument& out, CardData& card) {
+    const String view = a["view"] | "chart";
+    if (view == "smc") return runSmcView(a, out, card);
+    if (view == "signals") return runSignalsView(a, out, card);
     const String symbol = a["symbol"] | "";
     const mkt::Timeframe* tf = mkt::timeframe(a["timeframe"] | "1d");
     if (symbol.isEmpty()) {
@@ -141,6 +129,8 @@ void runMarketChart(JsonObjectConst a, JsonDocument& out, CardData& card) {
     // the main symbol + up to 4 to compare, all in one request
     std::vector<Wanted> want(1);
     want[0].token = symbol;
+    want[0].tf = tf;
+    want[0].bars = tf->bars;
     const String list = a["compare"] | "";
     for (int from = 0; from < (int)list.length() && (int)want.size() <= kMaxCompare;) {
         int comma = list.indexOf(',', from);
@@ -151,8 +141,10 @@ void runMarketChart(JsonObjectConst a, JsonDocument& out, CardData& card) {
         if (tok.isEmpty()) continue;
         want.emplace_back();
         want.back().token = tok;
+        want.back().tf = tf;
+        want.back().bars = kCorrBars + 40;
     }
-    loadAll(want, *tf, tf->bars, kCorrBars + 40);
+    loadAll(want);
     if (!want[0].ok) {
         setError(out, ("ดึงแท่งเทียนไม่ได้: " + want[0].err).c_str());
         return;

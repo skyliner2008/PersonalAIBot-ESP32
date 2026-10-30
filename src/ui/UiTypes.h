@@ -54,8 +54,10 @@ struct UiAlert {
     uint32_t due = 0;     // reminder / timer: unix epoch
     uint8_t repeat = 0;   // sched::Repeat
     char label[96] = "";  // reminder text / price alert name
-    double target = 0;    // price alert: the price it waits for
+    double target = 0;    // price alert: the price it waits for (RSI alert: the level)
     bool above = true;    // price alert: rises to (true) / falls to
+    char what[64] = "";   // T143: an indicator condition ("MACD 4 ชั่วโมง ตัดขึ้น"); "" = a plain price
+    bool editable = true; // the target can be changed (not on a cross)
 };
 
 /** T141: a change made on the alerts screen, done by the agent task. */

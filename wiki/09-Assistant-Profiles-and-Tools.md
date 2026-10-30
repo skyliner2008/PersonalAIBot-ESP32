@@ -81,6 +81,8 @@ status: implemented
 ## 3. Tools ของผู้ช่วยส่วนตัว (44 ฟังก์ชัน + Google Search ถ้าเปิด)
 
 > v3.1: +5 tools ข้อมูลสดพร้อมการ์ดกราฟิก — `get_weather`, `get_oil_price`, `get_market_quote`, `convert_currency`, `get_news` → [[11-Data-Tools-and-Cards]]
+> T143: + `market_sentiment` ในชุดการเงิน · `market_chart` + `view` (smc / signals) · `price_alert` + `condition` / `timeframe` (wiki 11)
+
 > T142: + `market_chart` ในชุดการเงิน (กราฟแท่งเทียน + แนวรับ/แนวต้าน + correlation — wiki 11)
 
 > v3.2: +14 tools พอร์ตจาก PersonalAIBot — `calculate`, `convert_units`, `get_world_time`, `get_location`, `search_knowledge`, `notes` + finance pack (`market_overview`, `market_analysis`, `market_scan`, `economic_calendar`, `position_size`, `price_alert`) (MT5 `mt5_account`/`mt5_trade` เคยมีใน v3.2–v3.3 — ถอดออกใน v3.4) → [[11-Data-Tools-and-Cards#2) Tools ที่พอร์ตจาก PersonalAIBot (`composeApp`)]]

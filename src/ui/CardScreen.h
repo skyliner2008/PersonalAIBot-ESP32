@@ -59,6 +59,13 @@ struct CardData {
         float support[2] = {NAN, NAN}, resistance[2] = {NAN, NAN};
         uint32_t from = 0, to = 0;       // first / last bar (unix)
         bool intraday = false;           // the time labels show the hour
+        // SMC (T143): order block / FVG boxes from bar `from` to the right edge, behind the candles
+        struct Zone {
+            float top = NAN, bottom = NAN;
+            uint8_t from = 0;
+            bool bull = true, ob = true;  // demand / supply; order block / fair value gap
+        } zone[4];
+        bool smc = false;                // legend: the boxes instead of the EMAs
     } k;
 
     // ---- rows: oil / quotes / news / bars (value, extra = value text, color) ----

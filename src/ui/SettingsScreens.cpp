@@ -1692,7 +1692,9 @@ void openAlerts() {
         for (const UiAlert& a : gAlertList) {
             String value;
             String title = a.label;
-            if (a.kind == UiAlert::Price) {
+            if (a.kind == UiAlert::Price && a.what[0]) {  // T143: RSI / MACD / EMA / CHoCH
+                value = a.what;
+            } else if (a.kind == UiAlert::Price) {
                 value = String(a.above ? "ขึ้นถึง " : "ลงถึง ") + priceTh(a.target);  // the Thai font has no ≥ / ≤
             } else if (a.kind == UiAlert::Timer) {
                 if (!title.length()) title = "ตัวจับเวลา";
@@ -1720,7 +1722,34 @@ void openAlertDetail(UiAlert::Kind kind, uint32_t id) {
             l.add("รายการนี้ไม่มีแล้ว", "ลบไปแล้ว / ครบเวลาแล้ว", nullptr);
             return;
         }
-        if (kind == UiAlert::Price) {
+        if (kind == UiAlert::Price && a->what[0]) {  // T143: an indicator condition
+            l.add(a->label, "", nullptr);
+            l.add("เงื่อนไข", a->what, nullptr).valueColor = ui::WARN;
+            if (a->editable) {  // RSI: the level
+                l.addSubmenu("ระดับ RSI", String((int)lround(a->target)), [id]() {
+                    const UiAlert* a = findAlert(UiAlert::Price, id);
+                    if (!a) return;
+                    static char initial[8];
+                    snprintf(initial, sizeof(initial), "%d", (int)lround(a->target));
+                    KeyboardScreen::Options o;
+                    o.title = "ระดับ RSI (1-99)";
+                    o.initial = initial;
+                    o.maxBytes = 2;
+                    o.asciiOnly = true;
+                    gKeyboard.open(o, [id](const String& t) {
+                        const double level = atof(t.c_str());
+                        if (!(level >= 1 && level <= 99)) return;
+                        UiAlertEdit e;
+                        e.op = UiAlertEdit::Update;
+                        e.kind = UiAlert::Price;
+                        e.id = id;
+                        e.target = level;
+                        sendAlertEdit(e);
+                    });
+                }).valueColor = ui::WARN;
+            }
+            l.add("ตรวจ", "ทุก 2 นาที เมื่อแท่งปิด", nullptr);
+        } else if (kind == UiAlert::Price) {
             l.add(a->label, "", nullptr);
             l.addSubmenu(a->above ? "แจ้งเมื่อขึ้นถึง" : "แจ้งเมื่อลงถึง", priceTh(a->target), [id]() {
                 const UiAlert* a = findAlert(UiAlert::Price, id);

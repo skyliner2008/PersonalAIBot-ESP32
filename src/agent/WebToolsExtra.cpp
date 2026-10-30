@@ -10,10 +10,12 @@
 
 #include "../app/Settings.h"
 #include "../util/Calc.h"
+#include "../util/IndicatorAlert.h"
 #include "../util/JsonFile.h"
 #include "../util/NoteSearch.h"
 #include "../util/TimeFmt.h"
 #include "../util/Units.h"
+#include "MarketHistory.h"
 #include "WebTools.h"
 #include "WebToolsCommon.h"
 
@@ -910,6 +912,12 @@ size_t listPriceAlerts(const char* dir, std::vector<PriceAlertInfo>& out) {
         copyStr(i.name, sizeof(i.name), al["name"] | (const char*)i.symbol);
         i.above = !al["above"].isNull();
         i.target = i.above ? al["above"].as<double>() : (al["below"] | 0.0);
+        const ialert::Cond c = ialert::parse(al["cond"] | "");
+        if (c != ialert::Cond::Price) {
+            const mkt::Timeframe* tf = mkt::timeframe(al["tf"] | "1h");
+            ialert::describe(c, tf ? tf->label : "", i.target, i.above, i.what, sizeof(i.what));
+            i.editable = c == ialert::Cond::Rsi;
+        }
         out.push_back(i);
     }
     return out.size();
@@ -938,6 +946,8 @@ bool setPriceAlertTarget(const char* dir, int id, double target) {
     if (!jsonfile::load(path.c_str(), db)) return false;
     for (JsonObject al : db["alerts"].as<JsonArray>()) {
         if ((al["id"] | 0) != id) continue;
+        const ialert::Cond c = ialert::parse(al["cond"] | "");
+        if (c != ialert::Cond::Price && (c != ialert::Cond::Rsi || target >= 100)) return false;
         al[al["above"].isNull() ? "below" : "above"] = target;
         return jsonfile::save(path.c_str(), db);
     }
@@ -951,6 +961,84 @@ bool hasPriceAlerts(const ToolEnv& env) {
     return jsonfile::load(filePath(env, "alerts.json").c_str(), db) && db["alerts"].size() > 0;
 }
 
+namespace {
+
+/** T143: an alert on an indicator (RSI level, MACD / EMA cross, SMC CHoCH) on closed bars of a timeframe. */
+void addIndicatorAlert(const String& path, JsonObjectConst a, ialert::Cond cond, JsonDocument& out, CardData& card) {
+    const String sym = a["symbol"] | "";
+    const mkt::Timeframe* tf = mkt::timeframe(a["timeframe"] | "1h");
+    const double above = a["above"] | 0.0, below = a["below"] | 0.0;
+    if (sym.isEmpty()) {
+        setError(out, "ต้องมี symbol");
+        return;
+    }
+    if (!tf) {
+        setError(out, "timeframe ต้องเป็น 5m 15m 1h 4h 1d หรือ 1w");
+        return;
+    }
+    const bool up = above > 0;
+    const double level = up ? above : below;
+    if (cond == ialert::Cond::Rsi && !(level > 0 && level < 100)) {
+        setError(out, "RSI ต้องมี above หรือ below เป็นระดับ RSI 1-99 (เช่น below 30)");
+        return;
+    }
+    std::vector<Wanted> want(1);
+    want[0].token = sym;
+    want[0].tf = tf;
+    want[0].bars = ialert::barsFor(cond);
+    loadAll(want);  // finds the symbol (alias / SET / NASDAQ / NYSE) and its bars; no lock held meanwhile
+    if (!want[0].ok) {
+        setError(out, ("ดึงแท่งเทียนไม่ได้: " + want[0].err).c_str());
+        return;
+    }
+    const ialert::Reading now = ialert::read(cond, *want[0].chosen, level, up);
+    if (!now.ok) {
+        setError(out, "ประวัติราคาสั้นเกินไปสำหรับเงื่อนไขนี้");
+        return;
+    }
+    char what[64];
+    ialert::describe(cond, tf->label, level, up, what, sizeof(what));
+    JsonDocument db(JsonPsramAllocator::instance());
+    AlertsLock lock;
+    if (!loadStore(path, db, out)) return;
+    if (!db["alerts"].is<JsonArray>()) db["alerts"].to<JsonArray>();
+    JsonArray alerts = db["alerts"];
+    if (alerts.size() >= 10) {
+        setError(out, "ตั้งได้สูงสุด 10 รายการ");
+        return;
+    }
+    const int id = db["next"] | 1;
+    JsonObject al = alerts.add<JsonObject>();
+    al["id"] = id;
+    al["symbol"] = want[0].used;
+    al["name"] = want[0].name;
+    al["cond"] = ialert::key(cond);
+    al["tf"] = tf->key;
+    if (cond == ialert::Cond::Rsi) al[up ? "above" : "below"] = level;
+    al["state"] = now.state;
+    db["next"] = id + 1;
+    jsonfile::save(path.c_str(), db);
+    JsonObject r = out["result"].to<JsonObject>();
+    r["id"] = id;
+    r["symbol"] = want[0].used;
+    r["condition"] = what;
+    if (cond == ialert::Cond::Rsi) r["rsi_now"] = round(now.value * 10) / 10;
+    else r["price_now"] = sig6(now.value);
+    if (now.met) {
+        r["already_true"] = cond == ialert::Cond::Rsi ? "ตอนนี้ RSI อยู่ในเงื่อนไขแล้ว: จะเตือนครั้งถัดไปที่กลับเข้าเงื่อนไขอีก"
+                            : (cond == ialert::Cond::ChochUp || cond == ialert::Cond::ChochDown)
+                                ? "CHoCH ล่าสุดเป็นทิศนี้อยู่แล้ว: จะเตือนเมื่อเกิด CHoCH ทิศนี้ครั้งใหม่"
+                                : "ตอนนี้ตัดไปทางนั้นอยู่แล้ว: จะเตือนเมื่อกลับทิศแล้วตัดทางนี้อีกครั้ง";
+    }
+    r["note"] = "บอร์ดตรวจทุก 2 นาทีจากแท่งที่ปิดแล้วและแจ้งด้วยเสียงเมื่อเกิด (ดู/ลบได้ที่กระดิ่งบนจอ)";
+    card.kind = CardData::Text;
+    copyStr(card.title, sizeof(card.title), "ตั้งแจ้งเตือนแล้ว");
+    copyStr(card.big, sizeof(card.big), want[0].name.c_str());
+    snprintf(card.body, sizeof(card.body), "%s • ตรวจทุก 2 นาทีเมื่อแท่งปิด", what);
+}
+
+}  // namespace
+
 void runPriceAlert(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, CardData& card) {
     if (!env.storageDir || !*env.storageDir) {
         setError(out, "ไม่มีที่เก็บข้อมูล (SD/แฟลช)");
@@ -959,6 +1047,13 @@ void runPriceAlert(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, Car
     const String path = filePath(env, "alerts.json");
     JsonDocument db(JsonPsramAllocator::instance());
     String action = a["action"] | "list";
+    bool known = false;
+    const ialert::Cond cond = ialert::parse(a["condition"] | "", &known);
+    if (action == "add" && !known) {
+        setError(out, "condition ต้องเป็น price, rsi, macd_up, macd_down, ema_up, ema_down, choch_up หรือ choch_down");
+        return;
+    }
+    if (action == "add" && cond != ialert::Cond::Price) return addIndicatorAlert(path, a, cond, out, card);
     if (action == "add") {  // the symbol is looked up first: the lock is never held across a request (T141)
         JsonDocument q(JsonPsramAllocator::instance());
         String used, name;
@@ -1023,18 +1118,34 @@ void runPriceAlert(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, Car
         out["result"]["removed"] = removed;
         return;
     }
-    out["result"]["alerts"] = alerts;
     card.kind = CardData::Table;
     copyStr(card.title, sizeof(card.title), "แจ้งเตือนราคา");
     snprintf(card.subtitle, sizeof(card.subtitle), "%u รายการ • ตรวจทุก 2 นาที", (unsigned)alerts.size());
-    for (JsonObjectConst al : alerts) {
-        if (card.rows >= CardData::kMaxRows) break;
+    for (JsonObject al : alerts) {
+        const ialert::Cond c = ialert::parse(al["cond"] | "");
+        char what[64] = "";
+        if (c != ialert::Cond::Price) {
+            const mkt::Timeframe* tf = mkt::timeframe(al["tf"] | "1h");
+            const bool up = !al["above"].isNull();
+            ialert::describe(c, tf ? tf->label : "", up ? al["above"].as<double>() : (al["below"] | 0.0), up, what,
+                             sizeof(what));
+            al["condition"] = what;  // for the model (the stored record keeps its keys)
+        }
+        if (card.rows >= CardData::kMaxRows) continue;
         CardData::Row& r = card.row[card.rows++];
+        if (*what) {
+            snprintf(r.name, sizeof(r.name), "#%d %s • %s", al["id"] | 0, (const char*)(al["name"] | ""), what);
+            copyStr(r.extra, sizeof(r.extra), al["tf"] | "");
+            r.color = 0xFD20;
+            continue;
+        }
         snprintf(r.name, sizeof(r.name), "#%d %s", al["id"] | 0, (const char*)(al["name"] | ""));
         if (!al["above"].isNull()) snprintf(r.extra, sizeof(r.extra), "≥ %.6g", al["above"].as<double>());
         else snprintf(r.extra, sizeof(r.extra), "≤ %.6g", al["below"].as<double>());
         r.color = al["above"].isNull() ? kDown : kUp;
     }
+    for (JsonObject al : alerts) al.remove("state");  // internal
+    out["result"]["alerts"] = alerts;
 }
 
 bool checkPriceAlerts(const ToolEnv& env, String& message) {
@@ -1044,15 +1155,81 @@ bool checkPriceAlerts(const ToolEnv& env, String& message) {
         AlertsLock lock;
         if (!jsonfile::load(path.c_str(), db) || !db["alerts"].size()) return false;
     }
+    // price alerts: one scanner request; indicator alerts (T143): their candles over one TradingView websocket
     std::vector<String> tickers;
-    for (JsonObjectConst al : db["alerts"].as<JsonArrayConst>()) tickers.push_back(al["symbol"] | "");
+    std::vector<Wanted> want;
+    std::vector<int> wantId;
+    for (JsonObjectConst al : db["alerts"].as<JsonArrayConst>()) {
+        const ialert::Cond c = ialert::parse(al["cond"] | "");
+        if (c == ialert::Cond::Price) {
+            tickers.push_back(al["symbol"] | "");
+            continue;
+        }
+        const mkt::Timeframe* tf = mkt::timeframe(al["tf"] | "1h");
+        if (!tf) continue;
+        want.emplace_back();
+        want.back().token = al["symbol"] | "";
+        want.back().tf = tf;
+        want.back().bars = ialert::barsFor(c);
+        wantId.push_back(al["id"] | 0);
+    }
     JsonDocument q(JsonPsramAllocator::instance());
-    if (!scanTickers(tickers, "[\"close\"]", q)) return false;
+    const bool prices = !tickers.empty() && scanTickers(tickers, "[\"close\"]", q);
+    if (!want.empty()) loadAll(want, true);
+    if (!prices && want.empty()) return false;
     AlertsLock lock;  // the screen may have changed it meanwhile: decide on what is stored now
     if (!jsonfile::load(path.c_str(), db) || !db["alerts"].size()) return false;
     JsonArray alerts = db["alerts"];
+    bool changed = false;
     for (size_t i = 0; i < alerts.size(); i++) {
         JsonObject al = alerts[i];
+        const ialert::Cond c = ialert::parse(al["cond"] | "");
+        if (c != ialert::Cond::Price) {
+            const Wanted* w = nullptr;
+            for (size_t k = 0; k < want.size(); k++) w = wantId[k] == (al["id"] | 0) ? &want[k] : w;
+            if (!w || !w->ok) continue;
+            const bool up = !al["above"].isNull();
+            const double level = up ? al["above"].as<double>() : (al["below"] | 0.0);
+            const ialert::Reading now = ialert::read(c, *w->chosen, level, up);
+            const double before = al["state"] | 0.0;
+            if (ialert::fires(c, before, now)) {
+                const mkt::Timeframe* tf = mkt::timeframe(al["tf"] | "1h");
+                const char* tfl = tf ? tf->label : "";
+                const char* nm = al["name"] | "";
+                char buf[220];
+                switch (c) {
+                    case ialert::Cond::Rsi:
+                        snprintf(buf, sizeof(buf), "RSI %s ของ%s %s %.1f แล้ว (ตั้งเตือนไว้ที่ %.0f)", tfl, nm,
+                                 up ? "ขึ้นถึง" : "ลงถึง", now.value, level);
+                        break;
+                    case ialert::Cond::MacdUp:
+                    case ialert::Cond::MacdDown:
+                        snprintf(buf, sizeof(buf), "MACD %s ของ%s ตัด%sเส้นสัญญาณแล้ว (ปิดที่ %.6g)", tfl, nm,
+                                 c == ialert::Cond::MacdUp ? "ขึ้นเหนือ" : "ลงใต้", now.value);
+                        break;
+                    case ialert::Cond::EmaUp:
+                    case ialert::Cond::EmaDown:
+                        snprintf(buf, sizeof(buf), "EMA20 ตัด%s EMA50 บนกราฟ %s ของ%sแล้ว (ปิดที่ %.6g)",
+                                 c == ialert::Cond::EmaUp ? "ขึ้นเหนือ" : "ลงใต้", tfl, nm, now.value);
+                        break;
+                    default:
+                        snprintf(buf, sizeof(buf), "SMC: เกิด CHoCH %s บนกราฟ %s ของ%sแล้ว (ปิดที่ %.6g)",
+                                 c == ialert::Cond::ChochUp ? "ขาขึ้น (เปลี่ยนเป็นโครงสร้างขาขึ้น)" : "ขาลง (เปลี่ยนเป็นโครงสร้างขาลง)",
+                                 tfl, nm, now.value);
+                        break;
+                }
+                message = buf;
+                alerts.remove(i);
+                jsonfile::save(path.c_str(), db);
+                return true;
+            }
+            if (now.ok && now.state != before) {
+                al["state"] = now.state;
+                changed = true;
+            }
+            continue;
+        }
+        if (!prices) continue;
         for (JsonObjectConst row : q["data"].as<JsonArrayConst>()) {
             if (strcmp(row["s"] | "", al["symbol"] | "") != 0) continue;
             const double close = row["d"][0] | 0.0;
@@ -1068,6 +1245,7 @@ bool checkPriceAlerts(const ToolEnv& env, String& message) {
             return true;
         }
     }
+    if (changed) jsonfile::save(path.c_str(), db);
     return false;
 }
 

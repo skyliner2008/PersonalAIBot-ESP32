@@ -167,7 +167,7 @@ bool AgentTools::isBackgroundTool(const char* name) {
     static const char* const kBackground[] = {"get_weather",      "get_oil_price",   "get_market_quote", "convert_currency",
                                               "get_news",         "search_knowledge", "get_location",    "market_overview",
                                               "market_analysis",  "market_scan",     "economic_calendar", "water",
-                                              "market_chart"};
+                                              "market_chart",     "market_sentiment"};
     if (!name) return false;
     for (const char* t : kBackground) {
         if (!strcmp(name, t)) return true;
@@ -462,14 +462,25 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
         };
         declare(d, b, "market_scan", "Stock / crypto screener: top gainers, losers, unusual volume, RSI oversold/overbought.", scan, 3);
         static const char* const kChartTf[] = {"5m", "15m", "1h", "4h", "1d", "1w", nullptr};
+        static const char* const kViews[] = {"chart", "smc", "signals", nullptr};
         static const Param chart[] = {
             {"symbol", "STRING", "Same forms as get_market_quote.", true, nullptr},
-            {"timeframe", "STRING", "Default 1d.", false, kChartTf},
+            {"timeframe", "STRING", "Default 1d (smc 15m, signals 15m-1d).", false, kChartTf},
             {"compare", "STRING", "Comma list (max 4): correlation instead.", false, nullptr},
+            {"view", "STRING", "smc: order blocks, FVG, liquidity, BOS/CHoCH. signals: 5-strategy vote.", false, kViews},
         };
         declare(d, b, "market_chart",
                 "Candlestick chart from price history: trend, support/resistance, EMA/RSI/MACD/ATR/Bollinger.",
-                chart, 3);
+                chart, 4);
+        static const char* const kTopics[] = {"stocks", "crypto", "economy", nullptr};
+        static const Param mood[] = {
+            {"topic", "STRING", nullptr, true, kTopics},
+            {"symbol", "STRING", "crypto: coin (default BTC). economy: one series' history, e.g. us_inflation, fed_rate, "
+                                 "th_rate, FRED:UNRATE.", false, nullptr},
+        };
+        declare(d, b, "market_sentiment",
+                "stocks: fear & greed (S&P 500, VIX, put/call, bonds). crypto: Fear&Greed, market cap, Binance "
+                "long/short. economy: US/Thai inflation, rates, jobs, GDP.", mood, 2);
         static const char* const kRanges[] = {"today", "tomorrow", "week", nullptr};
         static const char* const kImpact[] = {"high", "medium", nullptr};
         static const Param cal[] = {
@@ -488,15 +499,20 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
         };
         declare(d, b, "position_size", "Risk-based position size (lots / shares) for a trade.", ps, 6);
         static const char* const kAlertActions[] = {"add", "list", "remove", nullptr};
+        static const char* const kConds[] = {"price",    "rsi",      "macd_up",  "macd_down",
+                                             "ema_up",   "ema_down", "choch_up", "choch_down", nullptr};
         static const Param alert[] = {
             {"action", "STRING", nullptr, true, kAlertActions},
             {"symbol", "STRING", "Same forms as get_market_quote.", false, nullptr},
-            {"above", "NUMBER", "Alert when price >= this.", false, nullptr},
-            {"below", "NUMBER", "Alert when price <= this.", false, nullptr},
+            {"above", "NUMBER", "Alert when price (rsi: RSI) >= this.", false, nullptr},
+            {"below", "NUMBER", "Alert when price (rsi: RSI) <= this.", false, nullptr},
             {"id", "INTEGER", "remove: alert id; -1 = all.", false, nullptr},
+            {"condition", "STRING", "Default price. ema = EMA20 crossing EMA50; choch = SMC change of character.", false,
+             kConds},
+            {"timeframe", "STRING", "Its closed bars; default 1h.", false, kChartTf},
         };
         declare(d, b, "price_alert",
-                "Price alerts checked by the device every 2 minutes; it speaks up when one triggers.", alert, 5);
+                "Price / indicator alerts checked by the device every 2 minutes; it speaks up when one triggers.", alert, 7);
     }
 }
 

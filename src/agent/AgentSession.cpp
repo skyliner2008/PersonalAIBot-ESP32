@@ -386,7 +386,12 @@ void AgentController::buildSystemPrompt(PsString& p) {
         p += "การเงิน: ภาพรวมตลาด = market_overview, สัญญาณเทคนิคเร็วๆ = market_analysis, "
              // T142: the candle history - levels and trend from real bars, a chart on the screen
              "กราฟ/แนวรับแนวต้าน/แนวโน้มจากแท่งเทียน/ความสัมพันธ์ระหว่างสินทรัพย์ (compare) = market_chart, หุ้นเด่น/ร่วง = market_scan, "
-             "ข่าวเศรษฐกิจ = economic_calendar, ขนาด lot = position_size, แจ้งเตือนราคา = price_alert · "
+             // T143: SMC (the user's own indicator), the strategy vote, mood / macro data, indicator alerts
+             "SMC/order block/FVG/liquidity/BOS/CHoCH = market_chart view smc, สัญญาณกลยุทธ์/ควรซื้อหรือขายตามระบบ = view signals, "
+             "อารมณ์ตลาด/fear&greed/long-short = market_sentiment (stocks/crypto), เงินเฟ้อ/ดอกเบี้ย/ว่างงาน/GDP = market_sentiment economy "
+             "(ค่าล่าสุดหลายตัว/สหรัฐกับไทย = เรียกครั้งเดียวไม่ใส่ symbol, ใส่ symbol เฉพาะเมื่อขอย้อนหลังตัวเดียว), "
+             "ข่าวเศรษฐกิจ = economic_calendar, ขนาด lot = position_size, แจ้งเตือนราคา = price_alert "
+             "(เตือนเมื่อ RSI ถึงระดับ/MACD หรือ EMA ตัดกัน/เกิด CHoCH = price_alert condition + timeframe) · "
              // T139 (the user): "อย่างไรก็ตาม ข้อมูลนี้ไม่ใช่คำแนะนำการลงทุน" closed every finance answer - not wanted
              "ห้ามปิดท้ายด้วยคำเตือนว่าไม่ใช่คำแนะนำการลงทุน แต่ปิดท้ายด้วยข้อเสนอที่ช่วยต่อได้จริง 1 อย่างที่เข้ากับสิ่งที่ถาม "
              "เช่น ตั้งแจ้งเตือนเมื่อราคาถึงระดับสำคัญ (บอกระดับจากข้อมูล), ดูวิเคราะห์เทคนิค/หลายกรอบเวลา, เทียบกับสินทรัพย์ที่เกี่ยวข้อง, "

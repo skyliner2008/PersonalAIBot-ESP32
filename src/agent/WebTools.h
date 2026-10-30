@@ -67,13 +67,15 @@ struct PriceAlertInfo {
     int id = 0;
     char symbol[32] = "";
     char name[48] = "";
-    double target = 0;  // the price it waits for
+    double target = 0;  // the price it waits for (RSI alert: the RSI level)
     bool above = true;  // true: rises to target, false: falls to it
+    char what[64] = ""; // T143: an indicator condition ("RSI 1 ชั่วโมง ลงถึง 30"); "" = a price alert
+    bool editable = true;  // the target can be changed (price, RSI level; not a cross)
 };
 /** The stored price alerts (any task: alerts.json is locked while read / written). */
 size_t listPriceAlerts(const char* dir, std::vector<PriceAlertInfo>& out);
 bool removePriceAlert(const char* dir, int id);
-/** A new target, same direction. */
+/** A new target, same direction (RSI alert: a level 1-99; a cross alert has none). */
 bool setPriceAlertTarget(const char* dir, int id, double target);
 
 struct Result {

@@ -595,7 +595,8 @@ void CardScreen::drawCandles(LGFX_Sprite& c) {
         hi = k.h[i] > hi ? k.h[i] : hi;
     }
     const float span0 = hi - lo > 0 ? hi - lo : fabsf(hi) * 0.01f + 1e-6f;
-    for (float v : {k.support[0], k.support[1], k.resistance[0], k.resistance[1]}) {
+    for (float v : {k.support[0], k.support[1], k.resistance[0], k.resistance[1], k.zone[0].top, k.zone[0].bottom,
+                    k.zone[1].top, k.zone[1].bottom, k.zone[2].top, k.zone[2].bottom, k.zone[3].top, k.zone[3].bottom}) {
         if (isnan(v) || v < lo - span0 * 0.35f || v > hi + span0 * 0.35f) continue;
         lo = v < lo ? v : lo;
         hi = v > hi ? v : hi;
@@ -606,6 +607,23 @@ void CardScreen::drawCandles(LGFX_Sprite& c) {
     auto py = [&](float v) { return y1 - (int)lroundf((v - lo) / (hi - lo) * (y1 - y0)); };
     const float slot = (float)(x1 - x0) / k.n;
     auto px = [&](int i) { return x0 + (int)(slot * i + slot / 2); };
+
+    // SMC boxes first, so the candles draw over them: a dark fill + a 1 px edge (order block solid, FVG dotted)
+    constexpr uint16_t kObBull = 0x0200, kObBear = 0x4000, kFvgBull = 0x0129, kFvgBear = 0x2900;
+    for (const CardData::Chart::Zone& z : k.zone) {
+        if (isnan(z.top) || isnan(z.bottom)) continue;
+        const float zt = z.top < hi ? z.top : hi, zb = z.bottom > lo ? z.bottom : lo;
+        if (zt <= zb) continue;
+        const int xa = px(z.from < k.n ? z.from : k.n - 1) - (int)(slot / 2), yt = py(zt), yb = py(zb);
+        const int h = yb - yt + 1 > 2 ? yb - yt + 1 : 2;
+        c.fillRect(xa, yt, x1 - xa, h, z.ob ? (z.bull ? kObBull : kObBear) : (z.bull ? kFvgBull : kFvgBear));
+        const uint16_t edge = z.bull ? UP : DOWN;
+        if (z.ob) {
+            c.drawRect(xa, yt, x1 - xa, h, edge);
+        } else {
+            for (int x = xa; x < x1; x += 3) c.drawPixel(x, yt, edge), c.drawPixel(x, yt + h - 1, edge);
+        }
+    }
 
     // support (green) / resistance (red): dashed lines; their prices on the right axis, moved apart so two
     // close levels stay readable, and the grid prices only where no level label is
@@ -686,6 +704,13 @@ void CardScreen::drawCandles(LGFX_Sprite& c) {
     c.drawString(buf, x1, y1 + 5);
     // legend in the middle of the bottom line
     c.setTextDatum(textdatum_t::top_center);
+    if (k.smc) {
+        c.setTextColor(UP);
+        c.drawString("DEMAND", (x0 + x1) / 2 - 24, y1 + 5);
+        c.setTextColor(DOWN);
+        c.drawString("SUPPLY", (x0 + x1) / 2 + 24, y1 + 5);
+        return;
+    }
     c.setTextColor(kEma20);
     c.drawString("EMA20", (x0 + x1) / 2 - 22, y1 + 5);
     c.setTextColor(kEma50);
@@ -698,6 +723,7 @@ void CardScreen::drawBars(LGFX_Sprite& c) {
     if (!_cur.rows) return;
     const float marker = _cur.g.ref[0];  // e.g. 100 % = the bank (NAN = none)
     float maxV = isnan(marker) ? 0 : marker;
+    if (!isnan(_cur.g.ref[1])) maxV = _cur.g.ref[1];  // a fixed full scale (fear & greed 0-100, T143)
     for (int i = 0; i < _cur.rows; i++) maxV = _cur.row[i].value > maxV ? _cur.row[i].value : maxV;
     if (maxV <= 0) maxV = 1;
     const int top = 60, rowH = (ui::H - top - 4) / _cur.rows < 22 ? (ui::H - top - 4) / _cur.rows : 22;

@@ -122,6 +122,7 @@ ESP32-AI/
 
 | Date | Activity | Related Docs |
 |------|----------|--------------|
+| 2026-10-30 | **SMC + สัญญาณกลยุทธ์ + อารมณ์ตลาด + แจ้งเตือนตาม indicator (T143):** `market_chart` view `smc` (indicator ของผู้ใช้ — ผลตรงกับแอปทุกค่า) / `signals` (5 กลยุทธ์ 1-4 กรอบเวลา) · `market_sentiment` (ดัชนีกลัว/โลภหุ้นคำนวณเอง, คริปโต + Binance long/short, เศรษฐกิจสหรัฐ/ไทย) · `price_alert condition` RSI / MACD / EMA / CHoCH | [[11-Data-Tools-and-Cards]] |
 | 2026-10-30 | **กราฟแท่งเทียน `market_chart` (T142):** ดึงแท่งเทียนย้อนหลังจาก TradingView websocket (Yahoo สำรอง) → แนวโน้ม แนวรับ/แนวต้าน EMA RSI MACD ATR Bollinger + การ์ดกราฟบนจอ · `compare` = correlation ระหว่างสินทรัพย์ (หลายสัญลักษณ์ใน connection เดียว) | [[11-Data-Tools-and-Cards]] |
 | 2026-10-30 | **หน้าการแจ้งเตือน (T141):** กระดิ่งข้าง Wi-Fi เมื่อมีเตือนความจำ / ตัวจับเวลา / แจ้งเตือนราคา → แตะดูทั้งหมด แก้ข้อความ วัน เวลา ทำซ้ำ ราคาเป้าหมาย และลบได้เอง | [[09-Assistant-Profiles-and-Tools]] |
 | 2026-10-30 | **ดวงตา: บอร์ดเลือกอารมณ์เองจากคำที่ AI พูด (T140):** เลิก declare `set_expression` (3.8 Live หลุดพูดชื่อ tool ออกเสียง) · `util/EmotionCue.h` | [[06-Avatar-and-Thai-UI]] |
