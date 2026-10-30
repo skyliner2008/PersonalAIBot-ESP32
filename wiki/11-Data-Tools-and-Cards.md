@@ -70,6 +70,7 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 |---|---|---|
 | `market_overview()` | SET, S&P 500, Nasdaq 100, ทองคำ, WTI, BTC, USD/THB + ดัชนีกลัว/โลภคริปโต | TradingView `POST /global/scan` (1 request ทุกตลาด) + `api.alternative.me/fng` |
 | `market_analysis(symbol, timeframe?, fundamentals?)` | RSI, MACD, Stoch, EMA20/50/200, ADX, BB, สัญญาณรวม (MA/oscillators) — `timeframe`: 15m/1h/4h/1d/1w หรือ **`multi`** (สัญญาณทุกกรอบเวลา) · `fundamentals`: P/E, P/BV, ปันผล, มูลค่าตลาด, EPS, sector | TradingView `/symbol` field suffix `|15`, `|60`, `|240`, `|1W` |
+| `market_chart(symbol, timeframe?, compare?)` **(T142)** | **กราฟแท่งเทียน 60 แท่งบนจอ** + EMA20 (ฟ้า) / EMA50 (ส้ม) + เส้นประแนวรับ (เขียว) / แนวต้าน (แดง) · คำนวณจาก**แท่งเทียนย้อนหลังจริง 300 แท่ง** บนบอร์ด (`util/MarketMath.h`): แนวโน้ม (ราคาเทียบ EMA20/50/200 + ความชันของ EMA50), RSI14, MACD (+ ตัดกันกี่แท่งก่อน), ATR14 (%), Bollinger (ความกว้าง, ตำแหน่ง, **บีบแคบสุดในรอบ 120 แท่ง**), แนวรับ/แนวต้าน 2 ระดับจาก swing high/low ที่รวมกันในระยะ ½ ATR (+ จำนวนครั้งที่แตะ), แท่งล่าสุด (กลืนกิน/โดจิ/ค้อน/ดาวตก), วอลุ่มเทียบเฉลี่ย 20 · `timeframe` 5m/15m/1h/4h/1d/1w · **`compare`** ("eth, gold, usdthb" สูงสุด 4) = ตาราง correlation ของผลตอบแทน 100 แท่ง (รายวันจับคู่ตามวันเวลาไทย เพราะแต่ละตลาดเปิดแท่งคนละเวลา) | **TradingView chart websocket** `wss://data.tradingview.com/socket.io/websocket` (ไม่ต้องล็อกอิน เหมือน `TvHistoryBridge` ของแอปมือถือ; หุ้นไทยช้า 15 นาที) — **ทุกสัญลักษณ์ใน connection เดียว** (1 chart session ต่อสัญลักษณ์ รวมตัวเลือก SET/NASDAQ/NYSE ของชื่อย่อ) · สำรอง: Yahoo Finance `v8/finance/chart` (4 ชม. = รวม 1 ชม. × 4) |
 | `market_scan(market, type, limit?)` | หุ้นไทย / หุ้นสหรัฐ / คริปโต (Binance USDT): ขึ้นแรง, ลงแรง, วอลุ่มพุ่ง, RSI ขายมากเกิน/ซื้อมากเกิน | TradingView `POST /{thailand|america|crypto}/scan` + filter (ตัด `.R`/`.F` ซ้ำ) |
 | `economic_calendar(range?, impact?)` | ข่าวเศรษฐกิจสำคัญ today/tomorrow/week **เวลาไทย** (`date` + `when_th`) + forecast/previous — การ์ดแสดงเฉพาะที่ยังไม่ถึง; ไม่มีค่า actual; นาฬิกายังไม่ซิงก์ = ไม่ตอบ | `nfs.faireconomy.media/ff_calendar_thisweek.json` (แคช 30 นาที เพราะจำกัดจำนวนครั้ง) |
 | `position_size(balance, entry, stop_loss, risk_percent?, symbol?, contract_size?)` | ขนาด lot ตามความเสี่ยง (XAU 100 oz, XAG 5000, FX 100k, หุ้น/คริปโต 1) | คำนวณบนบอร์ด |
@@ -130,7 +131,8 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 | ควบคุมมือถือ (`device_*`: โทร, SMS, ไฟฉาย, แอป, ตั้งค่าเครื่อง) | เป็นความสามารถของ Android |
 | กล้อง / วิเคราะห์ภาพ / ไฟล์ในเครื่อง | บอร์ดไม่มีกล้อง; ไฟล์ใช้ `notes` แทน |
 | agent ซ้อน (`agent_task`, `system_*_agent_tool`) | Live API มี session เดียว + RAM จำกัด |
-| backtest / strategy library / SMC / Harmonic / Elliott / แดชบอร์ดกราฟ | ต้องใช้แท่งเทียนย้อนหลังจำนวนมาก (websocket TradingView) และ CPU/RAM เกินบอร์ด — ใช้ `market_analysis` (สัญญาณสำเร็จรูปของ TradingView) แทน |
+| backtest / Harmonic / Elliott | ผู้ใช้ไม่ต้องการ (2026-10-30) — แท่งเทียนดึงได้แล้ว (`market_chart`, T142) |
+| SMC (order blocks, liquidity, sweeps, structure — indicator ของผู้ใช้เอง) / strategy signals / sentiment (CNN, CoinGecko, Binance) / FRED / แจ้งเตือนตาม indicator | แผนเฟสถัดไป: ใช้แท่งเทียนจาก `market_chart` (T142) |
 | summarize / translate | โมเดล Gemini ทำได้เองโดยไม่ต้องมี tool |
 
 ## สถาปัตยกรรม
@@ -163,6 +165,8 @@ task webTools (core 1, prio 2 → 4 ระหว่างทำงานให�
 | calculate / convert_units / get_world_time / position_size / notes | ~0 วิ |
 | `market_analysis` / `market_scan` / `get_market_quote` 1 ตัว | ~1.1–1.3 วิ |
 | `price_alert add` | ~1.3 วิ |
+| `market_chart` 1 สัญลักษณ์ (T142) | ~1.1–1.7 วิ (ชื่อย่อหุ้น = 3 ตัวเลือกใน connection เดียว ~1.8–3.5 วิ) |
+| `market_chart` + `compare` 4 ตัว | ~3.1–3.7 วิ (เดิมทีละ connection ~9 วิ) |
 | `get_oil_price` / `get_location` / `economic_calendar` | ~2–3 วิ |
 | `market_overview` (+ Fear&Greed) | ~3.5 วิ |
 | `search_knowledge` | ~8 วิ |
@@ -177,4 +181,7 @@ task webTools (core 1, prio 2 → 4 ระหว่างทำงานให�
 - "วิเคราะห์ทองคำทุกกรอบเวลา" → `market_analysis {"symbol":"gold","timeframe":"multi"}` → สรุประยะสั้น/ยาว
 - "สัปดาห์นี้มีข่าวเศรษฐกิจอะไรสำคัญ" → `economic_calendar {"range":"week"}`
 - "เจ็ดเปอร์เซ็นต์ของ 2350" → `calculate {"expression":"2350 * 7%"}`
+- (T142, 2026-10-30) "ดูกราฟทองคำ 4 ชั่วโมงให้หน่อย แนวรับแนวต้านอยู่ตรงไหน" → `market_chart {"symbol":"OANDA:XAUUSD","timeframe":"4h"}` →
+  "ขาลงอย่างชัดเจน… แนวรับที่ใกล้ที่สุด… แนวต้าน 4,032… ตั้งแจ้งเตือนราคาเผื่อถึงแนวรับไหม" · "แล้วบิทคอยน์รายวันล่ะ มีความสัมพันธ์กับทองแค่ไหน" →
+  `{"symbol":"BINANCE:BTCUSDT","compare":"OANDA:XAUUSD","timeframe":"1d"}` → "0.55 ไปทางเดียวกันเป็นส่วนใหญ่"
 - แจ้งเตือนราคา: ตั้ง BTC below 999999 → 20 วิต่อมา `[Alert] ราคาบิทคอยน์ ลงถึง …` แล้วรายการถูกลบเอง

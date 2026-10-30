@@ -298,7 +298,7 @@ TEST(tool_declarations_per_model) {
     size_t count;
     bool search;
     const size_t bytes = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)43);  // about_me + 24 core (T140: no set_expression) (incl. configure_device, rest_screen, mute_microphone, play_radio, stop_radio) + 5 live data + 6 utilities + water + 6 finance
+    CHECK_EQ(count, (size_t)44);  // about_me + 24 core (T140: no set_expression) (incl. configure_device, rest_screen, mute_microphone, play_radio, stop_radio) + 5 live data + 6 utilities + water + 7 finance (T142: market_chart)
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);
@@ -307,24 +307,25 @@ TEST(tool_declarations_per_model) {
         for (const char* t : {"get_weather,", "get_oil_price,", "get_market_quote,", "convert_currency,", "get_news,",
                               "calculate,", "convert_units,", "get_world_time,", "get_location,", "search_knowledge,",
                               "notes,", "market_overview,", "market_analysis,", "market_scan,", "economic_calendar,",
-                              "position_size,", "price_alert,"}) {
+                              "position_size,", "price_alert,", "market_chart,"}) {
             CHECK(names.find(t) != std::string::npos);
         }
     }
     CHECK(search);
     CHECK(recall == "BLOCKING" && expr.empty());  // T140: set_expression not declared
     // billed every turn: keep the declarations compact (+200 for about_me, T096; +470 for water, T100 -
-    // switched off with "set water 0" like the finance pack; +100 for play_radio "music" = the SD-card songs, T122)
-    CHECK(bytes < 15800);
+    // switched off with "set water 0" like the finance pack; +100 for play_radio "music" = the SD-card songs, T122;
+    // +490 for market_chart, T142 - part of the finance pack too)
+    CHECK(bytes < 16000);
     printf("    tool declarations: %u bytes JSON\n", (unsigned)bytes);
 
     // the vehicle dash: the board always declares it, so "เปิดหน้าปัด" works before a source is set (T079)
     rig.dev.vehicleOn = true;
     const size_t withVehicle = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)44);
+    CHECK_EQ(count, (size_t)45);
     // one tool for the dash, live values, health, trip and trouble codes (T112: +scan / explain / clear_codes)
     CHECK(withVehicle - bytes < 600);
-    CHECK(withVehicle < 16400);  // what the board really sends every session
+    CHECK(withVehicle < 16600);  // what the board really sends every session
     printf("    + vehicle dash tool: %u bytes JSON\n", (unsigned)(withVehicle - bytes));
     {
         // default build (VEHICLE_BLE = 0): the model is not offered the Bluetooth source it cannot pick (T078)
@@ -363,7 +364,7 @@ TEST(tool_declarations_per_model) {
     // the phone app (wiki 18): `navigate` only once a phone was paired, small like the dash tool
     rig.dev.phoneOn = true;
     const size_t withPhone = behaviors(ToolBehavior::Blocking, true, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)44);
+    CHECK_EQ(count, (size_t)45);
     CHECK(withPhone - bytes < 450);
     printf("    + navigate tool: %u bytes JSON\n", (unsigned)(withPhone - bytes));
     JsonDocument nr;
@@ -381,7 +382,7 @@ TEST(tool_declarations_per_model) {
     CHECK_EQ(count, (size_t)37);
     rig.tools.setFinancePack(true);
     behaviors(ToolBehavior::Blocking, false, expr, recall, count, search);
-    CHECK_EQ(count, (size_t)43);
+    CHECK_EQ(count, (size_t)44);
     {
         JsonDocument doc;
         rig.tools.addDeclarations(doc.to<JsonArray>(), ToolBehavior::Unspecified, false);

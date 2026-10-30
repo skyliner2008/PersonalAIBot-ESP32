@@ -92,6 +92,26 @@ This page documents common issues encountered during development and their solut
 
 ---
 
+## T142: กราฟแท่งเทียน + วิเคราะห์จากแท่งเทียนย้อนหลัง (`market_chart`) — พอร์ตจากแอปมือถือ
+
+**วันที่:** 2026-10-30 · **ผู้ใช้:** "ต้องการเพิ่ม tool ด้านวิเคราะห์การเงิน ซึ่งจะมีการดึงข้อมูลแท่งเทียนย้อนหลัง" → ตรวจ tool การเงิน 45 ตัวของแอปมือถือ
+(`composeApp/tools/trading`) → ผู้ใช้เลือก: ไม่เอา backtest / Harmonic / Elliott · SMC เป็น indicator ที่ผู้ใช้เขียนเอง (ย้ายมาได้ในเฟสถัดไป)
+**ทำ (เฟส 1):** `agent/MarketHistory.*` websocket client เอง (WiFiClientSecure + เฟรม RFC 6455 แบบ mask, ping/pong, ต่อ continuation) ต่อ TradingView
+แบบเดียวกับ `TvHistoryBridge` ของแอป · **หลายสัญลักษณ์ใน connection เดียว** (1 chart session ต่อสัญลักษณ์) · Yahoo `v8/finance/chart` สำรอง ·
+`util/MarketMath.h` (host tested): เฟรม `~m~<len>~m~` (len = หน่วย UTF-16), ตาราง timeframe, TradingView → Yahoo, EMA, RSI, MACD, ATR, Bollinger + squeeze,
+แนวรับ/ต้านจาก swing, แนวโน้ม, รูปแท่ง, correlation · `agent/MarketChart.cpp` tool `market_chart` · การ์ด `CardData::Candles` (60 แท่ง, EMA, เส้นแนวรับ/ต้าน
+พร้อมราคาที่ขยับไม่ให้ทับกัน) · prompt การเงินบอกว่าใช้ `market_chart` เมื่อไหร่
+**เจอระหว่างทำ:**
+- `card = CardData()` สร้างก้อนชั่วคราวบน stack ของ task webTools (12 KB) — การ์ดใหญ่ขึ้นเป็น ~5 KB → `resetCard()` สร้างใหม่ในที่เดิม
+- MACD: เส้นราบ histogram แกว่ง ±1e-15 จนนับว่า "ตัดกัน" → นับเฉพาะเครื่องหมายที่ชัด
+- correlation รายวันได้ 0 แท่ง: แท่งรายวันของแต่ละตลาดเริ่มคนละเวลา (ทอง 22:00 UTC, BTC 00:00, SET 02:55) → จับคู่ตาม**วันที่เวลาไทย**
+- compare 4 ตัวทีละ connection ~9 วิ (TLS 1.2 วิ/ครั้ง) → connection เดียว 3.1 วิ (PC: 6 สัญลักษณ์ 0.9 วิ)
+- ราคาแนวต้าน 2 ระดับที่ใกล้กันเขียนทับกันบนแกน → เลื่อนป้ายห่างกัน 9 px และซ่อนป้ายเส้นกริดที่ชน
+- คำอธิบาย tool +485 ไบต์ (15,397 → 15,882) → เพดานเทส 15,800 → 16,000 (ชุดการเงินปิดได้ด้วย `set finance 0`)
+**ทดสอบบนบอร์ด (COM3):** BTC 1h 300 แท่ง 1.1 วิ · PTT รายวัน (SET ช้า 15 นาที) · ทองคำ 4h · AAPL รายสัปดาห์ (SET:/NYSE: = unknown, NASDAQ: = 260 แท่ง) ·
+สัญลักษณ์ไม่มีจริง → "ไม่พบสัญลักษณ์นี้" 1 วิ · ทอง vs BTC/USDTHB/SET/AAPL: +0.53 / −0.65 / +0.06 / +0.09 · `ask` ผ่าน AI 2 คำถาม (กราฟทอง 4h, BTC กับทอง) ตอบถูกจากข้อมูล ·
+RAM ภายในว่าง 101 KB (ต่ำสุด 92) · stack webTools เหลือ 5 KB · host tests 3,145 ✓ · build 2 env ✓
+
 ## T141: หน้าการแจ้งเตือน — กระดิ่งบนจอ ดู / แก้ไข / ลบ ได้เอง (ไม่ต้องสั่งผ่าน AI)
 
 **วันที่:** 2026-10-30 · **ผู้ใช้:** "สั่ง AI ตั้งแจ้งเตือนแล้ว อยากให้มีกระดิ่งขึ้นข้างไอคอน Wi-Fi กดแล้วแสดงการแจ้งเตือนทั้งหมด กดลบและแก้ไขได้"

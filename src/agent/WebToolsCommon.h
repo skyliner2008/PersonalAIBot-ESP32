@@ -190,6 +190,8 @@ void runKnowledge(JsonObjectConst a, JsonDocument& out, CardData& card);
 void runMarketOverview(JsonObjectConst a, JsonDocument& out, CardData& card);
 void runMarketAnalysis(JsonObjectConst a, JsonDocument& out, CardData& card);
 void runMarketScan(JsonObjectConst a, JsonDocument& out, CardData& card);
+// candle history -> indicators, levels, correlation + a candlestick card (MarketChart.cpp, T142)
+void runMarketChart(JsonObjectConst a, JsonDocument& out, CardData& card);
 void runEconomicCalendar(JsonObjectConst a, JsonDocument& out, CardData& card);
 void runPositionSize(JsonObjectConst a, JsonDocument& out, CardData& card);
 void runNotes(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, CardData& card);

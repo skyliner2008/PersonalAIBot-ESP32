@@ -57,7 +57,7 @@ const char* const kWebTools[] = {"get_weather",     "get_oil_price",   "get_mark
                                  "get_news",        "calculate",       "convert_units",     "get_world_time",
                                  "get_location",    "search_knowledge", "market_overview",  "market_analysis",
                                  "market_scan",     "economic_calendar", "position_size",   "notes",
-                                 "price_alert",     "water"};
+                                 "price_alert",     "water",            "market_chart"};
 
 constexpr uint32_t kAlertCheckMs = 120000;
 
@@ -73,7 +73,7 @@ uint32_t cacheTtlMs(const char* name) {
     static const Ttl kTtl[] = {
         {"get_weather", 10 * 60000},       {"get_oil_price", 30 * 60000},    {"get_news", 5 * 60000},
         {"economic_calendar", 30 * 60000}, {"search_knowledge", 60 * 60000}, {"get_market_quote", 60000},
-        {"convert_currency", 60000},       {"market_overview", 60000},
+        {"convert_currency", 60000},       {"market_overview", 60000},       {"market_chart", 60000},
         {"water", 10 * 60000},  // ThaiWater telemetry reports every 10-60 min (T100)
     };
     for (const Ttl& t : kTtl) {
@@ -96,6 +96,12 @@ CacheEntry* cacheFind(const PsString& key, uint32_t now) {
         if (e.ttl && e.key == key && now - e.at < e.ttl) return &e;
     }
     return nullptr;
+}
+
+// a fresh card in place: "card = CardData()" builds the ~5 KB temporary on this task's 12 KB stack (T142)
+void resetCard(CardData& card) {
+    card.~CardData();
+    new (&card) CardData();
 }
 
 void cacheStore(const PsString& key, uint32_t ttl, const PsString& json, const CardData& card, uint32_t now) {
@@ -805,7 +811,7 @@ void WebTools::loop() {
                     JsonDocument out(JsonPsramAllocator::instance());
                     if (cfg.weatherCity[0]) a["location"] = cfg.weatherCity;
                     else a.to<JsonObject>();
-                    card = CardData();
+                    resetCard(card);
                     setStage("clock_weather");
                     runWeather(a.as<JsonObjectConst>(), out, card);
                     setStage("idle");
@@ -868,7 +874,7 @@ void WebTools::loop() {
         deserializeJson(args, j.args);
         psramFree(j.args);
         JsonDocument out(JsonPsramAllocator::instance());
-        card = CardData();
+        resetCard(card);
         const JsonObjectConst a = args.as<JsonObjectConst>();
         if (!strcmp(j.name, "get_weather")) runWeather(a, out, card);
         else if (!strcmp(j.name, "get_oil_price")) runOil(out, card);
@@ -883,6 +889,7 @@ void WebTools::loop() {
         else if (!strcmp(j.name, "market_overview")) runMarketOverview(a, out, card);
         else if (!strcmp(j.name, "market_analysis")) runMarketAnalysis(a, out, card);
         else if (!strcmp(j.name, "market_scan")) runMarketScan(a, out, card);
+        else if (!strcmp(j.name, "market_chart")) runMarketChart(a, out, card);
         else if (!strcmp(j.name, "economic_calendar")) runEconomicCalendar(a, out, card);
         else if (!strcmp(j.name, "position_size")) runPositionSize(a, out, card);
         else if (!strcmp(j.name, "notes")) runNotes(env, a, out, card);

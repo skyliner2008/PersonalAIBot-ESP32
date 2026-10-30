@@ -11,6 +11,7 @@
 #include <new>
 #include <vector>
 
+#include "../app/AppConfig.h"
 #include "../util/PsramAlloc.h"
 #include "../util/TextWrap.h"
 #include "../util/TimeFmt.h"
@@ -198,6 +199,7 @@ void CardScreen::draw(LGFX_Sprite& c) {
         case CardData::Analysis: drawAnalysis(c); break;
         case CardData::Graph: drawGraph(c); break;
         case CardData::Bars: drawBars(c); break;
+        case CardData::Candles: drawCandles(c); break;
         default: drawHeader(c); break;
     }
     // remaining time: thin bar at the very bottom
@@ -556,6 +558,138 @@ void CardScreen::drawGraph(LGFX_Sprite& c) {
     timefmt::shortStamp(g.to, buf, sizeof(buf));
     c.setTextDatum(textdatum_t::top_right);
     c.drawString(buf, x1, y1 + 6);
+}
+
+// ---- candlestick chart (market_chart, T142): candles + EMA20 / EMA50 + dashed support / resistance ----
+namespace {
+void axisPrice(char* buf, size_t n, float v, float span) {
+    if (fabsf(v) >= 1000 || span >= 50) snprintf(buf, n, "%.0f", v);
+    else if (span >= 0.5f) snprintf(buf, n, "%.2f", v);
+    else snprintf(buf, n, "%.4f", v);
+}
+
+void barStamp(char* buf, size_t n, uint32_t t, bool intraday) {
+    const time_t lt = (time_t)t + TIME_UTC_OFFSET_SEC;
+    struct tm tm;
+    gmtime_r(&lt, &tm);
+    if (intraday) snprintf(buf, n, "%d/%d %02d:%02d", tm.tm_mday, tm.tm_mon + 1, tm.tm_hour, tm.tm_min);
+    else snprintf(buf, n, "%d/%d/%02d", tm.tm_mday, tm.tm_mon + 1, (tm.tm_year + 1900) % 100);
+}
+}  // namespace
+
+void CardScreen::drawCandles(LGFX_Sprite& c) {
+    drawHeader(c);
+    const CardData::Chart& k = _cur.k;
+    if (_cur.big[0]) {
+        const float chg = k.n >= 2 ? k.c[k.n - 1] - k.c[k.n - 2] : 0;
+        gUi.drawFitted(c, _cur.big, 8, 68, ui::W - 16, gUi.thai26(), changeColor(chg));
+    }
+    if (k.n < 2) return;
+    constexpr uint16_t kEma20 = 0x2EDF, kEma50 = 0xFD20;
+    const int x0 = 4, x1 = ui::W - 46, y0 = 86, y1 = 222;
+
+    // y range: the candles, plus a level when it is near enough to matter
+    float lo = k.l[0], hi = k.h[0];
+    for (int i = 1; i < k.n; i++) {
+        lo = k.l[i] < lo ? k.l[i] : lo;
+        hi = k.h[i] > hi ? k.h[i] : hi;
+    }
+    const float span0 = hi - lo > 0 ? hi - lo : fabsf(hi) * 0.01f + 1e-6f;
+    for (float v : {k.support[0], k.support[1], k.resistance[0], k.resistance[1]}) {
+        if (isnan(v) || v < lo - span0 * 0.35f || v > hi + span0 * 0.35f) continue;
+        lo = v < lo ? v : lo;
+        hi = v > hi ? v : hi;
+    }
+    const float pad = (hi - lo > 0 ? hi - lo : span0) * 0.05f;
+    lo -= pad;
+    hi += pad;
+    auto py = [&](float v) { return y1 - (int)lroundf((v - lo) / (hi - lo) * (y1 - y0)); };
+    const float slot = (float)(x1 - x0) / k.n;
+    auto px = [&](int i) { return x0 + (int)(slot * i + slot / 2); };
+
+    // support (green) / resistance (red): dashed lines; their prices on the right axis, moved apart so two
+    // close levels stay readable, and the grid prices only where no level label is
+    char buf[24];
+    struct Label {
+        int y;
+        float v;
+        uint16_t col;
+    } lab[4];
+    int nl = 0;
+    for (int s = 0; s < 2; s++) {
+        for (int side = 0; side < 2; side++) {
+            const float v = side ? k.resistance[s] : k.support[s];
+            if (isnan(v) || v < lo || v > hi) continue;
+            dashedHLine(c, x0, x1, py(v), side ? DOWN : UP);
+            lab[nl++] = {py(v), v, side ? DOWN : UP};
+        }
+    }
+    for (int i = 1; i < nl; i++) {  // sort by y (at most 4)
+        for (int j = i; j > 0 && lab[j].y < lab[j - 1].y; j--) std::swap(lab[j], lab[j - 1]);
+    }
+    constexpr int kLabelH = 9;
+    for (int i = 1; i < nl; i++) {
+        if (lab[i].y - lab[i - 1].y < kLabelH) lab[i].y = lab[i - 1].y + kLabelH;
+    }
+    for (int i = nl - 1; i >= 0; i--) {  // keep them inside the chart
+        const int maxY = (i == nl - 1) ? y1 : lab[i + 1].y - kLabelH;
+        if (lab[i].y > maxY) lab[i].y = maxY;
+    }
+    c.setFont(&fonts::Font0);
+    c.setTextDatum(textdatum_t::middle_left);
+    for (int g = 0; g <= 3; g++) {
+        const float v = lo + (hi - lo) * g / 3;
+        const int y = py(v);
+        for (int x = x0; x < x1; x += 6) c.drawPixel(x, y, ui::LINE);
+        bool free = true;
+        for (int i = 0; i < nl; i++) free = free && abs(lab[i].y - y) >= kLabelH;
+        if (!free) continue;
+        axisPrice(buf, sizeof(buf), v, hi - lo);
+        c.setTextColor(ui::DIM);
+        c.drawString(buf, x1 + 6, y);
+    }
+    for (int i = 0; i < nl; i++) {
+        axisPrice(buf, sizeof(buf), lab[i].v, hi - lo);
+        c.setTextColor(lab[i].col);
+        c.drawString(buf, x1 + 6, lab[i].y);
+    }
+    // candles: wick 1 px, body up to 5 px
+    const int bodyW = slot >= 6 ? 5 : (slot >= 4 ? 3 : 1);
+    for (int i = 0; i < k.n; i++) {
+        const bool up = k.c[i] >= k.o[i];
+        const uint16_t col = up ? UP : DOWN;
+        const int x = px(i);
+        c.drawFastVLine(x, py(k.h[i]), py(k.l[i]) - py(k.h[i]) + 1, col);
+        const int top = py(up ? k.c[i] : k.o[i]), bot = py(up ? k.o[i] : k.c[i]);
+        c.fillRect(x - bodyW / 2, top, bodyW, bot - top + 1 > 1 ? bot - top + 1 : 1, col);
+    }
+    // EMA lines over the candles
+    auto line = [&](const float* e, uint16_t col) {
+        for (int i = 1; i < k.n; i++) {
+            if (isnan(e[i - 1]) || isnan(e[i])) continue;
+            c.drawWideLine(px(i - 1), py(e[i - 1]), px(i), py(e[i]), 1.0f, col);
+        }
+    };
+    line(k.ema50, kEma50);
+    line(k.ema20, kEma20);
+    // the last close: a marker on the axis
+    const float lastC = k.c[k.n - 1];
+    c.fillTriangle(x1 + 1, py(lastC), x1 + 4, py(lastC) - 3, x1 + 4, py(lastC) + 3, ui::TEXT);
+
+    c.setFont(&fonts::Font0);
+    c.setTextColor(ui::DIM);
+    barStamp(buf, sizeof(buf), k.from, k.intraday);
+    c.setTextDatum(textdatum_t::top_left);
+    c.drawString(buf, x0, y1 + 5);
+    barStamp(buf, sizeof(buf), k.to, k.intraday);
+    c.setTextDatum(textdatum_t::top_right);
+    c.drawString(buf, x1, y1 + 5);
+    // legend in the middle of the bottom line
+    c.setTextDatum(textdatum_t::top_center);
+    c.setTextColor(kEma20);
+    c.drawString("EMA20", (x0 + x1) / 2 - 22, y1 + 5);
+    c.setTextColor(kEma50);
+    c.drawString("EMA50", (x0 + x1) / 2 + 22, y1 + 5);
 }
 
 // ---- horizontal bars, one row each (rain per station, % of the bank per station; T100) ----

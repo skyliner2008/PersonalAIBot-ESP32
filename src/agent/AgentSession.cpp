@@ -383,7 +383,9 @@ void AgentController::buildSystemPrompt(PsString& p) {
              "(ได้ 8 จังหวัดสูงสุด, ใช้เวลาราว 10 วิ: บอกผู้ใช้ว่ากำลังดึงข้อมูลทั้งประเทศ) ";
     }
     if (_cfg.financeTools) {
-        p += "การเงิน: ภาพรวมตลาด = market_overview, วิเคราะห์เทคนิค = market_analysis, หุ้นเด่น/ร่วง = market_scan, "
+        p += "การเงิน: ภาพรวมตลาด = market_overview, สัญญาณเทคนิคเร็วๆ = market_analysis, "
+             // T142: the candle history - levels and trend from real bars, a chart on the screen
+             "กราฟ/แนวรับแนวต้าน/แนวโน้มจากแท่งเทียน/ความสัมพันธ์ระหว่างสินทรัพย์ (compare) = market_chart, หุ้นเด่น/ร่วง = market_scan, "
              "ข่าวเศรษฐกิจ = economic_calendar, ขนาด lot = position_size, แจ้งเตือนราคา = price_alert · "
              // T139 (the user): "อย่างไรก็ตาม ข้อมูลนี้ไม่ใช่คำแนะนำการลงทุน" closed every finance answer - not wanted
              "ห้ามปิดท้ายด้วยคำเตือนว่าไม่ใช่คำแนะนำการลงทุน แต่ปิดท้ายด้วยข้อเสนอที่ช่วยต่อได้จริง 1 อย่างที่เข้ากับสิ่งที่ถาม "

@@ -33,6 +33,7 @@ cl /nologo /std:c++17 /EHsc /utf-8 /O2 /W3 /D_CRT_SECURE_NO_WARNINGS ^
   "%~dp0test_vehicle.cpp" ^
   "%~dp0test_obd.cpp" ^
   "%~dp0test_phone.cpp" ^
+  "%~dp0test_market.cpp" ^
   "%ROOT%\src\util\Base64.cpp" ^
   "%ROOT%\src\memory\TextFeatures.cpp" ^
   "%ROOT%\src\memory\MemoryStore.cpp" ^

@@ -166,7 +166,8 @@ bool AgentTools::isSilentTool(const char* name) { return name && strcmp(name, "s
 bool AgentTools::isBackgroundTool(const char* name) {
     static const char* const kBackground[] = {"get_weather",      "get_oil_price",   "get_market_quote", "convert_currency",
                                               "get_news",         "search_knowledge", "get_location",    "market_overview",
-                                              "market_analysis",  "market_scan",     "economic_calendar", "water"};
+                                              "market_analysis",  "market_scan",     "economic_calendar", "water",
+                                              "market_chart"};
     if (!name) return false;
     for (const char* t : kBackground) {
         if (!strcmp(name, t)) return true;
@@ -460,6 +461,15 @@ void AgentTools::addDeclarations(JsonArray tools, ToolBehavior b, bool googleSea
             {"limit", "INTEGER", "1-8, default 6.", false, nullptr},
         };
         declare(d, b, "market_scan", "Stock / crypto screener: top gainers, losers, unusual volume, RSI oversold/overbought.", scan, 3);
+        static const char* const kChartTf[] = {"5m", "15m", "1h", "4h", "1d", "1w", nullptr};
+        static const Param chart[] = {
+            {"symbol", "STRING", "Same forms as get_market_quote.", true, nullptr},
+            {"timeframe", "STRING", "Default 1d.", false, kChartTf},
+            {"compare", "STRING", "Comma list (max 4): correlation instead.", false, nullptr},
+        };
+        declare(d, b, "market_chart",
+                "Candlestick chart from price history: trend, support/resistance, EMA/RSI/MACD/ATR/Bollinger.",
+                chart, 3);
         static const char* const kRanges[] = {"today", "tomorrow", "week", nullptr};
         static const char* const kImpact[] = {"high", "medium", nullptr};
         static const Param cal[] = {

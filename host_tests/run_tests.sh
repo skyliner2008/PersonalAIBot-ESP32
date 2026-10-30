@@ -20,6 +20,7 @@ mkdir -p "$OUT"
     "$ROOT/host_tests/test_vehicle.cpp" \
     "$ROOT/host_tests/test_obd.cpp" \
     "$ROOT/host_tests/test_phone.cpp" \
+    "$ROOT/host_tests/test_market.cpp" \
     "$ROOT/src/util/Base64.cpp" \
     "$ROOT/src/memory/TextFeatures.cpp" \
     "$ROOT/src/memory/MemoryStore.cpp" \
