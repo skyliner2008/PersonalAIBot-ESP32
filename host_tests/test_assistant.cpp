@@ -111,6 +111,15 @@ TEST(scheduler_fire_and_persist) {
         char buf[24];
         timefmt::formatDateTime(d ? d->due : 0, kOff, buf, sizeof(buf));
         CHECK(strcmp(buf, "2025-10-15 17:00") == 0);
+        // T141: edited from the alerts screen
+        CHECK(s.update(daily, d->due + 1800, sched::Repeat::Weekdays, "กินยาหลังอาหาร", kNow));
+        d = s.find(daily);
+        CHECK(d && d->repeat == sched::Repeat::Weekdays && d->label == PsString("กินยาหลังอาหาร"));
+        timefmt::formatDateTime(d->due, kOff, buf, sizeof(buf));
+        CHECK(strcmp(buf, "2025-10-15 17:30") == 0);
+        CHECK(s.update(daily, 0, sched::Repeat::Daily, nullptr, kNow) && s.find(daily)->label == PsString("กินยาหลังอาหาร"));
+        CHECK(!s.update(daily, kNow - 60, sched::Repeat::Daily, "x", kNow));  // the past
+        CHECK(!s.update(9999, kNow + 60, sched::Repeat::None, "x", kNow));
         CHECK(s.cancel(daily));
         CHECK(!s.cancel(daily));
         CHECK_EQ(s.cancelAll(), (size_t)1);

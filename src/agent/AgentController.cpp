@@ -67,6 +67,7 @@ bool AgentController::begin(AudioManager* audio, FaceScreen* face, Storage* stor
     _toolRequests = xQueueCreate(2, sizeof(ToolRequest));
     _askQueue = xQueueCreate(4, sizeof(char*));
     _infoLock = xSemaphoreCreateMutex();
+    _alertEdits = psramQueue(4, sizeof(UiAlertEdit));
     _preroll.init(kWakeBufferSamples);
     if (void* mem = psramMalloc(sizeof(echo::Canceller))) _aec = new (mem) echo::Canceller();  // internal RAM is scarce
     // ~30 KB of internal RAM: only when the wake word is wanted (needs the "model" partition; without
@@ -276,6 +277,7 @@ void AgentController::loop() {
             mark = t;
         };
         handleCommands();
+        applyAlertEdits();
         lap("commands");
         handleAsks();
         lap("asks");
@@ -324,6 +326,7 @@ void AgentController::loop() {
         if (deadline::reached(now, _nextInfo)) {
             _nextInfo = now + 1000;
             updateInfo();
+            refreshAlerts();
         }
         vTaskDelay(pdMS_TO_TICKS(10));
     }

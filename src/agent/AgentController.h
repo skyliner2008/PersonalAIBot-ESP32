@@ -165,6 +165,9 @@ public:
     AvatarState uiState() override { return state(); }
     void uiActivity() override { _sleepSince = millis(); }  // asleep under the radio player: restart the clock-face timer
     void uiPowerSave() override { post(CMD_POWER_SAVE); }
+    uint32_t uiAlerts(std::vector<UiAlert>& out) override;
+    uint32_t uiAlertsVersion() override { return _alertsVer; }
+    void uiAlertEdit(const UiAlertEdit& e) override;
 
 private:
     enum Command : uint8_t {
@@ -229,6 +232,15 @@ private:
     QueueHandle_t _askQueue = nullptr;  // char* (PSRAM) typed messages
     SemaphoreHandle_t _infoLock = nullptr;
     String _info;
+    // T141: the alerts screen - a copy of the reminders / timers / price alerts (under _infoLock) and its edits
+    std::vector<UiAlert> _alerts;
+    volatile uint32_t _alertsVer = 0;
+    uint32_t _alertsSig = 0;          // the scheduler as last copied (ids + times)
+    bool _priceAlertsDirty = true;    // alerts.json changed (boot, the tool, a fired alert, the screen)
+    size_t _priceAlertCount = 0;
+    QueueHandle_t _alertEdits = nullptr;  // UiAlertEdit, PSRAM
+    void refreshAlerts();
+    void applyAlertEdits();
 
     // Settings
     SettingsData _cfg;

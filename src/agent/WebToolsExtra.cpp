@@ -14,6 +14,7 @@
 #include "../util/NoteSearch.h"
 #include "../util/TimeFmt.h"
 #include "../util/Units.h"
+#include "WebTools.h"
 #include "WebToolsCommon.h"
 
 namespace webtools {
@@ -883,8 +884,69 @@ void runNotes(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, CardData
 
 // ============================================================ price alerts
 
+// T141: alerts.json is read / written by the web task (the tool, the 2-minute check) and by the agent task (the
+// alerts screen): one lock around every load ... save. Never held across a network request.
+namespace {
+struct AlertsLock {
+    AlertsLock() { xSemaphoreTake(mutex(), portMAX_DELAY); }
+    ~AlertsLock() { xSemaphoreGive(mutex()); }
+    static SemaphoreHandle_t mutex() {
+        static SemaphoreHandle_t m = xSemaphoreCreateMutex();
+        return m;
+    }
+};
+}  // namespace
+
+size_t listPriceAlerts(const char* dir, std::vector<PriceAlertInfo>& out) {
+    out.clear();
+    if (!dir || !*dir) return 0;
+    AlertsLock lock;
+    JsonDocument db(JsonPsramAllocator::instance());
+    if (!jsonfile::load(filePath(ToolEnv{dir}, "alerts.json").c_str(), db)) return 0;
+    for (JsonObjectConst al : db["alerts"].as<JsonArrayConst>()) {
+        PriceAlertInfo i;
+        i.id = al["id"] | 0;
+        copyStr(i.symbol, sizeof(i.symbol), al["symbol"] | "");
+        copyStr(i.name, sizeof(i.name), al["name"] | (const char*)i.symbol);
+        i.above = !al["above"].isNull();
+        i.target = i.above ? al["above"].as<double>() : (al["below"] | 0.0);
+        out.push_back(i);
+    }
+    return out.size();
+}
+
+bool removePriceAlert(const char* dir, int id) {
+    if (!dir || !*dir || id <= 0) return false;
+    AlertsLock lock;
+    const String path = filePath(ToolEnv{dir}, "alerts.json");
+    JsonDocument db(JsonPsramAllocator::instance());
+    if (!jsonfile::load(path.c_str(), db)) return false;
+    JsonArray alerts = db["alerts"];
+    for (size_t i = 0; i < alerts.size(); i++) {
+        if ((alerts[i]["id"] | 0) != id) continue;
+        alerts.remove(i);
+        return jsonfile::save(path.c_str(), db);
+    }
+    return false;
+}
+
+bool setPriceAlertTarget(const char* dir, int id, double target) {
+    if (!dir || !*dir || id <= 0 || !(target > 0)) return false;
+    AlertsLock lock;
+    const String path = filePath(ToolEnv{dir}, "alerts.json");
+    JsonDocument db(JsonPsramAllocator::instance());
+    if (!jsonfile::load(path.c_str(), db)) return false;
+    for (JsonObject al : db["alerts"].as<JsonArray>()) {
+        if ((al["id"] | 0) != id) continue;
+        al[al["above"].isNull() ? "below" : "above"] = target;
+        return jsonfile::save(path.c_str(), db);
+    }
+    return false;
+}
+
 bool hasPriceAlerts(const ToolEnv& env) {
     if (!env.storageDir || !*env.storageDir) return false;
+    AlertsLock lock;
     JsonDocument db(JsonPsramAllocator::instance());
     return jsonfile::load(filePath(env, "alerts.json").c_str(), db) && db["alerts"].size() > 0;
 }
@@ -896,23 +958,24 @@ void runPriceAlert(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, Car
     }
     const String path = filePath(env, "alerts.json");
     JsonDocument db(JsonPsramAllocator::instance());
-    if (!loadStore(path, db, out)) return;
-    if (!db["alerts"].is<JsonArray>()) db["alerts"].to<JsonArray>();
-    JsonArray alerts = db["alerts"];
     String action = a["action"] | "list";
-    if (action == "add") {
+    if (action == "add") {  // the symbol is looked up first: the lock is never held across a request (T141)
+        JsonDocument q(JsonPsramAllocator::instance());
+        String used, name;
         const String sym = a["symbol"] | "";
         const double above = a["above"] | 0.0, below = a["below"] | 0.0;
         if (sym.isEmpty() || (above <= 0 && below <= 0)) {
             setError(out, "ต้องมี symbol และ above หรือ below");
             return;
         }
-        JsonDocument q(JsonPsramAllocator::instance());
-        String used, name;
         if (!fetchSymbol(sym, "close,description", q, used, name)) {
             setError(out, "ไม่พบสัญลักษณ์นี้ใน TradingView");
             return;
         }
+        AlertsLock lock;
+        if (!loadStore(path, db, out)) return;
+        if (!db["alerts"].is<JsonArray>()) db["alerts"].to<JsonArray>();
+        JsonArray alerts = db["alerts"];
         if (alerts.size() >= 10) {
             setError(out, "ตั้งได้สูงสุด 10 รายการ");
             return;
@@ -930,7 +993,7 @@ void runPriceAlert(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, Car
         r["id"] = id;
         r["symbol"] = used;
         r["current_price"] = q["close"] | 0.0;
-        r["note"] = "บอร์ดจะตรวจราคาทุก 2 นาทีและแจ้งเตือนด้วยเสียงเมื่อถึงเป้า";
+        r["note"] = "บอร์ดจะตรวจราคาทุก 2 นาทีและแจ้งเตือนด้วยเสียงเมื่อถึงเป้า (ดู/แก้/ลบได้ที่กระดิ่งบนจอ)";
         card.kind = CardData::Text;
         copyStr(card.title, sizeof(card.title), "ตั้งแจ้งเตือนราคาแล้ว");
         copyStr(card.big, sizeof(card.big), name.c_str());
@@ -938,6 +1001,10 @@ void runPriceAlert(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, Car
                  above > 0 ? "ขึ้นถึง " : "ลงถึง ", "", above > 0 ? above : below);
         return;
     }
+    AlertsLock lock;
+    if (!loadStore(path, db, out)) return;
+    if (!db["alerts"].is<JsonArray>()) db["alerts"].to<JsonArray>();
+    JsonArray alerts = db["alerts"];
     if (action == "remove") {
         // no id used to mean "all": a model that passed the symbol instead of the id wiped every alert (T069)
         const int id = a["id"] | 0;
@@ -973,11 +1040,16 @@ void runPriceAlert(const ToolEnv& env, JsonObjectConst a, JsonDocument& out, Car
 bool checkPriceAlerts(const ToolEnv& env, String& message) {
     const String path = filePath(env, "alerts.json");
     JsonDocument db(JsonPsramAllocator::instance());
-    if (!jsonfile::load(path.c_str(), db) || !db["alerts"].size()) return false;
+    {
+        AlertsLock lock;
+        if (!jsonfile::load(path.c_str(), db) || !db["alerts"].size()) return false;
+    }
     std::vector<String> tickers;
     for (JsonObjectConst al : db["alerts"].as<JsonArrayConst>()) tickers.push_back(al["symbol"] | "");
     JsonDocument q(JsonPsramAllocator::instance());
     if (!scanTickers(tickers, "[\"close\"]", q)) return false;
+    AlertsLock lock;  // the screen may have changed it meanwhile: decide on what is stored now
+    if (!jsonfile::load(path.c_str(), db) || !db["alerts"].size()) return false;
     JsonArray alerts = db["alerts"];
     for (size_t i = 0; i < alerts.size(); i++) {
         JsonObject al = alerts[i];

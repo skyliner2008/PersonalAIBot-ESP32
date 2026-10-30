@@ -30,6 +30,8 @@ class FaceScreen : public Screen {
 public:
     void begin(std::function<void()> openMenu, std::function<void()> openRadio = nullptr,
                std::function<void()> openDash = nullptr);
+    /** T141: the bell next to Wi-Fi (shown while reminders / timers / price alerts are set) opens this. */
+    void setOpenAlerts(std::function<void()> open) { _openAlerts = open; }
 
     // ---- Thread-safe (called from the agent task) ----
     void setState(AvatarState s);
@@ -54,7 +56,8 @@ public:
 
 private:
     Eyes _eyes;
-    std::function<void()> _openMenu, _openRadio, _openDash;
+    std::function<void()> _openMenu, _openRadio, _openDash, _openAlerts;
+    volatile bool _bellShown = false;  // T141: the alerts bell drawn (top left, after Wi-Fi)
     SemaphoreHandle_t _lock = nullptr;
 
     volatile AvatarState _state = AVATAR_BOOT;

@@ -1013,6 +1013,7 @@ void openCatMediaDash() {
 void openCatMemory() {
     gMenu.setup("ความจำ & ประวัติ", [](ListScreen& l) {
         const SettingsData s = gSettings.get();
+        l.addSubmenu("การแจ้งเตือน", "เตือนความจำ • จับเวลา • ราคา", []() { settingsui::openAlerts(); });
         l.add("จัดความจำอัตโนมัติ", s.consolidate ? "เปิด" : "ปิด", []() {
             gSettings.update([](SettingsData& d) { d.consolidate = !d.consolidate; });
             gMenu.rebuild();
@@ -1538,7 +1539,312 @@ void CalibrationScreen::draw(LGFX_Sprite& c) {
 // Public entry points
 // ============================================================
 
+// ------------------------------------------------------------
+// T141: alerts - reminders, timers, price alerts (the bell next to Wi-Fi on the face)
+// ------------------------------------------------------------
+
+ListScreen gAlerts;
+ListScreen gAlertDetail;
+
+namespace {
+std::vector<UiAlert> gAlertList;  // the agent's copy, as last fetched (UI task)
+uint32_t gAlertVer = 0;
+
+void fetchAlerts() {
+    if (gUi.host()) gAlertVer = gUi.host()->uiAlerts(gAlertList);
+}
+
+const UiAlert* findAlert(UiAlert::Kind kind, uint32_t id) {
+    for (const UiAlert& a : gAlertList) {
+        if (a.kind == kind && a.id == id) return &a;
+    }
+    return nullptr;
+}
+
+void sendAlertEdit(const UiAlertEdit& e) {
+    if (gUi.host()) gUi.host()->uiAlertEdit(e);
+}
+
+const char* repeatTh(uint8_t r) {
+    static const char* const kRep[] = {"ครั้งเดียว", "ทุกวัน", "วันทำงาน (จ.–ศ.)", "ทุกสัปดาห์"};
+    return kRep[r < 4 ? r : 0];
+}
+
+// "วันนี้" / "พรุ่งนี้" / "ศ. 31 ต.ค." for a local day
+String dayTh(time_t t) {
+    static const char* const kDay[] = {"อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."};
+    static const char* const kMon[] = {"ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+                                       "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."};
+    const time_t now = time(nullptr);
+    struct tm a{}, b{};
+    localtime_r(&t, &a);
+    localtime_r(&now, &b);
+    const long days = (long)((t - a.tm_hour * 3600 - a.tm_min * 60 - a.tm_sec) -
+                             (now - b.tm_hour * 3600 - b.tm_min * 60 - b.tm_sec) + 43200) / 86400;
+    if (days == 0) return "วันนี้";
+    if (days == 1) return "พรุ่งนี้";
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%s %d %s", kDay[a.tm_wday % 7], a.tm_mday, kMon[a.tm_mon % 12]);
+    return buf;
+}
+
+String clockTh(time_t t) {
+    struct tm a{};
+    localtime_r(&t, &a);
+    char buf[12];
+    snprintf(buf, sizeof(buf), "%02d:%02d น.", a.tm_hour, a.tm_min);
+    return buf;
+}
+
+String leftTh(uint32_t due) {
+    const long s = (long)due - (long)time(nullptr);
+    if (s <= 0) return "ครบเวลาแล้ว";
+    char buf[40];
+    if (s < 60) snprintf(buf, sizeof(buf), "อีก %ld วินาที", s);
+    else if (s < 3600) snprintf(buf, sizeof(buf), "อีก %ld นาที", (s + 59) / 60);
+    else snprintf(buf, sizeof(buf), "อีก %ld ชม. %ld นาที", s / 3600, (s % 3600) / 60);
+    return buf;
+}
+
+// 80,847.12 / 2,400 / 1.0845 - grouped like a price board
+String priceTh(double v) {
+    char raw[32];
+    if (v >= 100) snprintf(raw, sizeof(raw), "%.2f", v);
+    else snprintf(raw, sizeof(raw), "%.5g", v);
+    String s = raw;
+    if (s.indexOf('.') > 0 && v >= 100) {
+        while (s.endsWith("0")) s.remove(s.length() - 1);
+        if (s.endsWith(".")) s.remove(s.length() - 1);
+    }
+    int dot = s.indexOf('.');
+    if (dot < 0) dot = s.length();
+    for (int i = dot - 3; i > 0; i -= 3) s = s.substring(0, i) + "," + s.substring(i);
+    return s;
+}
+
+// the same local time on another day, or another time on the same day (the next day if that is past)
+uint32_t withDayAndTime(uint32_t due, int addDaysFromToday, int hour, int minute) {
+    const time_t base = addDaysFromToday >= 0 ? time(nullptr) : (time_t)due;
+    struct tm a{}, d{};
+    localtime_r(&base, &a);
+    const time_t dt = (time_t)due;
+    localtime_r(&dt, &d);
+    a.tm_hour = hour >= 0 ? hour : d.tm_hour;
+    a.tm_min = minute >= 0 ? minute : d.tm_min;
+    a.tm_sec = 0;
+    if (addDaysFromToday > 0) a.tm_mday += addDaysFromToday;
+    time_t t = mktime(&a);
+    if (addDaysFromToday < 0 && t <= time(nullptr)) t += 86400;  // a time already gone today: tomorrow
+    return (uint32_t)t;
+}
+
+void openAlertDetail(UiAlert::Kind kind, uint32_t id);
+
+// the version moved on (the agent applied an edit, the AI set or removed one): show what is there now
+void rebuildOnChange(ListScreen& l, uint32_t now) {
+    static uint32_t last = 0;
+    bool timer = false;  // a timer's "อีก 4 นาที" counts down
+    for (const UiAlert& a : gAlertList) timer |= a.kind == UiAlert::Timer;
+    if ((gUi.host() && gUi.host()->uiAlertsVersion() != gAlertVer) || (timer && now - last >= 1000)) {
+        last = now;
+        l.rebuild();
+    }
+}
+
+void openAlertMinute(uint32_t id, int hour) {
+    gSubPicker.setup("นาที", [id, hour](ListScreen& l) {
+        const UiAlert* a = findAlert(UiAlert::Reminder, id);
+        struct tm d{};
+        const time_t due = a ? (time_t)a->due : 0;
+        localtime_r(&due, &d);
+        for (int m = 0; m < 60; m += 5) {
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%02d:%02d", hour, m);
+            ListScreen::Item& it = l.add(buf, "", [id, hour, m]() {
+                const UiAlert* a = findAlert(UiAlert::Reminder, id);
+                if (a) {
+                    UiAlertEdit e;
+                    e.op = UiAlertEdit::Update;
+                    e.id = id;
+                    e.due = withDayAndTime(a->due, -1, hour, m);
+                    e.repeat = a->repeat;
+                    sendAlertEdit(e);
+                }
+                gUi.pop();  // minutes
+                gUi.pop();  // hours
+            });
+            if (m == d.tm_min / 5 * 5) it.checked = true;
+        }
+        l.reveal(d.tm_min / 5);
+    });
+    gUi.push(&gSubPicker);
+}
+}  // namespace
+
+void openAlerts() {
+    gAlerts.setup("การแจ้งเตือน", [](ListScreen& l) {
+        fetchAlerts();
+        if (gAlertList.empty()) {
+            l.add("ยังไม่มีการแจ้งเตือน", "", nullptr);
+            l.add("สั่ง AI ได้เลย", "\"เตือนพรุ่งนี้ 7 โมง\"", nullptr);
+            return;
+        }
+        for (const UiAlert& a : gAlertList) {
+            String value;
+            String title = a.label;
+            if (a.kind == UiAlert::Price) {
+                value = String(a.above ? "ขึ้นถึง " : "ลงถึง ") + priceTh(a.target);  // the Thai font has no ≥ / ≤
+            } else if (a.kind == UiAlert::Timer) {
+                if (!title.length()) title = "ตัวจับเวลา";
+                value = leftTh(a.due);
+            } else {
+                value = dayTh(a.due) + " " + clockTh(a.due);
+            }
+            const UiAlert::Kind k = a.kind;
+            const uint32_t id = a.id;
+            ListScreen::Item& it = l.addSubmenu(title, value, [k, id]() { openAlertDetail(k, id); });
+            it.valueColor = a.kind == UiAlert::Price ? ui::WARN : (a.kind == UiAlert::Timer ? ui::OK : ui::ACCENT);
+        }
+    });
+    gAlerts.onTick = rebuildOnChange;
+    gUi.push(&gAlerts);
+}
+
+namespace {
+void openAlertDetail(UiAlert::Kind kind, uint32_t id) {
+    gAlertDetail.setup(kind == UiAlert::Price ? "แจ้งเตือนราคา" : (kind == UiAlert::Timer ? "ตัวจับเวลา" : "เตือนความจำ"),
+                       [kind, id](ListScreen& l) {
+        fetchAlerts();
+        const UiAlert* a = findAlert(kind, id);
+        if (!a) {
+            l.add("รายการนี้ไม่มีแล้ว", "ลบไปแล้ว / ครบเวลาแล้ว", nullptr);
+            return;
+        }
+        if (kind == UiAlert::Price) {
+            l.add(a->label, "", nullptr);
+            l.addSubmenu(a->above ? "แจ้งเมื่อขึ้นถึง" : "แจ้งเมื่อลงถึง", priceTh(a->target), [id]() {
+                const UiAlert* a = findAlert(UiAlert::Price, id);
+                if (!a) return;
+                static char initial[24];
+                snprintf(initial, sizeof(initial), "%.6g", a->target);
+                KeyboardScreen::Options o;
+                o.title = "ราคาเป้าหมาย";
+                o.initial = initial;
+                o.maxBytes = 16;
+                o.asciiOnly = true;
+                gKeyboard.open(o, [id](const String& t) {
+                    String v = t;
+                    v.replace(",", "");
+                    const double target = atof(v.c_str());
+                    if (!(target > 0)) return;
+                    UiAlertEdit e;
+                    e.op = UiAlertEdit::Update;
+                    e.kind = UiAlert::Price;
+                    e.id = id;
+                    e.target = target;
+                    sendAlertEdit(e);
+                });
+            }).valueColor = ui::WARN;
+            l.add("ตรวจราคา", "ทุก 2 นาที", nullptr);
+        } else if (kind == UiAlert::Timer) {
+            l.add(a->label[0] ? a->label : "ตัวจับเวลา", "", nullptr);
+            l.add("ดังเมื่อ", clockTh(a->due), nullptr);
+            l.add("เหลือเวลา", leftTh(a->due), nullptr).valueColor = ui::OK;
+        } else {
+            l.addSubmenu("ข้อความ", a->label, [id]() {
+                const UiAlert* a = findAlert(UiAlert::Reminder, id);
+                if (!a) return;
+                static char initial[96];
+                snprintf(initial, sizeof(initial), "%s", a->label);
+                KeyboardScreen::Options o;
+                o.title = "ข้อความแจ้งเตือน";
+                o.initial = initial;
+                o.maxBytes = 90;
+                gKeyboard.open(o, [id](const String& t) {
+                    if (!t.length()) return;
+                    UiAlertEdit e;
+                    e.op = UiAlertEdit::Update;
+                    e.id = id;
+                    const UiAlert* a = findAlert(UiAlert::Reminder, id);
+                    e.repeat = a ? a->repeat : 0;
+                    snprintf(e.label, sizeof(e.label), "%s", t.c_str());
+                    sendAlertEdit(e);
+                });
+            });
+            l.addSubmenu("วัน", dayTh(a->due), [id]() {
+                gPicker.setup("เลือกวัน", [id](ListScreen& l) {
+                    const UiAlert* a = findAlert(UiAlert::Reminder, id);
+                    if (!a) return;
+                    for (int d = 0; d < 14; d++) {
+                        const uint32_t t = withDayAndTime(a->due, d, -1, -1);
+                        if (t <= (uint32_t)time(nullptr)) continue;  // today, but that time is gone
+                        ListScreen::Item& it = l.add(dayTh(t), clockTh(t), [id, t]() {
+                            const UiAlert* a = findAlert(UiAlert::Reminder, id);
+                            UiAlertEdit e;
+                            e.op = UiAlertEdit::Update;
+                            e.id = id;
+                            e.due = t;
+                            e.repeat = a ? a->repeat : 0;
+                            sendAlertEdit(e);
+                            gUi.pop();
+                        });
+                        it.checked = dayTh(t) == dayTh(a->due);
+                    }
+                });
+                gUi.push(&gPicker);
+            });
+            l.addSubmenu("เวลา", clockTh(a->due), [id]() {
+                gPicker.setup("ชั่วโมง", [id](ListScreen& l) {
+                    const UiAlert* a = findAlert(UiAlert::Reminder, id);
+                    struct tm d{};
+                    const time_t due = a ? (time_t)a->due : 0;
+                    localtime_r(&due, &d);
+                    for (int h = 0; h < 24; h++) {
+                        char buf[12];
+                        snprintf(buf, sizeof(buf), "%02d น.", h);
+                        l.addSubmenu(buf, "", [id, h]() { openAlertMinute(id, h); }).checked = h == d.tm_hour;
+                    }
+                    l.reveal(d.tm_hour);
+                });
+                gUi.push(&gPicker);
+            });
+            l.addSubmenu("ทำซ้ำ", repeatTh(a->repeat), [id]() {
+                gPicker.setup("ทำซ้ำ", [id](ListScreen& l) {
+                    const UiAlert* a = findAlert(UiAlert::Reminder, id);
+                    for (uint8_t r = 0; r < 4; r++) {
+                        ListScreen::Item& it = l.add(repeatTh(r), "", [id, r]() {
+                            UiAlertEdit e;
+                            e.op = UiAlertEdit::Update;
+                            e.id = id;
+                            e.repeat = r;
+                            sendAlertEdit(e);
+                            gUi.pop();
+                        });
+                        it.checked = a && a->repeat == r;
+                    }
+                });
+                gUi.push(&gPicker);
+            });
+        }
+        l.add("ลบการแจ้งเตือนนี้", "ลบ", [kind, id]() {
+            gConfirm.ask("ลบการแจ้งเตือน", "ลบรายการนี้? ย้อนกลับไม่ได้", "ลบ", [kind, id]() {
+                UiAlertEdit e;
+                e.op = UiAlertEdit::Remove;
+                e.kind = kind;
+                e.id = id;
+                sendAlertEdit(e);
+                gUi.pop();  // back to the list
+            });
+        }).valueColor = ui::ERR;
+    });
+    gAlertDetail.onTick = rebuildOnChange;
+    gUi.push(&gAlertDetail);
+}
+}  // namespace
+
 namespace settingsui {
+
+void openAlerts() { ::openAlerts(); }
 
 void openCalibration() { gUi.push(&gCalibration); }
 
@@ -1559,6 +1865,7 @@ bool openPage(const char* page) {
     else if (!strcmp(page, "display")) openCatDisplay();
     else if (!strcmp(page, "clocktheme")) openClockThemes();
     else if (!strcmp(page, "clockcolor")) openClockColors();
+    else if (!strcmp(page, "alerts")) openAlerts();
     else if (!strcmp(page, "city")) openWeatherCity();
     else if (!strcmp(page, "profile")) openProfiles();
     else if (!strcmp(page, "voice")) openVoices();

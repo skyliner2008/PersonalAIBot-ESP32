@@ -103,6 +103,13 @@ status: implemented
 - **behavior ตามโมเดล:** 3.8 Live = `BLOCKING` (ยกเว้น `set_expression` = `NON_BLOCKING` + `scheduling: SILENT` — field ของ FunctionResponse ข้าง `response`, ใส่ใน `response` แล้วโมเดลพูดซ้ำ 2 รอบ T071), 3.8 Extended Thinking = `NON_BLOCKING` ทั้งหมด (BLOCKING = hard error), 3.1 Flash Live = ไม่ใส่ field
 - **การแจ้งเตือน:** ถึงเวลา → เสียงกริ๊ง 2 โน้ตทุก 2.5 วิ (สูงสุด 30 วิ หรือจนแตะจอ), ตาตกใจ, ข้อความบนจอ และส่ง `clientContent` "[แจ้งเตือนจากระบบ] ..." ให้ผู้ช่วยพูดบอก; ถ้ากำลังพักจะตื่นเอง
 - ไฟล์: `agent/reminders.json`, `agent/tasks.json` (เขียนแบบ atomic ผ่าน `.tmp`)
+- **หน้าการแจ้งเตือน (T141):** มี reminder / timer / แจ้งเตือนราคา อย่างน้อย 1 รายการ → **กระดิ่งสีทอง** ข้างไอคอน Wi-Fi บนหน้าดวงตา → แตะ = รายการทั้งหมด
+  (เตือนความจำ: วัน + เวลา · ตัวจับเวลา: นับถอยหลัง · ราคา: "ขึ้นถึง/ลงถึง ...") → แตะรายการ = รายละเอียด: เตือนความจำแก้ **ข้อความ** (คีย์บอร์ด) / **วัน**
+  (14 วันข้างหน้า) / **เวลา** (ชั่วโมง → นาทีทีละ 5) / **ทำซ้ำ** (ครั้งเดียว / ทุกวัน / วันทำงาน / ทุกสัปดาห์) · ราคา: แก้ **ราคาเป้าหมาย** (ทิศเดิม) · ทุกแบบ **ลบ** (ยืนยันก่อน)
+  · เปิดจากเมนู ⚙ → ความจำ & ประวัติ → "การแจ้งเตือน" หรือ console `ui open alerts` ก็ได้
+  · ทำงานยังไง: UI ไม่แตะ scheduler / `alerts.json` ตรงๆ — agent เผยแพร่สำเนา (`uiAlerts`, version) ทุก 1 วิเมื่อมีการเปลี่ยน และรับการแก้จากคิว
+  (`uiAlertEdit` → `applyAlertEdits` ใน agent task) · `alerts.json` มี mutex (`AlertsLock`) เพราะ task เว็บ (tool + ตรวจราคาทุก 2 นาที) กับ agent ใช้ร่วมกัน —
+  ไม่ถือ lock ระหว่างเรียก TradingView · `Scheduler::update()` (host tested) · ผล `set_reminder` บอกโมเดลว่าผู้ใช้ดู/แก้ได้ที่กระดิ่ง
 
 ---
 

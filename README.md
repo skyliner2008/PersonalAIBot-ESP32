@@ -146,6 +146,7 @@ On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio 
 |---|---|
 | Speak when the screen shows **พร้อมคุย** | Voice answer + subtitles (and a data card when relevant) |
 | Tap 🎤 (bottom-left) | Mute / unmute the mic |
+| Tap 🔔 (next to Wi-Fi, shown while alerts are set) | All reminders, timers and price alerts — edit text / day / time / repeat / target price, or delete |
 | Tap the screen or press BOOT while it speaks | Stop talking (barge-in) |
 | Tap while asleep / paused | Wake up / reconnect immediately |
 | Say **"Hi ESP"** while asleep | Offline wake word (ESP-SR WakeNet after our echo removal, works over the radio) — ⚙ menu "ปลุกด้วยเสียง" / Studio / `set wake level\|word\|both`, `set wakeword hiesp\|jarvis`, `set wakethreshold 0.5` |

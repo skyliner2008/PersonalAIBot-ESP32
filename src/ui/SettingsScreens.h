@@ -61,6 +61,8 @@ namespace settingsui {
 void openCalibration();
 /** Open the main settings menu (call from the UI task). */
 void openMenu();
+/** T141: reminders, timers and price alerts - view, edit, delete (the bell on the face). */
+void openAlerts();
 /** Open a specific page by name: "menu", "wifi", "apikey", "agent", "user", "profile", "voice", "info". */
 bool openPage(const char* page);
 }  // namespace settingsui

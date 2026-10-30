@@ -92,6 +92,18 @@ This page documents common issues encountered during development and their solut
 
 ---
 
+## T141: หน้าการแจ้งเตือน — กระดิ่งบนจอ ดู / แก้ไข / ลบ ได้เอง (ไม่ต้องสั่งผ่าน AI)
+
+**วันที่:** 2026-10-30 · **ผู้ใช้:** "สั่ง AI ตั้งแจ้งเตือนแล้ว อยากให้มีกระดิ่งขึ้นข้างไอคอน Wi-Fi กดแล้วแสดงการแจ้งเตือนทั้งหมด กดลบและแก้ไขได้"
+**ทำ:** กระดิ่ง (AA icon) ที่ (50, 15) เมื่อ reminders + price alerts > 0 · `settingsui::openAlerts()` รายการ + รายละเอียด (ข้อความ / วัน / เวลา / ทำซ้ำ / ราคาเป้าหมาย / ลบ) ·
+`UiAlert` / `UiAlertEdit` + `UiHost::uiAlerts / uiAlertsVersion / uiAlertEdit` · agent: `refreshAlerts()` (ทุก 1 วิ เมื่อ scheduler/alerts.json เปลี่ยน) + `applyAlertEdits()` ·
+`Scheduler::update()` · webtools: `listPriceAlerts / removePriceAlert / setPriceAlertTarget` + `AlertsLock` (การ add ค้นสัญลักษณ์ก่อนแล้วค่อยล็อก, การตรวจทุก 2 นาที
+ปล่อย lock ระหว่างถาม TradingView แล้วโหลดใหม่ก่อนลบรายการที่ถึงเป้า)
+**เจอตอนดูภาพจริง:** ฟอนต์ไทยไม่มี "≥ / ≤" (ขึ้นเป็นกล่อง) → "ขึ้นถึง / ลงถึง" · ป้ายชั่วโมง "06:xx" → "06 น."
+**ทดสอบบนบอร์ด (COM3):** ตั้ง reminder + timer + แจ้งเตือนราคา BITSTAMP:BTCUSD ผ่าน console `tool` → กระดิ่งขึ้น · รายการ 3 แบบ · ลบตัวจับเวลาผ่านหน้ายืนยัน
+(`[Alerts] remove reminder #6 -> ok`) · แก้ราคา 90,000 → 95,000 ด้วยคีย์บอร์ด · แก้เวลา 07:30 → 06:25 (`list_reminders` ยืนยัน) · ลบรายการทดสอบทั้งหมด → กระดิ่งหาย ·
+host tests 3,084 ✓ (`scheduler_fire_and_persist` + update) · build 2 env ✓
+
 ## T140: AI ยังหลุด "พูด" set_expression ออกเสียง — เลิกให้โมเดลคุมดวงตา บอร์ดเลือกอารมณ์เอง
 
 **วันที่:** 2026-10-30 · **ผู้ใช้:** "ไม่มีซับไตเติลขึ้นแล้ว แต่ AI หลุดพูดประโยคนี้ออกมาด้วย 1 ครั้ง" → เลือก "บอร์ดคุมดวงตาเอง"

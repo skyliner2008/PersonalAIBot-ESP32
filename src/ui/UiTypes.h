@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include <Arduino.h>
 #include <stdint.h>
 
@@ -41,6 +43,31 @@ struct UiStatus {
     int8_t wxCode = 0;
     bool wxIsDay = true;
     char wxCity[48] = "";
+    uint16_t priceAlerts = 0;  // T141: stored price alerts (the bell shows when this + reminders > 0)
+};
+
+/** T141: one alert on the alerts screen (a copy the agent publishes: the UI never touches the scheduler). */
+struct UiAlert {
+    enum Kind : uint8_t { Reminder, Timer, Price };
+    Kind kind = Reminder;
+    uint32_t id = 0;
+    uint32_t due = 0;     // reminder / timer: unix epoch
+    uint8_t repeat = 0;   // sched::Repeat
+    char label[96] = "";  // reminder text / price alert name
+    double target = 0;    // price alert: the price it waits for
+    bool above = true;    // price alert: rises to (true) / falls to
+};
+
+/** T141: a change made on the alerts screen, done by the agent task. */
+struct UiAlertEdit {
+    enum Op : uint8_t { Remove, Update };
+    Op op = Remove;
+    UiAlert::Kind kind = UiAlert::Reminder;
+    uint32_t id = 0;
+    uint32_t due = 0;     // Update reminder: 0 = keep
+    uint8_t repeat = 0;
+    char label[96] = "";  // Update reminder: "" = keep
+    double target = 0;    // Update price alert
 };
 
 /** Actions the UI asks the agent to perform (implemented by AgentController). */
@@ -59,4 +86,11 @@ public:
     virtual AvatarState uiState() = 0;
     virtual void uiActivity() {}        // touch on a non-face screen (radio player): delay the power-save clock
     virtual void uiPowerSave() {}       // preview power-save clock screen now
+    /** T141: the alerts (reminders, timers, price alerts) as last published; returns their version. */
+    virtual uint32_t uiAlerts(std::vector<UiAlert>& out) {
+        out.clear();
+        return 0;
+    }
+    virtual uint32_t uiAlertsVersion() { return 0; }
+    virtual void uiAlertEdit(const UiAlertEdit& e) { (void)e; }
 };

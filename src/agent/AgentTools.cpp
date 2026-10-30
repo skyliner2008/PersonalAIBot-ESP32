@@ -621,6 +621,7 @@ bool AgentTools::setReminder(JsonObjectConst a, JsonObject r, const char*& e) {
     r["id"] = id;
     writeWhen(r, "due", due, _utcOffset);
     r["repeat"] = sched::repeatName(rep);
+    r["screen"] = "bell icon top left: the user can view / edit / delete it";  // T141: the alerts screen
     return true;
 }
 

@@ -1574,6 +1574,7 @@ void setup() {
     }
     gFace.begin([]() { settingsui::openMenu(); }, []() { gUi.push(&gRadioUi); },
                 []() { gVehicle.openDash(); });  // the UI task's open request shows it (sim if no source yet)
+    gFace.setOpenAlerts([]() { settingsui::openAlerts(); });  // T141: the bell
     gRadioUi.begin(&audio);
     gCard.begin();
     gUi.push(&gFace);

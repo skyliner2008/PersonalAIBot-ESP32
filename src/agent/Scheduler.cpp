@@ -169,6 +169,19 @@ uint32_t Scheduler::addReminder(uint32_t due, Repeat repeat, const char* label) 
     return id;
 }
 
+bool Scheduler::update(uint32_t id, uint32_t due, Repeat repeat, const char* label, uint32_t now) {
+    for (Reminder& r : _items) {
+        if (r.id != id) continue;
+        if (due && now && due <= now) return false;
+        if (due) r.due = due;
+        r.repeat = r.timer ? Repeat::None : repeat;
+        if (label && *label) r.label = PsString(label, utf8::clampToBoundary(label, strlen(label), 150));
+        sortAndSave();
+        return true;
+    }
+    return false;
+}
+
 const Reminder* Scheduler::find(uint32_t id) const {
     for (const Reminder& r : _items) {
         if (r.id == id) return &r;

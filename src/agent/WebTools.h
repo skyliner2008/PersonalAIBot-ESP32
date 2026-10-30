@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -59,6 +61,20 @@ ClockWeather getClockWeather();
 
 /** Trigger an early background refresh (e.g. when the user changes weatherCity in Settings). */
 void requestClockWeatherRefresh();
+
+/** T141: one price alert for the alerts screen (alerts.json in the agent dir). */
+struct PriceAlertInfo {
+    int id = 0;
+    char symbol[32] = "";
+    char name[48] = "";
+    double target = 0;  // the price it waits for
+    bool above = true;  // true: rises to target, false: falls to it
+};
+/** The stored price alerts (any task: alerts.json is locked while read / written). */
+size_t listPriceAlerts(const char* dir, std::vector<PriceAlertInfo>& out);
+bool removePriceAlert(const char* dir, int id);
+/** A new target, same direction. */
+bool setPriceAlertTarget(const char* dir, int id, double target);
 
 struct Result {
     char id[64];

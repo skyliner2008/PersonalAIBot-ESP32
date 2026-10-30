@@ -1113,6 +1113,7 @@ void AgentController::handleWebResults() {
             result.clear();
             result["error"] = "tool result could not be read";
         }
+        if (!strcmp(r.name, "price_alert") || r.tag == webtools::kAlertTag) _priceAlertsDirty = true;  // T141
         if (r.tag == webtools::kAlertTag) {  // a price alert fired in the background
             const char* m = result["message"] | "";
             if (!*m) {

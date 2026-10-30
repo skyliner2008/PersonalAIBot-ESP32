@@ -314,12 +314,15 @@ void FaceScreen::setExpression(Emotion e, uint32_t holdMs) {
 void FaceScreen::onTouch(const TouchEvent& e) {
     const bool gear = e.startX >= 266 && e.startY <= 56;
     const bool mic = e.startX <= kMicX + 24 && e.startY >= kMicY - 26 && _micShown;
+    const bool bell = e.startX >= 34 && e.startX <= 72 && e.startY <= 36 && _bellShown;
     const bool dash = e.startX >= kDashX - 20 && e.startY >= kDashY - 26 && _dashShown;
     const bool radioBtn = e.startX >= kRadioBtnX - 22 && e.startX < kDashX - 20 && e.startY >= kRadioBtnY - 26 && _radioBtnShown;
     const bool radioBar = e.startY >= 204 && e.startX > kMicX + 24 && e.startX < kRadioBtnX - 22 && _radioShown;
     if (e.type == TouchEvent::Tap) {
         if (gear) {
             if (_openMenu) _openMenu();
+        } else if (bell) {
+            if (_openAlerts) _openAlerts();
         } else if (dash) {
             _openDash();
         } else if (radioBtn || radioBar) {
@@ -329,7 +332,7 @@ void FaceScreen::onTouch(const TouchEvent& e) {
         } else if (gUi.host()) {
             gUi.host()->uiTap();
         }
-    } else if (e.type == TouchEvent::LongPress && !gear && !mic && !dash && !radioBtn && gUi.host()) {
+    } else if (e.type == TouchEvent::LongPress && !gear && !mic && !bell && !dash && !radioBtn && gUi.host()) {
         gUi.host()->uiLongPress();
     }
 }
@@ -407,7 +410,7 @@ void FaceScreen::layout() {
 // anti-aliased (AaIcon) once per state and cached; the status bar is one height (~20 px) with Oswald text
 namespace {
 aa::Icon gGearIcon(26, 26), gMicIcon(38, 38), gWifiIcon(30, 22), gBatteryIcon(30, 16), gRadioBtnIcon(38, 38),
-    gDashIcon(38, 38), gRadioIcon(22, 18);
+    gDashIcon(38, 38), gRadioIcon(22, 18), gBellIcon(24, 24);
 constexpr float kPi = 3.14159265f;
 }  // namespace
 
@@ -457,6 +460,20 @@ void FaceScreen::drawStatus(LGFX_Sprite& c, const UiStatus& s) {
             p.layer(aa::arc(x, y, 0, 0, kR[i], 1.45f, 225.0f, 315.0f), bars >= i + 2 ? ui::OK : off);
         }
     });
+
+    // T141: a bell while reminders / timers / price alerts are set - tap it for the list
+    _bellShown = _openAlerts && (s.reminders + s.priceAlerts) > 0;
+    if (_bellShown) {
+        gBellIcon.draw(c, 50, cy, 0, [](aa::Painter& p) {
+            const float x = p.x(), y = p.y() - 0.5f;
+            float d = aa::circle(x, y, 0, -2.0f, 6.0f);                          // the dome
+            d = fminf(d, aa::roundRect(x, y, 0, 2.0f, 6.0f, 4.0f, 1.0f));         // the body
+            d = fminf(d, aa::roundRect(x, y, 0, 5.8f, 8.6f, 1.3f, 1.2f));         // the rim
+            d = fminf(d, aa::circle(x, y, 0, -8.6f, 1.6f));                       // the knob
+            p.layer(d, ui::WARN);
+            p.layer(aa::circle(x, y, 0, 9.0f, 2.1f), ui::WARN);                   // the clapper
+        });
+    }
 
     // the clock: Oswald, equal-width digits (nothing moves when a minute changes)
     if (s.clock[0]) bigfont::draw(c, ClockText28, s.clock, ui::W / 2, cy, 1, ui::TEXT, true);
@@ -815,6 +832,7 @@ void FaceScreen::draw(LGFX_Sprite& c) {
         _radioBtnShown = false;
         _dashShown = false;
         _micShown = false;
+        _bellShown = false;
         drawClock(c);
         return;
     }

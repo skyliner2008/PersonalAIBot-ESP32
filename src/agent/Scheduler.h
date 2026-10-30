@@ -50,6 +50,11 @@ public:
     uint32_t addTimer(uint32_t now, uint32_t seconds, const char* label);
     uint32_t addReminder(uint32_t due, Repeat repeat, const char* label);
     bool cancel(uint32_t id);
+    /**
+     * T141 (the alerts screen): change a reminder's time / repeat / text. due = 0 keeps the time, label = nullptr
+     * keeps the text. False = no such id, or the new time is not in the future (now > 0 is checked).
+     */
+    bool update(uint32_t id, uint32_t due, Repeat repeat, const char* label, uint32_t now = 0);
     size_t cancelAll();
 
     /** Items sorted by due time. */
