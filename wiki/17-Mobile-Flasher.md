@@ -17,6 +17,24 @@ status: active
 > | `tools/mobile_app/composeApp` | แอป Jarvis (Kotlin Multiplatform + Compose): แชท/Live เสียง Gemini, ความจำ, tools, avatar Godot, automation ฯลฯ — package `com.skyliner2008.jarvis` (applicationId เดิมของ Jarvis → ติดตั้งทับแอป Jarvis เดิมได้ ข้อมูลอยู่ครบ ถ้าเซ็นด้วยกุญแจเดียวกัน) |
 > | `tools/mobile_app/esp32` | Android library = ESP32-AI Flasher เดิม (โค้ด + test ไม่เปลี่ยน, package `io.github.skyliner2008.pabflasher`) เปิดด้วย `pabflasher.MainActivity` |
 >
+> **T182 — แอปรุ่น lite (2.2.0): ติดตั้งจากไฟล์ได้โดย Play Protect ไม่บล็อก + คำปลุกปล่อยไมค์ให้แอปกล้อง**
+> - **อาการ:** ติดตั้ง APK v4.9.1 ที่ดาวน์โหลดจาก GitHub ผ่าน Chrome แล้วขึ้น "Google Play Protect — แอปถูกบล็อกเพื่อปกป้องอุปกรณ์ของคุณ
+>   … ขอสิทธิ์เข้าถึงข้อมูลที่ละเอียดอ่อน" → "ไม่ได้ติดตั้งแอป"
+> - **สาเหตุ:** Play Protect "enhanced fraud protection" (เปิดในไทยแล้ว) บล็อก APK จากเบราว์เซอร์ / แอปแชท / ตัวจัดการไฟล์ที่ประกาศ
+>   RECEIVE_SMS, READ_SMS, **notification listener** หรือ **Accessibility service** — แอปมี 3 ตัว: `JarvisAccessibilityService`
+>   (ควบคุมแอปอื่น), `JarvisNotificationListener` (อ่านแจ้งเตือน LINE/SMS + เพลงที่เล่น), `MapsListener` ของหน้าบอร์ด (จุดเลี้ยว Google Maps)
+> - **ตัดออก (ผู้ใช้สั่ง "ให้เหลือเฉพาะโหมดหุ่น 3D avatar"):** ทั้ง 3 service + **โหมดขับขี่ / โหมดควบคุม** (หน้า `DriveModeScreen`,
+>   `DriveBridge`, โปรไฟล์ `DRIVE`, จุดจอดรถ, โหมดลดแสง) + tool ที่ต้องใช้มัน 11 ตัว (`device_read_screen`, `_screenshot`, `_tap`,
+>   `_gesture`, `_type_text`, `_scroll`, `_press_button`, `_get_app_info`, `_open_app`, `_notification_read`, `_notification_reply`)
+>   + `media_control(now_playing)` · Always Live = **โหมดอวตารอย่างเดียว** (คำสั่ง "โหมดขับขี่ / ควบคุม" เปิดอวตารแทนและบอกว่าตัดออกแล้ว)
+>   · เล่น/หยุด/ข้ามเพลงยังได้ (ปุ่มมีเดียของระบบ) · หน้าบอร์ด: ส่ง GPS + "นำทางไป …" (เปิด Google Maps) ยังได้ แต่**ไม่ส่งจุดเลี้ยวให้บอร์ดแล้ว** ([[18-Phone-Link-Navigation-Plan]])
+> - **ตรวจได้:** `aapt dump xmltree dist/PersonalAIBot-Mobile.apk AndroidManifest.xml | grep BIND_` ต้องว่าง
+> - **คำปลุกแย่งไมค์ (`MicSharing`):** เดิมตัวฟัง "Hey Jarvis" ถือไมค์ตลอดเวลาที่ไม่มี Live → แอปกล้องอัดวิดีโอไม่ได้ · ตอนนี้
+>   (1) แอปอื่นเปิดกล้องขณะแอปเราไม่อยู่หน้าจอ (`CameraManager.AvailabilityCallback`, ไฟฉายไม่นับ) → หยุดฟังทันทีก่อนกดอัด และ Live ที่ค้างในพื้นหลังปิดเอง
+>   (2) แอปอื่นอัดเสียง (`AudioRecordingCallback`; session ของแอปเราเอง `OwnMic` และ hotword ของระบบไม่นับ) → หยุดฟัง ·
+>   ทั้งสองหมดแล้วฟังต่อเอง (1 วิ) · logcat `WakeWord`: `mic sharing: another app opened camera …`, `… the wake word gives the mic to it`,
+>   `another app opened the camera - closing the background Live session to free the mic`
+>
 > **T091 — คำปลุกในมือถือ "Hey Jarvis"** (openWakeWord บน ONNX Runtime ในเครื่อง, แอป 2.1.0) — คำปลุกกับ Live ผลัดกันใช้ไมค์:
 > - **ไม่มี Live เปิดอยู่** (จอเปิดหรือดับ, ไม่ต้องเปิด Always Live): ฟังคำปลุกด้วยไมค์ของตัวเอง (`WakeWordService`)
 > - **"Hey Jarvis"** → เสียงชิป → เปิด Live (จอดับก็เปิดในพื้นหลัง) · Always Live ที่พักจออยู่ยังขึ้นจอเต็มเหมือนเดิม

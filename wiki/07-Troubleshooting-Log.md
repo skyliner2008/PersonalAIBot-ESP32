@@ -16,6 +16,10 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T182 | [[#T182 แอปมือถือติดตั้งไม่ได้ — Play Protect "แอปถูกบล็อกเพื่อปกป้องอุปกรณ์ของคุณ" + คำปลุกแย่งไมค์จนแอปกล้องอัดวิดีโอไม่ได้]] | Mobile app | 🔶 แก้แล้ว ยังไม่ได้ลองบนมือถือ |
+| T181 | [[#T181 Xmini-C3 บูตไม่ขึ้น — abort ใน AgentController begin แล้ว RAM ภายในเหลือ 18 KB]] | Memory | 🔶 บางส่วน (คุยเสียง + tool การลงทุนได้ โดยปิด session ระหว่างดึงข้อมูล; heap แตกเป็นชิ้นหลังใช้นาน) |
+| T180 | [[#T180 XH-S3E-AI การ์ดผลของ tool ไม่พอดีจอ OLED 128×64 — วรรณยุกต์หาย, ข้อความทับ, ตัวเลขโดนตัด]] | Display | ✅ Fixed |
+| T179 | [[#T179 XH-S3E-AI พูดเอง ตอบเอง — ไมค์ MEMS ส่งเสียงห้อง / เสียงลำโพงที่ยังก้องให้ AI]] | Audio | ✅ Fixed (ผู้ใช้ทดสอบแล้วปกติ) |
 | T169 | [[#T169 บอร์ดจิ๋ว (XH-S3E-AI / Xmini-C3) จะอัปเดตผ่าน Wi-Fi ด้วยไฟล์ของ ES3C28P + ช่อง SSID ใน Studio เปลี่ยนเครือข่ายหลักโดยไม่ตั้งใจ]] | OTA/Release/PC Studio | ✅ แยกไฟล์ OTA ต่อบอร์ด + ช่อง SSID = เครือข่ายหลักเสมอ (ยังไม่ทดสอบบนบอร์ด) |
 | T168 | [[#T168 ดึงข้อมูลฝน ThaiWater ทั้งประเทศแล้วบอร์ดค้างถาวร (`stage "water: parse stations" for 45..150 s`)]] | Tools/Network/Gzip/Agent | ✅ แก้ `tinfl` zero-pad loop + ตัดข้อมูลแหว่ง + ยกเลิกงานทันทีตอนพูดแทรก/หลับ (P4 & S3) |
 | T167 | [[#T167 ESP32-P4: Wi-Fi ด้านหน้าจอรับสัญญาณอ่อนกว่า S3 (-70 vs -45 dBm) + review เชิงลึกแก้ 6 จุด (High–Medium)]] | P4/RF/Agent/UI/Camera/I2C | ✅ เสาเซรามิกถูกแผ่นเหล็กหลังจอบัง · แก้โค้ดครบ 6 จุด |
@@ -109,6 +113,225 @@ This page documents common issues encountered during development and their solut
 | T010 | [[#T010 Wi-Fi เชื่อมต่อไม่ได้]] | Network | 📘 Reference |
 
 > 📘 Reference = แนวทางทั่วไปที่เขียนไว้ก่อนทดสอบบนบอร์ดจริง ไม่ใช่ปัญหาที่เกิดขึ้นแล้ว
+
+---
+
+## T182: แอปมือถือติดตั้งไม่ได้ — Play Protect "แอปถูกบล็อกเพื่อปกป้องอุปกรณ์ของคุณ" + คำปลุกแย่งไมค์จนแอปกล้องอัดวิดีโอไม่ได้
+
+**วันที่:** 2026-11-10 · **ที่:** `tools/mobile_app` (แอป 2.1.2 → **2.2.0**) · [[17-Mobile-Flasher]] · [[18-Phone-Link-Navigation-Plan]]
+
+| อาการ | ต้นเหตุ | แก้ |
+|---|---|---|
+| ดาวน์โหลด `PersonalAIBot-Mobile.apk` จาก GitHub ใน Chrome แล้วติดตั้ง → "Google Play Protect: แอปถูกบล็อกเพื่อปกป้องอุปกรณ์ของคุณ — แอปนี้สามารถขอสิทธิ์เข้าถึงข้อมูลที่ละเอียดอ่อนได้…" → ไม่ได้ติดตั้ง | Play Protect **enhanced fraud protection** (นำร่องสิงคโปร์ 2024 แล้วขยายถึงไทย) บล็อก APK จากเบราว์เซอร์ / แอปแชท / ตัวจัดการไฟล์ที่ขอ RECEIVE_SMS, READ_SMS, notification listener หรือ Accessibility — แอปมี `JarvisAccessibilityService`, `JarvisNotificationListener`, `MapsListener` (มีมาตั้งแต่ T088, 2026-10-23 ไม่ใช่ผลจากการล้าง GitHub ใน T178) | ผู้ใช้สั่งตัดโหมดขับขี่ / โหมดควบคุม ให้เหลือแต่โหมดอวตาร: ลบ 3 service + หน้า/ตัวควบคุมโหมดขับขี่ + tool 11 ตัวที่ต้องใช้มัน + now_playing · Always Live = อวตารเท่านั้น · persona ไม่เสนอสิ่งที่ทำไม่ได้แล้ว |
+| เปิดคำปลุก "Hey Jarvis" แล้วแอปกล้องอัดวิดีโอไม่ได้ | `WakeWordService` ถือไมค์ (VOICE_RECOGNITION) ทุกครั้งที่ไม่มี Live ไม่ว่าแอปอื่นจะต้องใช้ไมค์หรือไม่ · Live ที่เปิดจากคำปลุกค้างในพื้นหลังถือ VOICE_COMMUNICATION (แชร์ไม่ได้) | `MicSharing`: แอปอื่นเปิดกล้องขณะแอปเราไม่อยู่หน้าจอ → หยุดฟังก่อนกดอัด + ปิด Live ที่ค้างพื้นหลัง · แอปอื่นอัดเสียง (ไม่นับ session ของเราเอง `OwnMic` และ hotword ของระบบ) → หยุดฟัง · หมดแล้วกลับมาฟังเอง |
+
+**ทดสอบ:** unit tests `:esp32` + `:composeApp` · APK release ไม่มี `BIND_ACCESSIBILITY_SERVICE` / `BIND_NOTIFICATION_LISTENER_SERVICE` (aapt) ·
+**ยังไม่ได้ลองบนมือถือจริง** (ติดตั้งจาก Chrome ผ่าน Play Protect, อัดวิดีโอขณะเปิดคำปลุก)
+
+**ถ้ายังถูกบล็อก:** ดูสิทธิ์ที่เหลือใน APK (`aapt dump permissions`) — ทางเลี่ยงที่ไม่ต้องตัดฟีเจอร์คือติดตั้งจาก PC ด้วย `adb install` (ไม่ใช่แหล่งที่ Play Protect ตัวนี้ตรวจ)
+
+---
+
+## T181: Xmini-C3 บูตไม่ขึ้น — abort ใน AgentController begin แล้ว RAM ภายในเหลือ 18 KB
+
+**อาการ:** แฟลช `firmware-c3-mini/` (v4.9.1) ลงบอร์ดจริงครั้งแรก → `abort() was called` วนรีบูต (`rst:0xc RTC_SW_CPU_RST`) หลัง `[Phone] not paired`
+
+**สาเหตุ 1:** addr2line → `PsramAllocator::allocate` ← `PcmRing::init(kWakeBufferSamples)` = 6 วิ × 16 kHz = 192 KB; C3 ไม่มี PSRAM จึงขอจาก RAM ภายใน (มี ~83 KB) แล้ว `abort()`
+→ แก้: `kWakeBufferSamples` 2 วิ และขนาดจริงคำนวณตอนบูตจาก RAM ที่ว่าง (เว้น 96 KB) ขั้นต่ำ = pre-roll 600 ms · log `[Agent] pre-roll ring … ms`
+
+**สาเหตุ 2 (แก้แล้ว): ค้างที่ `audio.startTasks()`** — ESP32-C3 ไม่มี FPU: ตัวแปลง 24→16 kHz (FIR float 24 MAC ต่อ output + ตัวนับ 64-bit, ทั้งไมค์และ echo reference)
+ใช้ CPU เกือบหมด task `audioIn` (priority 6) ไม่เคยว่าง setup() จึงไม่ได้ทำต่อ (console เงียบ ไม่รีบูต) → `audio/Resampler.h` เป็นจำนวนเต็ม Q14 + ตัวนับ `_lead` 32-bit
+(ทดสอบบน PC เทียบเกณฑ์เดียวกับ host test: DC 10000 → 10000, 1 kHz rms 7040, 10 kHz ถูกตัดเหลือ 4.5) และ `AUDIO_ECHO_REF` 0
+
+**ตัดเพื่อคืน RAM (C3 เท่านั้น — ผู้ใช้: ตัดฟีเจอร์ได้ แต่คุยด้วยเสียง + การลงทุนต้องอยู่):** วิทยุ/เพลง SD (task 16 KB + รายชื่อสถานี 5 KB + บัฟเฟอร์ 8 KB, เอา `play_radio`/`stop_radio` ออก),
+echo canceller (~10 KB), task text model เริ่มเมื่อใช้ครั้งแรก (8 KB), pre-roll 600 ms, แคชการ์ด tool 4 → 2
+
+**ยังไม่พอ:** บูตเสร็จ ตอบ console ได้ แต่ heap เหลือ **18 KB** (task ที่เคยสร้างไม่สำเร็จ — webTools 12 KB — ตอนนี้สร้างได้แล้ว). งบหลังตัด:
+เสียง 74 KB (playback 40, capture 16, DMA) · UI 17 (sprite RGB565 16) · agent 66 (pre-roll 19, Gemini 19, webTools 12, memory 5 …) · task 31 (audio 12, agent 13, ui 6)
+สิ่งที่ต้องการเพิ่มตอนคุย: Wi-Fi ~40 KB + TLS ของ Gemini ~37 KB (Arduino ตั้ง mbedTLS 16 KB ขาเข้า + 16 KB ขาออก) + JSON setup ~38 KB + TLS ของ tool อีก ~37 KB พร้อมกัน
+→ ต้องลด TLS ด้วย sdkconfig เอง (pioarduino `custom_sdkconfig`: MBEDTLS_DYNAMIC_BUFFER, ASYMMETRIC_CONTENT_LEN, บัฟเฟอร์ Wi-Fi) + ลดบัฟเฟอร์เสียง/sprite 1-bit/ส่ง setup แบบ stream
+
+**รอบ 2 — framework สร้างเอง + ตัด RAM ต่อ (ผู้ใช้ให้ลุยต่อ):**
+- `custom_sdkconfig` (pioarduino สร้าง Arduino IDF libs ใหม่ใน `firmware-c3-mini/.pio-core` — core แยก ไม่ให้ S3/P4 ต้องติดตั้ง framework ใหม่): mbedTLS dynamic buffer
+  (ต้องปิด DTLS), out record 4 KB, ไม่เก็บ peer cert, Wi-Fi RX/TX dynamic 8, ไม่มี AMPDU, ไม่มี BT, stack esp_timer 3.5 KB / Tmr Svc 2 KB / tcpip 3 KB
+  · ต้อง build จาก PowerShell (idf_tools ไม่รับ MSYS/Git Bash) · build ครั้งแรกขั้น "Arduino compile with custom libraries" ล้มเพราะ penv มี PlatformIO 6.2.0-post.1 — สั่ง `pio run` ซ้ำผ่าน
+  · `# CONFIG_X is not set` ใน custom_sdkconfig ถูกข้าม ต้องใช้ `CONFIG_X=n` · `CONFIG_ARDUINO_LOOP_STACK_SIZE=4096` ทำ setup() stack overflow → `SET_LOOP_TASK_STACK_SIZE(8 KB)` แล้ว loop task ลบตัวเองหลัง setup (console ย้ายไป UI task)
+- JSON ไป Gemini เป็น WebSocket fragment 4 KB (FragWriter, `_txLock` กันเสียงไมค์แทรก), prompt linked ไม่ copy, ข้อความขาเข้าส่งต่อบัฟเฟอร์ + ตัด Base64 เสียงก่อน parse, inbox 8
+- playback 40→24 KB, capture 16→8, DMA 6→4, pre-roll 300 ms, sprite 8 บิต (OLED/screenshot แปลงเอง), การ์ดสำเนาเดียว + ขนาดเล็กลง, cache tool 1, task agent 6 KB / webTools 10 KB (เริ่มเมื่อใช้)
+- crash ระหว่างทาง: บัฟเฟอร์ static ที่จองตอนเรียกครั้งแรก (readCapture, sendMic …) ได้ null หลัง Wi-Fi จอง RAM ไปแล้ว → ย้ายเป็น array ใน BSS
+
+**ผล:** heap หลังบูต (ยังไม่ต่อ Wi-Fi) 18 → 71 KB · ต่อ Wi-Fi ได้ (Wi-Fi ใช้ ~30–45 KB) · TLS ไป Gemini ต่อสำเร็จ ("Connected, sending setup") เหลือ heap 11 KB (ต่ำสุด 5 KB)
+→ `abort()` ตอนสร้าง prompt 21 KB (`PsString::reserve`) — setup (prompt 21 KB + tool declarations ~17 KB ใน ArduinoJson) ใส่ไม่ได้ และ tool การลงทุนยังต้องการ task 10 KB + TLS สายที่สอง ~20 KB
+
+**รอบ 3 — คุยเสียงได้ + tool การลงทุนได้ (ผู้ใช้เลือก "ลด prompt/tool + stream"):**
+- **IRAM → flash** (C3: IRAM กับ DRAM เป็น SRAM ก้อนเดียว): `FREERTOS_PLACE_FUNCTIONS_INTO_FLASH`, `HEAP_PLACE_FUNCTION_INTO_FLASH`, `RINGBUF_PLACE_FUNCTIONS_INTO_FLASH`, RMT ISR ไม่อยู่ IRAM → IRAM 68.8 → 44.8 KB = heap +24 KB
+- **setup แบบ stream** (`ai/JsonStream.h`, `GeminiListener::streamSetup`): ส่วนเล็กเป็น JSON document แล้ว prompt (`PromptOut` escape ตรงเข้า fragment) + tool declarations (`AgentTools::streamDeclarations` ทีละตัว) ต่อท้ายข้อความเดียวกัน — 38 KB ไม่เคยอยู่ใน RAM ทั้งก้อน · about_me ใช้ `NullJsonStream` แทน document 17 KB
+- **`psramMalloc` เกณฑ์สำรอง 24 KB → 4 KB บน C3**: ไม่มี PSRAM ทุกบล็อกเป็น "fallback" — fragment 4 KB ถูกปฏิเสธทั้งที่ว่าง 27 KB
+- **เสียงขาเข้าถอด Base64 ระหว่างอ่าน** (I/O task, `MsgKind::Audio` ก้อน 2 KB): ข้อความเสียง 20–28 KB ประกอบทั้งก้อนไม่ได้ ("message too large") · ข้อความที่เหลือ (`"data":""`) ต่อทีละ 256 B เริ่ม 512 B
+- **คิวขาออก 64 → 6** (เสียงไมค์ 1.8 KB/ก้อน: เน็ตขาขึ้นช้าแล้วกอง 100+ KB) · inbox 6 · stack geminiIO 6 KB, ui 5.5 KB, memWriter 3 KB · playback 16 KB · fragment 2 KB · `MBEDTLS_SSL_OUT_CONTENT_LEN` 2048 (ทุก write จอง 4.2 KB ก้อนเดียว)
+- **ใบรับรอง: IDF certificate bundle** (`useBuiltinCACertBundle` / `esp_transport_ssl_crt_bundle_attach`) แทน PEM 7–17 ใบที่ parse เข้า RAM ทุก session
+- **TLS สองสายพร้อมกันไม่พอจริง:** ระหว่าง session heap ว่าง 22–39 KB เป็นชิ้น 7–28 KB — handshake ของ TradingView ล้ม (`SSL - Memory allocation failed`, `PK verify failed 0x4290` = MPI alloc) แต่ปิด session แล้วผ่าน (65 KB / 41 KB)
+  → **`AgentController::serviceOfflineTool` + `ai/NetHold.h`:** tool เว็บถูกเรียก → รอโมเดลพูด "ขอเช็คสักครู่" จบ turn → ตอบ call แบบ SILENT → ปิด session → ดึงข้อมูล (Hold รอ link ปิด, ห้าม Gemini ต่อใหม่ระหว่างนั้น) →
+  ผลลัพธ์ทุกตัวเข้า → session ใหม่ (fresh) → ส่งผลเป็นข้อความ "[ผลข้อมูลที่ผู้ใช้ขอ (…)]" ≤ 1.5 KB · ช้ากว่าเดิม ~3–5 วิ
+  · ปิด session ตอน turn ยังไม่จบ/มี call ค้าง = server ถือ session ไว้ การต่อใหม่ upload ค้าง 10 วิ ซ้ำ 3–4 รอบ (~30 วิ) · cache การ์ด tool ปิด (~5 KB กลาง heap ทำให้ต่อใหม่เจอชิ้น 4 KB)
+  · งานเบื้องหลัง (อากาศหน้าปัด, แจ้งเตือนราคา, สรุปความจำ) ทำเมื่อไม่มี session มา 20 วิ เท่านั้น · task webTools สร้างตอนบูต (8 KB) ไม่ใช่กลาง session
+- **กราฟแท่งเทียน:** คำตอบ 300 แท่งของ TradingView ~35 KB ก้อนเดียว → `abort` → C3 ขอ 100 แท่ง (EMA200 ข้ามเอง) + เช็ค heap ก่อนจองใน `readMessage` / bars (คืน error แทน abort)
+- **ก่อนส่ง setup** รอ heap ≥ 20 KB / ก้อน ≥ 6 KB (ไม่งั้นต่อใหม่ทีหลัง) — สร้าง prompt ตอน RAM หมดเคย abort ใน `buildRecentContext`
+- ตัด `control_led` (บอร์ดไม่มี RGB LED) · ตรวจสเปกบอร์ดกับ log จริง: rev V1/V2 (SDA 3 / SCL 4, PA GPIO 11 — eFuse VDD_SPI เผาแล้ว), ไม่มีวัดแบต (`vbat_adc` −1 ตรงสเปก), ไม่มีคำปลุกออฟไลน์ (ใช้ VAD)
+
+**ผลรอบ 3 (log บอร์ดจริง):** setup 38 KB ส่งผ่าน (heap ระหว่างส่ง 25–38 KB) · AI ตอบเสียงได้ไม่กระตุก (เน็ตส่งเสียงทัน 97–107%) ·
+`get_market_quote` ทองคำ/บิทคอยน์, `market_overview`, `market_analysis` (PTT), `market_chart` ทองคำ 1d ใช้ได้ (4–8 วิ จากถามถึงเริ่มตอบ) ·
+**ยังเหลือ:** heap แตกเป็นชิ้นมากขึ้นหลังใช้หลายรอบ (session ว่าง 18–30 KB ก้อนใหญ่สุด 4–7 KB) · `market_chart` SMC 15m ของ BTC ได้ "no bars" และ Yahoo สำรอง parse ไม่ไหว · ยังไม่ได้ทดสอบคุยด้วยเสียงจริงนานๆ
+
+**หมายเหตุการอ่าน log:** C3 ใช้ USB-Serial/JTAG — reset แล้วพอร์ต re-enumerate จึงพลาดข้อความตอนบูต ต้องเปิดพอร์ตทันทีหลัง `esptool --after hard-reset` (เฟิร์มแวร์รอ host 1.5 วิ)
+
+---
+
+## T180: XH-S3E-AI การ์ดผลของ tool ไม่พอดีจอ OLED 128×64 — วรรณยุกต์หาย, ข้อความทับ, ตัวเลขโดนตัด
+
+**วิธีตรวจ:** `tools` (รายการ 45 ตัว) → สั่งทีละตัว `tool <ชื่อ> <json>` ผ่าน serial แล้ว `screenshot` (RGB565 128×64) แปลงเป็นขาวดำด้วยเกณฑ์เดียวกับ `OledDisplay::pushRgb565`
+(r5 ≥ 5 หรือ g6 ≥ 10 หรือ b5 ≥ 5 = จุดติด) — การ์ดไม่ขึ้นตอนจออยู่โหมดนาฬิกา ต้อง `wake` ก่อน
+
+**วัดฟอนต์ไทย 20 px (THSarabunNew, VLW):** พยัญชนะแถว 9–16 ของบรรทัด, สระบนแถว 4–7, วรรณยุกต์แถว 0–3, สระล่างแถว 18–21
+→ หัวการ์ดเดิม 14 px วาดแบบ middle ที่ y 6 = ข้อความเริ่ม y −5 วรรณยุกต์/สระบนหายหมด ("น้ำมัน" → "นามน", "เชียงใหม่" → "เชียงใหม")
+→ เนื้อหา 4 บรรทัดห่าง 12 px: วรรณยุกต์บรรทัดล่างทับบรรทัดบน และบรรทัดที่ 4 หลุดจอ
+
+**ปัญหาอื่นที่เจอ:** `°` ไม่มีใน Font2 (ขึ้นกล่อง) · "ฝน 0%" ใช้ `w.rain` ซึ่งเป็นมิลลิเมตร · PM2.5 หลุดท้ายบรรทัด · ราคา + % ในช่อง 54 px ถูกตัด ("38.50 +..", "1472.47..") ·
+การ์ด Analysis ไม่วาด `big` (ราคา) และ `gauge` (สัญญาณรวม) · Candles ไม่มีราคา/แนวรับ-ต้าน/โซน SMC และเว้นที่ว่างด้านขวา · Bars ไม่แสดงค่ารวม (`subtitle`) · ระดับน้ำ (% ของตลิ่ง) ไม่มี "%"
+
+**แก้ (`firmware-s3-mini/src/ui/CardScreen.*` เท่านั้น, เมนู/หน้าตั้งค่ายังใช้หัว 14 px เดิม):**
+- ตาราง: หัว 17 px (ข้อความ top-left ที่ y −1, เส้นที่ y 16) + 3 แถว top 17/32/47 ห่าง 15 px
+- ตัวเลขที่ห้ามตัดใช้ Font0 6×8: ตารางราคา = ราคาซ้อนบน % แถวละ 23 px หน้าละ 2 แถว (15 px ชิดจนแยกไม่ออกว่าตัวเลขไหนของแถวไหน), ค่ายาวที่เป็น ASCII ย่อเป็น Font0 (ค่าภาษาไทยยังใช้ฟอนต์ไทย เพราะ Font0 ไม่มีอักษรไทย)
+- เลื่อนหน้าอัตโนมัติทุก 4 วิ (ข่าว 5.5 วิ) + ตัวบอก "1/3" · Vol+/Vol− เลื่อนเองแล้วพักการเลื่อนอัตโนมัติ 12 วิ (กดปุ่มอื่น = ปิดการ์ด)
+- อากาศ: °C วาดวงกลมเอง, ฝน = โอกาสฝนวันนี้ (`day[0].pop`), PM2.5 มุมขวา, หน้า 2 = พยากรณ์ 3 วัน
+- ราคาเดี่ยว/แปลงเงิน: ราคา Font2 + % และเปลี่ยนแปลง + สัญลักษณ์/อัตรา + H/L + 1W/1M (หรือ RSI)
+- Analysis: บรรทัดนำ = ราคา + "ซื้อ/ขาย/กลางๆ" จาก gauge · Bars: บรรทัดนำ = subtitle, ดัชนีกลัว/โลภ (ref[1] = 100) มีแถบ 0–100, ระดับน้ำ (ref[0] = 100) แสดง "%" สีเตือนเมื่อ ≥ 100
+- Candles: เต็มความกว้าง (≤ 31 แท่ง), เส้นประแนวรับ/ต้าน, กรอบจุดโซน SMC, บรรทัดล่าง = ราคา + % และ High ของช่วง
+
+**ผล:** build + แฟลช แล้วจับภาพจริงทั้ง 31 การ์ดอีกรอบ (+ หน้า 2 ของอากาศ/ข่าว/ภาพรวมตลาด/ขนาดสัญญา)
+
+---
+
+## T179: XH-S3E-AI พูดเอง ตอบเอง — ไมค์ MEMS ส่งเสียงห้อง / เสียงลำโพงที่ยังก้องให้ AI
+
+**อาการ:** หลังแฟลช `firmware-s3-mini/` ครั้งแรก ผู้ใช้ทดสอบแล้ว "ทำงานได้ แต่พูดเอง ตอบเอง มั่วๆหน่อย" (รอบทดสอบถัดมาไม่เกิด)
+
+**หลักฐาน (serial 4 นาที):** `[Mic] เริ่มส่งเสียงให้ AI` ~8 ครั้งที่ผู้ใช้ไม่ได้พูด — เสียงพูด 0.2–0.4 วิ, ดังสุด 0.03–0.07, เริ่มที่ 0.018–0.042
+(เกณฑ์ปรับตัวเอง 0.014–0.022) แต่ละครั้งส่ง 2.5–5.6 วิ + `audioStreamEnd` → ส่วนใหญ่ AI ไม่ตอบ (`ไม่มี transcript`) แต่บางครั้งตอบเสียงห้องมั่วๆ
+เสียงคนพูดจริงเริ่มที่ 0.13–0.21 ดังสุด 0.2–0.38 · ครั้งหนึ่งเกิดในช่วง "ฟังต่อ 6 วิ" ทันทีหลัง AI พูดจบ (ดังสุด 0.062) = เสียงลำโพงยังก้องหลัง tail 350 ms
+
+**สาเหตุ:** ค่า VAD ยกมาจาก ES3C28P (ES8311 + ไมค์อนาล็อก) — บน XH-S3E ไมค์ MEMS ติดกับลำโพง NS4168 พื้นเสียงสูงกว่า (~0.010–0.017):
+ก้อนเสียงดัง 2 ก้อนติดกัน (80 ms) ก็เปิดส่งเสียงให้ AI แล้ว และเสียงลำโพงยังก้องนานกว่า 350 ms (TX DMA 80 ms + ห้อง) ที่ระดับเสียง 100
+
+**แก้ (`firmware-s3-mini/src/app/AppConfig.h` + `agent/AgentMic.cpp`, ไม่กระทบ ES3C28P / P4 / C3):**
+- `AGENT_ECHO_TAIL_MS` 350 → 700
+- `AGENT_VAD_ONSET_CHUNKS` 2 → 3
+- ใหม่ `AGENT_VAD_ONSET_MIN_LEVEL` 0.04 — ช่วงเริ่มพูดต้องมีอย่างน้อย 1 ก้อนที่ดังถึงเกณฑ์ (`_onsetPeak`) ช่วงเสียงเบาจะนับต่อไปจนกว่าจะมีก้อนดังเข้ามา
+  (ช่วง "ฟังต่อ" หลัง AI ตอบไม่ใช้กติกานี้)
+
+**ผลทดสอบ:** แฟลชแล้วผู้ใช้คุยกับบอร์ด — "ปกติดีแล้ว" ไม่พูดเอง ตอบเองอีก
+
+**ถ้ายังเกิด:** ดู `[Mic] เริ่มส่งเสียงให้ AI (ระดับ …)` ใน serial — ลดเสียงลำโพง (`vol 70`) หรือขึ้น `AGENT_VAD_ONSET_MIN_LEVEL` · ถ้าพูดไกลแล้วไม่ติด ให้ลดค่านี้ลง
+
+---
+
+## T177: CORE-10 ตอนยาว (ระบบคำปลุก บอร์ด + มือถือ) — ต้องการคลิปแบบไม่มีเสียงพูดให้ผู้ใช้พากย์เอง
+
+**วันที่:** 2026-11-09 · **งาน:** CORE-10 เจาะลึกคำปลุก 2:56 2 แบบ (`media/video-series/remotion/scripts/build-audio.mjs`, [[23-Video-Series-Plan]])
+
+| อาการ | ต้นเหตุ | แก้ |
+|---|---|---|
+| ผู้ใช้ขอ 2 แบบเนื้อหาเดียวกัน: มีเสียงพากย์ + เอฟเฟกต์ / มีแต่เอฟเฟกต์ (พากย์เอง) — เครื่องสร้างตอนส่งออกแค่ไฟล์ที่ผสมเสียงแล้ว | `build-audio.mjs` ทำ `out/<รหัส>-sfx.mp4` เป็นไฟล์ชั่วคราวก่อนผสมเสียงพากย์ แต่ไม่ได้คัดลอกไปโฟลเดอร์ตอน | `Episode.novoice` (หรือ `--novoice`): คัดลอกไฟล์เอฟเฟกต์ล้วน (−20 LUFS ไม่ถูกกดเสียง) เป็น `<รหัส>-no-voice.mp4` + เขียน `<รหัส>-script.srt` ทุกบรรทัดตามเวลาที่เสียง AI พูด ([ผม] / [Jarvis] = ใครพูด) — ภาพ เวลา ซับบนจอ เหมือนกันทุกเฟรม เพราะมาจาก render เดียว |
+| คำอังกฤษในบท ("WakeNet9", "openWakeWord", "Hi ESP") ทำให้ตัวตรวจเสียงให้คะแนนต่ำ | ตัวถอดเสียงเขียนคำพวกนี้หลายแบบ | ใส่ `say` แบบไทย ("เวคเน็ตไนน์", "โอเพ่นเวคเวิร์ด") + LOANWORDS ใน `make-vo.mjs` (wakenet, openwakeword, espressif, hi) |
+
+---
+
+## T176: TOOL-11 ตอนยาว (tool คาดการณ์ล่วงหน้า) — ขั้นเดียวมีเนื้อหาหลายการ์ด, ตาราง 15 หมวดหดจนอ่านไม่ออก, ป้ายตัวอย่างทับแถว
+
+**วันที่:** 2026-11-08 · **งาน:** TOOL-11 `trading_signal_anticipation` ~2.5 นาที (`media/video-series/remotion/src/engine/Pipe.tsx`, [[23-Video-Series-Plan]])
+
+| อาการ | ต้นเหตุ | แก้ |
+|---|---|---|
+| ขั้น "ดึงข้อมูล" / "วิเคราะห์" ของ tool นี้มีเรื่องเล่า 2–4 เรื่อง (5TF + แหล่งข้อมูล · 115 ปัจจัย + ทุก TF + TF ที่ปลุกได้ + งบ) ใส่การ์ดเดียวไม่พอ | ฉาก `pipe` มีการ์ดเดียวต่อขั้น | `PipeStep.more` = การ์ดถัดไปของขั้นเดียวกัน (จุดบนแถบอยู่ที่เดิม หัวการ์ดมีจุดบอกหน้า เสียง pop เบากว่า ไม่มี whoosh) · `pipeCards()` ใน `layout.ts` ใช้ร่วมกันทั้งเวลาและภาพ · `sheet.mjs` = 1 ภาพต่อการ์ด |
+| การ์ด 15 หมวดปัจจัย: ทุกส่วนหดเหลือ 55 % ชื่อหมวดเล็กจนอ่านไม่ออก | ช่องแบบตัวเลขบน-ชื่อล่าง สูง ~126 px × 5 แถว เกินพื้นที่การ์ด | `grid` แบบตัวเลขซ้าย-ชื่อขวา สูง ~77 px · 3 คอลัมน์ · ชื่อหมวดย่อ ("จุดสำคัญ/โซน") → ไม่ต้องย่อ |
+| ป้าย "ภาพจำลอง · ตัวเลขตัวอย่าง" ทับแถวสุดท้ายของการ์ด / ขอบโค้ด | ป้ายวางตำแหน่งตายตัวที่มุมล่าง ส่วนเนื้อหาเต็มการ์ด | การ์ด `sample` เว้นขอบล่าง 70 px และหักความสูงนั้นออกก่อนคำนวณการย่อ |
+
+---
+
+## T175: ฉาก `pipe` ของหมวด TOOL — การ์ดล้นขอบ, contact sheet ไม่ตรงกับคลิปที่มีเสียง
+
+**วันที่:** 2026-11-07 · **งาน:** หมวด TOOL 10 ตอน (`media/video-series/remotion/src/engine/Pipe.tsx`, [[23-Video-Series-Plan]])
+
+| อาการ | ต้นเหตุ | แก้ |
+|---|---|---|
+| TOOL-09 ขั้น "เรียก tool": วงเล็บปิดของโค้ด 9 บรรทัดหลุดขอบการ์ด · TOOL-02 ขั้น "วิเคราะห์": แถวที่ 5 (STRONG SELL) ถูกตัด | ขนาดตัวอักษรคิดจากความกว้างอย่างเดียว ไม่ดูความสูงของการ์ด | ประเมินความสูงรวม (หัวข้อ + โค้ด + แถว + ป้าย) แล้วย่อทุกส่วนพร้อมกันให้พอดีการ์ด (ต่ำสุด 55 %) — ตรวจด้วย contact sheet ทุกขั้น |
+| การ์ดโล่งครึ่งล่าง ตัวหนังสือเล็กบนจอมือถือ | ขนาดเริ่มต้นเล็ก (หัวข้อ 56, แถว 32) | ขยาย (หัวข้อ ≤ 74, แถว 38/48, ป้าย 38) + ไอคอนจางใหญ่มุมการ์ด |
+| หัวข้อ hook ทับขอบล่างมือถือ | มือถือกว้าง 380 สูงลงมาถึงบรรทัดหัวข้อ | ตอน TOOL ใช้ `w: 330` |
+| `sheet.mjs` ถ่ายภาพนิ่งคนละจังหวะกับคลิปจริงในตอนที่อัดเสียงแล้ว + ฉาก `pipe` ได้ภาพเดียวทั้งฉาก | เรียก `layout(ep)` ไม่ส่งเสียงที่อัดไว้ (ใช้เวลาประมาณ) · 1 ภาพต่อฉาก | `layout(ep, loadVo(code))` · ฉาก `pipe` = 1 ภาพต่อขั้น · ภาพย่อ 360×640 |
+
+---
+
+## T174: เสียงพากย์ AI ของซีรีส์ — TTS free tier ได้ 10 ครั้ง/วัน, Live ไม่ได้ถูกสร้างมาอ่านบท, key ใน secrets.h ใช้ไม่ได้
+
+**วันที่:** 2026-11-07 · **งาน:** `media/video-series/remotion/scripts/make-vo.mjs` ([[23-Video-Series-Plan]])
+
+| อาการ / ข้อจำกัด | ต้นเหตุ | แก้ |
+|---|---|---|
+| `gemini-3.8-flash-tts` free tier = 3 RPM · 10K TPM · **10 RPD** (ผู้ใช้ดูใน AI Studio) — ทั้งซีรีส์ ~400 บรรทัด | โควต้า free tier ของโมเดล TTS | ใช้ `gemini-3.8-live` (ตัวเดียวกับบอร์ด, free tier ไม่จำกัดต่อวัน) อ่านทีละบรรทัดแทน — ผู้ใช้เลือก "แบบ ก" |
+| Live เป็นโมเดลคุย อาจเรียบเรียงใหม่ / ตอบคำถามในบท / เติม "ได้เลย" | ไม่ได้ออกแบบมาอ่านบทตามตัว | session ใหม่ต่อบรรทัด + system instruction "อ่านข้อความใน «» ตามตัว ห้ามเติม" + เทียบคำที่ Live ถอดเสียงกลับมา (`outputAudioTranscription`) กับบท — ตัดช่องว่าง/วรรคตอน แปลงตัวเลขเป็นคำไทย, ต่ำกว่า 0.8 หรือยาวเกิน 1.4 เท่า = อ่านใหม่ (สูงสุด 4 ครั้ง) ไม่ผ่าน = ⚠ ให้ฟังเอง |
+| ตรวจด้วย `outputTranscription` แล้วยังพลาด: บางครั้งว่างทั้งที่มีเสียง, ครั้งหนึ่งเป็นความคิดของโมเดล ("The user wants me to read…") ทั้งที่เสียงถูก | output transcription ของ Live = ข้อความที่โมเดลตั้งใจพูด (ยังมี « » ติดมา) ไม่ใช่การฟังเสียงจริง | ตรวจจากเสียงจริงด้วย `gemini-3.5-transcribe-live` ทุก take (ส่งเสียง + เงียบ 1 วิ + `audioStreamEnd`, ข้อความ = finals + interim ท่อนสุดท้าย) · `--verify` ฟังทุก take ที่มีอยู่ · ผลจริงที่จับได้: "แล้วคุย" → "เล่าขุย", **"2026" → "2526"** (ตัวเลขในคำถอดต้องตรงกับบท = ไม่งั้นอัดใหม่), คำแรก/คำท้ายหาย — อัดใหม่ผ่านหมด |
+| คำท้ายหายในคำถอด ("…พิมพ์คำถามไม่") | ใช้ finals อย่างเดียว ท่อนสุดท้ายยังเป็น interim | finals + interim ที่ค้าง · ตัดเงียบหัวเสียงเหลือ 100 ms (เสียง ม ของ "ไม่" เบา) |
+| เสียงรวม true peak +0.1 dBTP ทั้งที่ตั้ง limiter −1 dB | `alimiter` ค่าเริ่ม `level=enabled` ดันเสียงกลับขึ้น 0 dBFS | `alimiter=limit=0.89:level=disabled` → CORE-01: −16.9 LUFS, −0.8 dBTP |
+| ผู้ใช้ฟังแล้ว: เสียง "หลุดคาแรกเตอร์ หลุดโทน" อารมณ์แข็ง (วัดได้: pitch แต่ละบรรทัดห่างกันถึง −3.0 … +2.9 semitone) | session ใหม่ทุกบรรทัด = สุ่มน้ำเสียงใหม่ทุกครั้ง ไม่มีบรรทัดก่อนหน้าให้ยึด | **session เดียวต่อเสียง** อ่านเรียงบรรทัด + บททั้งตอนใน system instruction (ไว้ดูบริบท) + สไตล์ของผู้ใช้ "Upbeat, enthusiastic podcast intro with a bright vocal smile and brisk tempo" · วัด pitch (autocorrelation) ทุก take ห่างค่ากลาง > 2.5 semitone = อ่านใหม่ 1 รอบ (อุ่นเครื่องด้วย 2 บรรทัดก่อนหน้า) เก็บอันที่ใกล้กว่า · ความดังเท่ากันทุกบรรทัด (rmsDb → −20 dBFS) |
+| สไตล์ใหม่ช้าลง (8.3 ตัว/วิ จากเดิม 10.9) ทั้งที่ขอ brisk tempo · ตัววัด tone ตอนแรกลงโทษบรรทัดที่พูดเร็ว | บริบท "performer" ทำให้อ่านแบบเน้นจังหวะ | prompt "brisk and punchy, no pauses inside a line" + บรรทัดที่ช้ากว่า 10.5 ตัว/วิ ถูกเร่งตอนผสม (`atempo` เสียงไม่เพี้ยน สูงสุด 1.25×) · tone ดูแค่ pitch (+ ความเร็วที่ผิดปกติมาก 0.6× / 1.7×) → CORE-01: 10.2 ตัว/วิ, ความดัง ±2.4 dB |
+| "ปัญหาที่สอง" ถูกตีว่าตัวเลขผิดทุกรอบ | คำถอดเขียน "ที่ 2" แต่บทเขียนเป็นคำ | เทียบตัวเลขเฉพาะเมื่อบทมีตัวเลขเอง |
+| ตอนอัดทุกตอน: take ดีถูกตีตก 4 รอบ — "บิตคอยน์" ถอดได้ "Bitcoin", "แฟลชเฟิร์มแวร์" ได้ "flash firmware", "หนึ่ง หุ่น 3D" ได้ "1 หุ่น 3D" (ตัวเลขไม่ตรง) | ตัวถอดเสียงเขียนคำทับศัพท์เป็นอังกฤษ · กฎตัวเลขเทียบลำดับตัวเลขทั้งหมด | รายการคำทับศัพท์ `LOANWORDS` สลับเป็นตัวสะกดของบทก่อนเทียบ · ตัวเลขในบททุกตัวต้องมีในคำถอด (เป็นคำหรือตัวเลขก็ได้) · สคริปต์ต่างกัน (ไทย/อังกฤษ) ที่รายการไม่รู้จัก: ผ่านถ้าข้อความของโมเดลเองตรง ≥ 0.9 และคำถอด ≥ 0.5 — ยังจับ "2526" และ "เล่าขุย" ได้ |
+| รัน make-vo 2 ตัวพร้อมกัน (เร็วขึ้นเท่าตัว) เสี่ยงลบ take ของกันและกัน / อ่านไฟล์ครึ่งๆ | ขั้นลบ take ที่ไม่มี manifest ใช้ ทำตอนจบโปรเซส · เขียน manifest / `vo.gen.ts` ทับตรงๆ | `--no-prune` ตอนรันคู่ · เขียนไฟล์ชั่วคราวแล้ว rename (ลองซ้ำถ้า Windows ล็อกไฟล์) |
+| EP00 / CORE-03 (ทำมือ) ซับมีช่วงเวลาตายตัว สั้นกว่าเสียงจริง (เช่น 1.75 วิ กับประโยคที่พูด ~3 วิ) | `timeline.ts` เขียนเวลาไว้ก่อนมีเสียง | `src/engine/warp.ts`: ยืดช่องซับให้พอดีเสียง (ไม่หด) ช่องว่างคงเดิม เวลาอื่นทั้งหมด (T, จุดเสียง SFX) เลื่อนตามแบบเส้นตรงเป็นช่วงๆ — ภาพกับ build-audio ใช้ฟังก์ชันเดียวกัน |
+| ทดลองครั้งแรก: `closed 1007 API key not valid` ทุกบรรทัด | key ใน `include/secrets.h` เป็นตัวเก่า (บอร์ดใช้ key ที่ตั้งผ่าน Studio / NVS) | สคริปต์อ่าน `GEMINI_API_KEY` ก่อน, เจอ 1007 / PERMISSION_DENIED หยุดทันทีไม่ลองซ้ำ · ข้อความ error ถูกลบ key ออกก่อนพิมพ์ |
+| ซับกับเสียงจะไม่ตรงกัน ถ้าใช้เวลาประมาณ (~10.5 ตัว/วิ) | ความยาวเสียงจริงไม่เท่าค่าประมาณ | `layout(ep, vo)` ใช้ความยาวของ take จริง (+0.12 วิ) · `build-audio.mjs` วางเสียงตามเวลาซับ, −16 LUFS, SFX ถูก sidechain กดลงตอนมีเสียงพูด, limiter −1 dBFS — ทดสอบด้วยเสียงหลอก (sine) บน CORE-01 แล้ว |
+
+---
+
+## T173: เครื่องสร้างตอน — หัวข้อไทยตัดบรรทัดครึ่งจอ, ป้ายค้างข้ามขั้น, สคริปต์ PowerShell ทำไฟล์ .txt เสีย
+
+**วันที่:** 2026-11-07 · **งาน:** สร้างครบ 32 ตอนด้วย `media/video-series/remotion/src/engine/` ([[23-Video-Series-Plan]])
+
+| อาการ | ต้นเหตุ | แก้ |
+|---|---|---|
+| หัวข้อสั้นๆ ขึ้น 2 บรรทัด ("ปัญหา 1: พิมพ์ / ไม่ถูก") | กล่อง `position: absolute` ที่ `left: 540` + `translate(-50%)` กว้างได้แค่ครึ่งจอ (shrink-to-fit ถึงขอบขวา) | `whiteSpace: "pre"` (ตัดบรรทัดเฉพาะ `\n` ที่ใส่เอง) + ขนาดตัวอักษรคำนวณจากความยาวที่มองเห็น (`vlen` ไม่นับสระบน/ล่าง วรรณยุกต์) |
+| หัวข้อของฉาก hook ขึ้นช้า (หลังพากย์จบ) / คำถามปิดท้ายทับป้าย "ตอนหน้า" | ของในฉากถูกวางหลังประโยคทั้งหมด · ตำแหน่งตายตัวไม่ดูจำนวนบรรทัด | หัวข้อ hook / คำถาม outro ขึ้นตั้งแต่ต้นฉาก · ป้ายถัดไปวางใต้ความสูงจริงของคำถาม |
+| ป้ายรอง ("16 สถานีไทย") ค้างไปถึงขั้นต่อไป | ป้ายแสดง "อันล่าสุด" ไม่ดูหัวข้อ | ป้ายผูกกับหัวข้อของมัน — หัวข้อใหม่ที่ไม่มีป้าย = ไม่มีป้าย |
+| ไฟล์ .txt 4 ตอนตัวอักษรเพี้ยน ("S3 02", "อัวใหญ่") | สคริปต์แทนข้อความใน PowerShell: `@(@('เดิม','ใหม่'))` คู่เดียวถูกแตกเป็นสตริง 2 ตัว → `$pair[0]` กลายเป็นตัวอักษรแรก แล้ว `.Replace(char,char)` ทั้งไฟล์ | เขียน 4 ไฟล์ใหม่ทั้งไฟล์ + สร้างบทพากย์ใหม่ด้วย `export-vo.mjs` · ต่อไปแก้ข้อความด้วย Edit tool หรือ `,@(...)` ใน PowerShell |
+
+---
+
+## T172: ชุดสร้างคลิป v2 — `npm` ไม่รู้จักใน terminal เดิม, ซับไทยตัดกลางคำ, หุ่น Godot ในคลิปเล็กไป
+
+**วันที่:** 2026-11-07 · **งาน:** แผนซีรีส์ v2 + EP00 สไตล์ใหม่ ([[23-Video-Series-Plan]], `media/video-series/`)
+
+| อาการ | ต้นเหตุ | แก้ |
+|---|---|---|
+| `npm run render:ep00` ใน PowerShell: "npm is not recognized" | terminal เปิดไว้ก่อนติดตั้ง Node.js (PATH เก่า) + สั่งจากรากของ repo ซึ่งไม่มี `package.json` ของคลิป | เปิด terminal ใหม่ (หรือ `$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')`) แล้ว `cd media\video-series\remotion` ก่อน |
+| ซับ "…แอปมือถือ" ขึ้นบรรทัดใหม่เป็น "มือ / ถือ" | Chrome ตัดบรรทัดภาษาไทยตามพจนานุกรมคำ — "มือถือ" ถูกมองเป็น 2 คำ เมื่อซับยาวเกินกล่อง | ย่อซับให้อยู่บรรทัดเดียว (≤ ~28 ตัวอักษรที่ 46 px, รวมป้าย "ผม:" / "Jarvis:") · ข้อความในกล่อง/บับเบิล (CORE-03 "ทองคำให้ / หน่อย") ใส่ `\n` ตรงจุดที่ตัดได้ + `whiteSpace: "pre-line"` · ตรวจทุกตอนด้วย contact sheet |
+| หุ่นจาก `tools/p4_avatar/render_frames.gd` ใช้ในคลิปไม่ได้ตรงๆ | เฟรมของบอร์ดไม่มีดวงตา (บอร์ดวาดตาเอง) และหุ่นเล็ก ~40 % ของเฟรม | สคริปต์ใหม่ `media/video-series/tools/avatar_frames.gd` (เปิดตา, ปากขยับเองตอนพูด, `fov` 24 → หุ่น ~60 % ของเฟรม, ท่าชี้ด้วย `pet.present("R")`) · `make_avatar.py` แปลงเป็น webp + `avatarClips.gen.ts` |
+
+**ผล:** หุ่น 10 ท่า (idle talk happy wave love surprised sad sleepy point point_talk) 600×700 30 fps ~20 MB (git-ignore) · EP00 render ใหม่ → `media/video-series/episodes/EP00-trailer/EP00.mp4` (คัดลอกเองจาก `build-audio.mjs`)
+
+---
+
+## T171: ชุดสร้างคลิป (Remotion + claude-animation) ใส่เสียงไม่ได้บน Windows — ไม่มี ffprobe / ffmpeg ของ Remotion ไม่มี `alimiter`
+
+**วันที่:** 2026-11-06 · **งาน:** render EP00 ของซีรีส์วิดีโอ ([[23-Video-Series-Plan]], `media/video-series/remotion/`)
+
+| อาการ | ต้นเหตุ | แก้ |
+|---|---|---|
+| `claude plugin …` ใน PowerShell: "not recognized" | CLI ของแอป desktop ไม่อยู่บน PATH | เรียก `claude.exe` เต็ม path ใน `%LOCALAPPDATA%\Claude-Data\…\claude-code\<ver>\` |
+| `sound.mjs`: `spawnSync ffprobe ENOENT` | `pip install imageio-ffmpeg` ให้แค่ ffmpeg ไม่มี ffprobe | `scripts/build-audio.mjs` ใช้ ffprobe ที่มากับ `@remotion/compositor-win32-x64-msvc` |
+| `No such filter: 'alimiter'` | ffmpeg ของ Remotion เป็นรุ่นตัดฟิลเตอร์ (ใช้ render อย่างเดียว) — และถูกเลือกก่อนเพราะโฟลเดอร์เดียวกับ ffprobe อยู่บน PATH | เช็ค ffmpeg **ก่อน** เพิ่มโฟลเดอร์ของ Remotion · ใช้ ffmpeg ตัวเต็มของ imageio คัดลอกเป็น `.tools/ffmpeg.exe` ไว้หน้าสุด |
+| `sound.mjs` เรียก `sh -c ffmpeg …` | สคริปต์ของ skill เขียนสำหรับ POSIX | เพิ่ม `C:\Program Files\Git\usr\bin` (sh ของ Git for Windows) ท้าย PATH |
+
+**ผล:** `npm run render:ep00` → `out/EP00.mp4` 1080×1920 50 วิ, −16.1 LUFS, true peak −2.9 dBTP (render ภาพ ~2 นาที)
 
 ---
 
