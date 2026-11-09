@@ -1,0 +1,105 @@
+---
+tags: [hardware, esp32-s3, esp32-c3, oled, xh-s3e-ai, xmini-c3]
+created: 2026-11-03
+updated: 2026-11-03
+status: active
+---
+
+# 📟 เฟิร์มแวร์บอร์ดจิ๋วจอ OLED (SparkleIoT XH-S3E-AI_V1.0 & Xmini-C3)
+
+> **หน้าหลัก:** [[00-Home-Dashboard]]
+> **โปรเจกต์แยกอิสระ:**
+> - `firmware-s3-mini/` — สำหรับบอร์ดสีม่วง **SparkleIoT XH-S3E-AI_V1.0** (`ESP32-S3-N16R8`, 16 MB Flash + 8 MB OPI PSRAM)
+> - `firmware-c3-mini/` — สำหรับบอร์ดสีดำ **Xmini-C3** (`ESP32-C3`, 16 MB Flash, No PSRAM, รองรับทั้ง Revision V1/V2 และ V3 แบบตรวจจับอัตโนมัติ)
+
+---
+
+## 1. ภาพรวมฮาร์ดแวร์ทั้ง 2 บอร์ด
+
+| คุณสมบัติ | บอร์ด 1: **Xmini-C3** (`firmware-c3-mini/`) | บอร์ด 2: **SparkleIoT XH-S3E-AI_V1.0** (`firmware-s3-mini/`) |
+|---|---|---|
+| **MCU** | `ESP32-C3` (RISC-V Single-Core 160 MHz) | `ESP32-S3` (`XH-S3E` / `N16R8`, Xtensa LX7 Dual-Core 240 MHz) |
+| **Flash / PSRAM** | 16 MB NOR Flash / **ไม่มี PSRAM** (400 KB SRAM) | 16 MB Flash / **8 MB Octal PSRAM** (512 KB SRAM) |
+| **ระบบเสียง (Audio)** | **Full-Duplex I2S** ผ่านชิป Codec **ES8311** (`0x18`) + แอมป์ **NS4150B** (3W) | **Simplex Dual-I2S** แยก 2 พอร์ต: ลำโพงดิจิทัล **NS4168** (`I2S_NUM_0`) + ไมค์ดิจิทัล **MEMS** (`I2S_NUM_1`) |
+| **หน้าจอ (Display)** | 0.96" OLED I2C `128×64` (`SSD1306` / `SH1106`, `0x3C`) | 0.96" OLED I2C `128×64` (`SSD1306` / `SH1106`, `0x3C`, ถอดแยกได้) |
+| **ปุ่มกดบนบอร์ด** | 1 ปุ่ม (`BOOT` GPIO 9) | 3 ปุ่ม (`BOOT` GPIO 0, `Vol+` GPIO 40, `Vol-` GPIO 39) |
+| **ไฟสถานะ / แบตเตอรี่** | LED ออนบอร์ด (`GPIO 2`) + ชาร์จแบต `LGS4056` + ADC แบต | `WS2812` RGB LED (`GPIO 48`) |
+| **Wake Word / AEC** | Local Adaptive VAD + Echo Gate (ประหยัด RAM บน C3) | **ESP-SR WakeNet9** (9 คำปลุกออฟไลน์) + **AEC** ตัดเสียงสะท้อน |
+
+---
+
+## 2. ตารางขา Pinout
+
+### 2.1 บอร์ดสีม่วง: SparkleIoT `XH-S3E-AI_V1.0` (`firmware-s3-mini/`)
+
+อ้างอิงจากซิลค์สกรีนด้านหลังบอร์ด (`39×26 mm`) และ `xingzhi-abs-2.0`:
+
+| หมวด | สัญญาณ | GPIO | หมายเหตุ |
+|---|---|---|---|
+| **I2C (จอ OLED 4 ขา)** | `SDA` / `SCL` | **GPIO 41** / **GPIO 42** | บัส I2C 400 kHz สำหรับจอ OLED `0x3C` (รองรับ Hot-Plug) |
+| **ลำโพง (`NS4168` `I2S_NUM_0`)** | `BCLK` / `WS` / `DIN` | **GPIO 15** / **GPIO 16** / **GPIO 7** | 24 kHz, 32-bit Mono Left |
+| **เปิดแอมป์ (`NS4168 CTRL`)** | `CTRL` (`PA_ENABLE`) | **GPIO 17** | **Active HIGH** (`HIGH` = เปิดลำโพงช่องซ้าย) |
+| **ไมค์ (`MEMS` `I2S_NUM_1`)** | `SCK` / `WS` / `SD` | **GPIO 5** / **GPIO 4** / **GPIO 6** | 16 kHz, 32-bit Mono Left + DC Blocker |
+| **ปุ่มกด 3 ปุ่ม** | `BOOT` / `Vol+` / `Vol-` | **GPIO 0** / **GPIO 40** / **GPIO 39** | Active LOW (`INPUT_PULLUP`) |
+| **ไฟสถานะ RGB** | `WS2812` | **GPIO 48** | NeoPixel 1 ดวง |
+
+### 2.2 บอร์ดสีดำ: `Xmini-C3` (`firmware-c3-mini/`) — รองรับ 2 Revision อัตโนมัติ
+
+บอร์ด `Xmini-C3` ในตลาดมี 2 Revision (`V1/V2` และ `V3`) ที่ใช้ขา GPIO ต่างกัน เฟิร์มแวร์ `firmware-c3-mini` จึงมีระบบ **Runtime Auto-Detect** ตอนบูตโดยสแกนหาชิป `ES8311` (`0x18`) หรือจอ OLED (`0x3C`) บนคู่ขา `GPIO 3/4` ก่อน หากไม่พบจะสลับไปลองคู่ขา `GPIO 0/1` อัตโนมัติ:
+
+| หมวด | สัญญาณ | **Revision V1/V2 (`xmini-c3`)** | **Revision V3 (`xmini-c3-v3`)** | หมายเหตุ |
+|---|---|---|---|---|
+| **I2C (`ES8311` + `OLED`)** | `SDA` / `SCL` | **GPIO 3** / **GPIO 4** | **GPIO 0** / **GPIO 1** | แชร์บัสเดียว (`0x18` + `0x3C`) |
+| **I2S (`ES8311` Full-Duplex)** | `MCLK` / `BCLK` / `WS` | **GPIO 10** / **GPIO 8** / **GPIO 6** | **GPIO 10** / **GPIO 8** / **GPIO 7** | 24 kHz Full-Duplex |
+| **I2S Data** | `DOUT` (ลำโพง) / `DIN` (ไมค์) | **GPIO 5** / **GPIO 7** | **GPIO 5** / **GPIO 6** | `ES8311` DAC + ADC |
+| **แอมป์ `NS4150B`** | `PA_ENABLE` (`CTRL`) | **GPIO 11** *(เช็ค eFuse `VDD_SPI_AS_GPIO` ก่อนใช้)* | **GPIO 20** | **Active HIGH** (`HIGH` = เปิดลำโพง) |
+| **ปุ่มกด / LED / แบต** | `BOOT` / `LED` / `ADC` | **GPIO 9** / **GPIO 2** / **GPIO 0** | **GPIO 9** / **GPIO 2** / **GPIO 4** | ปุ่ม `BOOT` Active LOW |
+
+> **คำสั่งตรวจสอบและล็อกรุ่นบอร์ด `Xmini-C3` เมื่อได้บอร์ดจริง:**
+> - พิมพ์ `pins` ใน Serial Console (หรือแท็บ Console ของ ESP32-AI Studio) เพื่อดูว่าบอร์ดตรวจเจอ Revision ใดและใช้ขา GPIO ใดอยู่
+> - พิมพ์ `boardrev auto` (ค่าเริ่มต้น), `boardrev v1` หรือ `boardrev v3` (หรือเลือกในเมนู **ตั้งค่า > รุ่นบอร์ด Xmini-C3** บนจอ OLED) เพื่อล็อก Revision ลง NVS แล้วรีบูต
+
+---
+
+## 3. หน้าจอ Monochrome 128×64 OLED UI & การควบคุมด้วยปุ่มกด
+
+เฟิร์มแวร์ทั้ง 2 โปรเจกต์วาดกราฟิกลง `LGFX_Sprite(128, 64)` (16-bit RGB565 สำหรับส่งภาพหน้าจอสีเข้า **ESP32-AI Studio** ผ่านคำสั่ง `screenshot` ที่ขยาย 4 เท่าเป็น `512×256` พิกเซล) และแปลงเป็น **1-bit Monochrome Page-Diff** ส่งออกจอจริง `SSD1306` (0.96") หรือ `SH1106` (1.3", ปรับผ่าน `set oledtype 0|1` หรือเมนูตั้งค่าหน้าจอ) เฉพาะ Page ที่เปลี่ยน
+
+### การควบคุมด้วยปุ่มกดบนบอร์ด
+
+| การทำงาน | **XH-S3E-AI_V1.0** (3 ปุ่ม: `BOOT`, `Vol+`, `Vol-`) | **Xmini-C3** (1 ปุ่ม: `BOOT` GPIO 9) |
+|---|---|---|
+| **อยู่ที่หน้าหลัก (ดวงตา AI / นาฬิกา)** | • กด `BOOT` สั้น: ปลุก AI / หยุดพูด / คุยต่อ *(หรือปลด Mute ทันทีหากไมค์ถูกปิดอยู่)*<br>• กด `BOOT` ค้าง 1.5s: เปิดเมนูตั้งค่า<br>• กด `Vol+` / `Vol-` สั้น: เพิ่ม/ลดเสียงลำโพง ±10%<br>• กด `Vol+` ค้าง: เปิดหน้าวิทยุ/เพลง<br>• กด `Vol-` ค้าง: ปิด/เปิดไมค์ (Mute) | • **กด 1 ครั้ง (Click)**: ปลุก AI / หยุดพูด / คุยต่อ *(หรือปลด Mute ทันทีหากไมค์ถูกปิดอยู่)*<br>• **กด 2 ครั้งติดกัน (Double-Click)**: เปิดเมนูตั้งค่า<br>• **กดค้าง (Long-Press)**: ปิด/เปิดไมค์ (Mute) |
+| **อยู่ในเมนู / รายการ / ตั้งค่า** | • กด `Vol-` สั้น: เลื่อนลง / ถัดไป<br>• กด `Vol+` สั้น: เลื่อนขึ้น / ก่อนหน้า<br>• กด `BOOT` สั้น: เลือก / ตกลง / สลับค่า<br>• กด `BOOT` ค้าง: ย้อนกลับ (Back) | • **กด 1 ครั้ง (Click)**: เลื่อนไปรายการถัดไป (วนรอบ)<br>• **กด 2 ครั้งติดกัน (Double-Click)**: เลือก / ตกลง / สลับค่า<br>• **กดค้าง (Long-Press)**: ย้อนกลับ (Back) |
+
+> **การควบคุมระดับเสียงและไมโครโฟนบนบอร์ดจิ๋ว:**
+> - **XH-S3E-AI_V1.0 (`NS4168`)**: เนื่องจากแอมป์ดิจิทัล `NS4168` ไม่มีรีจิสเตอร์ลดเสียงฮาร์ดแวร์ ระบบจึงคำนวณระดับเสียงด้วยโค้ง Perceptual (`volumeScale(0..100)`) แยกอิสระระหว่างเสียงพูด AI (`vGain`) และเสียงวิทยุ/เพลง (`_radioVolume`) ก่อนผสมสัญญาณและส่งเข้า Software Echo Reference สำหรับ AEC และ Echo Gate
+> - **Xmini-C3 (`ES8311`)**: ใช้รีจิสเตอร์ DAC Volume ของชิป `ES8311` ร่วมกับการชดเชยระดับเสียงวิทยุ/AI แบบ dB และการอ่าน DAC Loopback
+> - **การปลดล็อกไมค์ (Unmute)**: หากสั่ง AI ปิดไมค์ (`mute_microphone`) หรือเผลอกดปุ่มปิดไมค์ สามารถกดปุ่ม `BOOT` สั้นๆ ที่หน้าหลักเพื่อเปิดไมค์กลับได้ทันที หรือเข้าไปเปิด/ปิดในเมนู **ตั้งค่า > ตั้งค่าเสียง > ไมโครโฟน** บนจอ OLED
+
+---
+
+## 4. การ Build, Upload และใช้งานร่วมกับ ESP32-AI Studio
+
+### 4.1 คำสั่ง Build & Upload (Windows PowerShell)
+
+```powershell
+# 1. บอร์ดสีม่วง SparkleIoT XH-S3E-AI_V1.0 (ESP32-S3-N16R8)
+pio run -d firmware-s3-mini
+chcp 65001 > $null; $env:PYTHONUTF8 = "1"; $env:PYTHONIOENCODING = "utf-8"; pio run -d firmware-s3-mini -t upload --upload-port COM3
+
+# 2. บอร์ดสีดำ Xmini-C3 (ESP32-C3 16MB No-PSRAM)
+pio run -d firmware-c3-mini
+chcp 65001 > $null; $env:PYTHONUTF8 = "1"; $env:PYTHONIOENCODING = "utf-8"; pio run -d firmware-c3-mini -t upload --upload-port COM3
+```
+
+### 4.2 การใช้งานผ่าน ESP32-AI Studio (`tools/pc_app/esp32_ai_studio.py`)
+- เมื่อเสียบสาย USB-C เข้ากับบอร์ดแล้วกด **เชื่อมต่อ** ในโปรแกรม **ESP32-AI Studio** โปรแกรมจะอ่านค่า `"chip": "xh-s3e-ai"` หรือ `"chip": "xmini-c3"` จาก `CONFIG` อัตโนมัติ
+- แท็บ **🖥️ หน้าจอ** จะปรับขนาดจอเสมือนเป็น `128×64` (ขยาย 4x เป็น `512×256` พิกเซล) สามารถคลิกเมาส์บนจอเสมือนเพื่อกดปุ่มเมนู/รายการจากคอมพิวเตอร์ได้ทันที
+- แท็บ **🔧 เฟิร์มแวร์** สามารถเลือกบอร์ด `ESP32-S3 • XH-S3E-AI_V1.0 (จอ 0.96" OLED)` หรือ `ESP32-C3 • Xmini-C3 (จอ 0.96" OLED)` เพื่อกด **Build** หรือ **Build + Upload** ได้โดยตรง
+
+### 4.3 อัปเดตผ่าน Wi-Fi / ไฟล์ใน release (T169)
+- แต่ละบอร์ดหาไฟล์ของตัวเองเท่านั้น: `OTA_ASSET_VARIANT` = `-xh-s3e-ai` → `*-app-xh-s3e-ai.bin`, `-xmini-c3` → `*-app-xmini-c3.bin`
+  (XH-S3E-AI เป็น ESP32-S3 เหมือน ES3C28P: ถ้าหยิบ `-app.bin` จะติดตั้งผ่านและบูตด้วยขา/จอผิด)
+- `python tools/make_release.py --board xh-s3e-ai` / `--board xmini-c3` (ค่าปกติ build ทุกบอร์ด) · `publish_release.py` แนบไฟล์ของทั้ง 4 บอร์ด
+- แอปมือถือยังรู้จักแค่ S3 / P4 — อย่าใช้แฟลชบอร์ดจิ๋ว (XH-S3E-AI จะถูกมองเป็น ES3C28P)

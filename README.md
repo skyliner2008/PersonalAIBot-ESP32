@@ -1,0 +1,351 @@
+<div align="center">
+
+# 🤖 PersonalAIBot-ESP32
+
+### A Thai-speaking, real-time voice AI assistant on an ESP32-S3 touch screen
+
+**Gemini Live voice** · **on-device long-term memory** · **42 tools with on-screen cards** · **PC companion app**
+
+[![ESP32-S3](https://img.shields.io/badge/ESP32--S3-N16R8-E7352C?logo=espressif&logoColor=white)](wiki/01-Hardware-ES3C28P-Pinout.md)
+[![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino%203.3.12%20%28IDF%205.5%29-F5822A?logo=platformio&logoColor=white)](platformio.ini)
+[![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-4285F4?logo=googlegemini&logoColor=white)](wiki/05-Gemini-Live-API-Protocol.md)
+[![Firmware](https://img.shields.io/badge/firmware-v4.9.0-3ddc84)](src/app/AppConfig.h)
+[![Tests](https://img.shields.io/badge/host%20tests-2%2C945%20checks%20passing-3ddc84)](host_tests/)
+[![Language](https://img.shields.io/badge/voice-ไทย%20%7C%20English-ffb020)](#)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+**English** · [ภาษาไทย](README.th.md)
+
+<img src="wiki/images/readme-eyes.png" width="760" alt="Animated eyes: happy, love, thinking, surprised, wink, curious">
+
+</div>
+
+---
+
+## ✨ What it does
+
+Talk to it like a person — in Thai or English. It answers with natural speech, shows its mood with animated eyes,
+remembers you across days, and pulls live data (weather, fuel prices, markets, news…) onto the screen while it explains.
+Everything runs on the board itself: **no server, no Raspberry Pi, no vector database** — just Wi-Fi and a Gemini API key.
+
+| | |
+|---|---|
+| 🎙️ **Real-time voice** | Full-duplex audio over a TLS-verified WebSocket (mic 16 kHz up, voice 24 kHz down). Local VAD + AGC, barge-in by tapping the screen. |
+| 🤖 **Agent behaviour** | Voice first, no need to read the screen: complete answers with the exact figures (2 decimals), long when the topic needs it. Talks like a person with feeling, explains what the numbers mean, calls its tools on its own and chains them ("will it rain tomorrow? if so remind me to take an umbrella at 7" → weather → reminder), answers every part of a question. On Gemini 3.8 Live it says "let me check" while an Internet lookup runs instead of going silent. Gold questions also get an estimated Thai gold-bar price per baht weight. |
+| 🧠 **Long-term memory** | Facts, a small knowledge graph (GraphRAG-lite, BM25 search) and a daily conversation log stored on MicroSD — or internal flash when there is no card. Background consolidation with Flash-Lite. |
+| 🧑‍💼 **Personalities** | 8 ready-made profiles, 30 voices, 7 personalities, male/female Thai politeness (ค่ะ / ครับ). Change them by touch or just by asking. |
+| 👀 **Expressive face & Smartwatch UI** | Cozmo-style eyes with 14 emotions, Thai subtitles, crisp anti-aliased icons (mic button bottom-left), even status bar with a Wi-Fi fan and Oswald clock, automatic `USB ⚡` / `%` battery detection (T170: USB vs battery from the plug / unplug voltage step and the PC's USB link, a percent that moves at most 1 % a minute - up only on USB, down only on battery - and `% ⚡` while charging; console `bat`), bottom-right shortcut buttons for both the **Radio/MP3 player (`♫`)** and **Vehicle Dash**, and a **Smartwatch-style settings launcher** (8 colourful icon cards across 2 swipeable pages). After a while asleep it turns into a **dim screensaver clock** with **7 selectable themes** (*Modern Weather Hub*, *Smartwatch Ring*, *Cyber Flip Cards*, *Classic Minimal*, *Analog*, *Big-digit desk clock*, *Sun & Moon* sky arc) in one of **9 neon colours** (cyan, green, pink, orange, yellow, purple, red, warm white or the eye colour), the clock as big as the screen allows showing time, Thai date, and live weather + PM2.5 for your chosen province, and wakes up — full brightness — when it hears the wake word ("Jarvis" / "Hi ESP"; at the clock only the word wakes it, since T120 in the default "both" mode too) or when you tap it. |
+| 📊 **Live data cards** | Weather + PM2.5, Thai fuel prices, stocks / gold / crypto / FX, technical analysis, market scanner, economic calendar, news, Wikipedia — drawn as graphics while the AI talks. |
+| 📻 **Internet radio** | A radio-app screen with 16 tested Thai stations (up to 40; `python tools/radio_check.py` checks a station export the way the board plays it): swipe and tap a station, ± volume, ⏸ pause, a red ⏻ button to switch the radio off, and tap the middle of the screen to talk to the assistant as usual. Say "play the luk thung station" or "station 4" and the assistant picks from your list. Edit the list (add, edit, delete, reorder, test URL) in ESP32-AI Studio. MP3/AAC via the Helix decoder; the radio dips to 12 % while you talk. Volume buttons and "turn it down" change the radio only — the assistant's voice stays at its own level (80 by default, `set aivolume`). After "play the radio" the assistant names the station and goes to sleep at once (it never answers the DJ), and "play the radio" with no station resumes the last one. Asking for a lookup with the radio on (weather, news ...) keeps the session open until the answer is spoken (T119). **MP3 from the SD card (T122):** a [วิทยุ | MP3] switch on the radio screen plays the songs in the card's `music` folder (and one level of sub-folders) with the song name and artist from the ID3 tag (Thai tags included) or the file name; next song at the end, pause resumes where it stopped; say "play the song ...", "next song" / "previous song" / "random song", or use `music` in the console. If the card stops answering, the board mounts it again by itself (T125). **Add songs from the PC (T123):** ESP32-AI Studio → 🎵 เพลง (SD) sends MP3s to the card through the USB cable (sha256-checked, ~140 KB/s ≈ 1 min for an 8 MB song), lists, plays and deletes them. It uses the radio's decoder, so it needs no extra RAM. [wiki/12](wiki/12-Internet-Radio.md) |
+| 🏁 **Vehicle dash** (new) | A dash for a car or motorcycle in three styles — **racing** (rpm bar), **round digital sport** (LED ring) and **classic needles** (tachometer + speedometer) — with shift light, speed, gear, engine / battery / intake readouts that turn yellow / red. Open it with the gauge button at the bottom right of the home screen or by saying "open the dash" (with no data source set up yet it starts the simulator); tap the header to switch styles. Data from **Honda K-Line** (Wave 110i / 125i, Click, PCX ... through an L9637D-type adapter), OBD-II through a wired ELM327, text lines from another board, or the built-in simulator (finger = throttle). An ELM327 Bluetooth LE (or dual-mode) adapter needs the separate firmware `pio run -e esp32s3-ble -t upload`: since T113 Bluetooth OBD and the voice assistant run together (buffers and objects moved to PSRAM, NimBLE's pools in PSRAM, one wake word while Bluetooth is in use; Bluetooth is on only while the dash is open, closing it gives the RAM back). **AI language lock (T116):** settings "ภาษาที่ AI พูด" - Thai (locked, default) / English / follow the user (`set language th` / `en` / `auto`, Studio). **OBD log + replay (T115; first real-car logs checked in T117: VIN "response pending" handled):** every adapter command and reply, status, events, values (each second), codes and health go to the SD card (`agent/obdlog`, synced every 2 s); `python tools/obd_log.py` (`pull`, `summary`, `csv`, `replay`) brings them to the PC, and the dash source "replay" plays a recorded drive back through the same ELM327 driver — OTA updates install the normal firmware, without Bluetooth. The assistant reads the live values ("what's the engine temperature?") and warns out loud when the engine overheats or the battery stops charging. **Smart OBD-II (T112):** finds the car's protocol (remembers it, tries each one when the adapter's auto search fails) and the adapter's baud rate by itself; reads every PID the car has, most needed first (fast while a gauge shows it, slow with the dash closed); **trouble codes with their meaning** (stored / pending / permanent), freeze frame, VIN, readiness and clearing the codes; a **health check** from the live values (engine temperature rising fast, not charging, weak battery parked or at the start, lean / rich fuel trims or an air leak, rough idle, fuel low) and the **trip with km per litre** (fuel-rate PID, MAF or MAP); the phone's GPS speed for a bike ECU without one; a fourth style **"vehicle data + analysis"** (nine values, the codes, the worst finding) and an amber engine icon when the check-engine light is on. Ask "how is the car?", "scan the car", "what does P0420 mean?" (no car needed) or "clear the codes" — the built-in simulator has codes too, so it all works without a car. Not yet tested on a real vehicle. [wiki/16](wiki/16-Vehicle-Dash.md) |
+| 🧭 **Navigation with the phone** (new, not yet tried in a car) | Google Maps on your Android phone works out the route; the board shows each turn (arrow, distance, street, arrival) on its own screen or as a strip on the dash, and the assistant **says the turn ~20 s before it** ("อีก 300 เมตร เลี้ยวขวาเข้า ถ.พระราม 4"). Say "นำทางไปเซ็นทรัลเวิลด์" and the phone starts Google Maps; ask "อีกไกลไหม", "ถึงกี่โมง", "ตอนนี้อยู่ไหน". The phone's GPS can also be the dash's speed source (any vehicle). Over the phone's Wi-Fi hotspot or USB, paired once over USB, both sides prove the pairing (HMAC, the board first) and every Wi-Fi line after that carries an HMAC seal, so nobody on the same Wi-Fi can inject one. [wiki/18](wiki/18-Phone-Link-Navigation-Plan.md) |
+| ⏰ **Personal assistant** | Timers, reminders (daily / weekdays / weekly), to-do list, notes, price alerts that speak up, calculator, unit & world-time conversion. |
+| 🔁 **Self-healing** | Automatic model fallback, quota-aware back-off, Google Search pause on quota (if enabled), session resumption, Wi-Fi reconnect — and it **remembers up to 6 Wi-Fi networks** it joined before, switching to the strongest one in range when the configured one is gone, and to a remembered network that is clearly stronger (≥ 10 dB) when one comes back; the Wi-Fi menu shows which network is really joined. |
+| 🖥️ **ESP32-AI Studio** | Dark-mode PC app: all settings, live debug log, chat, remote screen with touch, mic recorder, tool runner, build & flash. |
+
+## 🖼️ Screenshots
+
+<div align="center">
+
+**Live data cards** — the AI fetches, the board draws, the AI summarises out loud
+
+<img src="wiki/images/readme-cards.png" width="900" alt="Weather, fuel price, gold, market overview, technical analysis and economic calendar cards">
+
+**ESP32-AI Studio** — the PC companion app
+
+<img src="wiki/images/pc-studio-screen.png" width="440" alt="Remote screen tab"> <img src="wiki/images/pc-studio-log.png" width="440" alt="Debug log tab">
+
+</div>
+
+## 🔧 Hardware
+
+| Part | Details |
+|---|---|
+| **Board** | **ES3C28P** — ESP32-S3R8 (dual-core 240 MHz, 16 MB flash, 8 MB PSRAM) with 2.8" 320×240 IPS (ILI9341V) and capacitive touch (FT6336G) |
+| **Audio** | ES8311 codec, on-board MEMS mic, FM8002E amplifier → **a small 4–8 Ω speaker on the 2-pin JST connector** (required) |
+| **Extras** | WS2812 RGB LED · MicroSD slot (FAT32, optional) · LiPo connector with battery gauge · BOOT button used as a push-button |
+| **Network** | 2.4 GHz Wi-Fi (5 GHz is not supported by the ESP32) |
+| **Other supported boards** | • **ESP32-P4 (`firmware-p4/`)**: Guition JC4880P443C 4.3" 480×800 MIPI-DSI ([wiki/19](wiki/19-ESP32-P4-JC4880P443C.md))<br>• **SparkleIoT XH-S3E-AI_V1.0 (`firmware-s3-mini/`)**: MINI ESP32-S3-N16R8 + 0.96" 128×64 OLED + NS4168 digital amp + MEMS mic ([wiki/22](wiki/22-Mini-OLED-Boards-XHS3E-XminiC3.md))<br>• **Xmini-C3 (`firmware-c3-mini/`)**: ESP32-C3 16 MB Flash (No PSRAM) + 0.96" 128×64 OLED + ES8311 + NS4150B, auto-detects V1/V2 & V3 ([wiki/22](wiki/22-Mini-OLED-Boards-XHS3E-XminiC3.md)) |
+
+Pinout, board photos and connector guide → [wiki/01-Hardware-ES3C28P-Pinout.md](wiki/01-Hardware-ES3C28P-Pinout.md) · Mini OLED boards → [wiki/22-Mini-OLED-Boards-XHS3E-XminiC3.md](wiki/22-Mini-OLED-Boards-XHS3E-XminiC3.md)
+
+## 🚀 Quick start
+
+> **No passwords or keys ship with this project.** You only need your own **2.4 GHz Wi-Fi** and a free
+> **Gemini API key** from **[aistudio.google.com/api-keys](https://aistudio.google.com/api-keys)** — both are entered on the
+> device after flashing and stored encrypted on *your* board.
+
+### Option A — ready-made firmware (no programming tools)
+
+1. Download `PersonalAIBot-ESP32-v…-factory.bin` from **[Releases](https://github.com/skyliner2008/PersonalAIBot-ESP32/releases)**.
+   Other boards have their own files (from the next release): `-factory-p4.bin` (ESP32-P4), `-factory-xh-s3e-ai.bin`
+   (XH-S3E-AI), `-factory-xmini-c3.bin` (Xmini-C3) — each board also updates over Wi-Fi only from its own `-app-….bin`.
+2. Open **[espressif.github.io/esptool-js](https://espressif.github.io/esptool-js/)** in Chrome or Edge, plug the board in with USB-C and press **Connect**
+   (if it is not found: hold **BOOT**, tap **RESET**, release BOOT, then connect again).
+3. Flash address **`0x0`** → choose the `.bin` file → **Program**. When it finishes, press **RESET**.
+
+Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v4.9.0-factory.bin`
+
+**📱 From an Android phone (no computer):** install the phone app **Personal AI Bot** (`PersonalAIBot-Mobile.apk` from the release, or
+build it: `python tools/build_mobile_apk.py`), open the **ESP32 board** screen (chip icon on the top bar), plug the board into the phone
+with a USB-C cable (USB OTG) and tap **แฟลชลงบอร์ด**.
+It downloads the latest release itself and checks its sha256 (and the release signature). **อัปเดต** writes the `-app.bin` and keeps
+settings and memory; **ติดตั้งใหม่ทั้งหมด** writes the factory image; a `.bin` on the phone works too. Android 8+ only — iOS does not let apps
+use USB serial. The same app is also a pocket **ESP32-AI Studio** over that cable: live status with quick buttons
+(mic / sleep / wake / reconnect / new conversation / reboot), text chat with the assistant, the live log (filter, share,
+console commands) and the settings (Wi-Fi scan, API key + test, profile, voice, models, volume, brightness …).
+The app **updates itself** from the releases: Settings → **อัปเดตแอป** (checked once a day; the download is sha256-checked
+and Android asks before installing; app data is kept). It needs releases that carry `PersonalAIBot-Mobile.json` (from v4.4.2).
+See [wiki 17](wiki/17-Mobile-Flasher.md).
+
+> The factory image starts at `0x0`, so it also **clears saved settings** on that board (a clean install).
+>
+> **Already running v3.5.0 or later?** Update over Wi-Fi instead: Settings → **อัปเดตเฟิร์มแวร์** (firmware update). The board downloads the latest release's `-app.bin`, checks it (sha256, image header, version marker, and the release signature once a signing key is set up) and keeps your settings and memory; if the new version fails to start properly it goes back to the old one by itself. The check also works with the radio playing or the AI talking (T121: the TLS handshake to GitHub runs at a higher priority — before, it ran too slowly and GitHub dropped it, "ติดต่อ GitHub ไม่ได้ (HTTP -1)"). See [wiki 13](wiki/13-OTA-Update.md).
+
+### Option B — build from source (maintainer only)
+
+> **The source code is not published.** This GitHub repository holds the documentation (README, `wiki/`) and the
+> **[Releases](https://github.com/skyliner2008/PersonalAIBot-ESP32/releases)** (firmware for every board + the phone app).
+> Use Option A, the phone app or the Wi-Fi update. The steps below are for the maintainer's own copy (T178).
+
+```bash
+pio run -t upload
+pio device monitor
+```
+
+Needs [PlatformIO](https://platformio.org/install) (VS Code extension or `pip install platformio` on **Python 3.10–3.14**: the ESP32 platform refuses 3.15); libraries download automatically.
+Host tests need the Visual Studio 2022 C++ Build Tools (or g++/clang++).
+Updating this way keeps your saved Wi-Fi / API key.
+
+> **Optional:** pre-fill Wi-Fi and the API key at build time by copying `include/secrets.example.h` to `include/secrets.h`
+> (it is git-ignored). Never publish a firmware image built that way — `tools/make_release.py` refuses to.
+
+### First boot — enter your own Wi-Fi and API key
+
+1. **Touch calibration** — tap the three targets.
+2. Tap ⚙ (or hold **BOOT** for 1.5 s) → **Wi-Fi** → scan and pick your network → type the password with the on-screen Thai/English keyboard.
+3. **API key** → type the key → **Test API key** shows which models your key can use.
+4. When the screen says **"พร้อมคุย" (ready)** — just start talking.
+
+**Or set it up from a PC with the SD card:** copy [`tools/sd_card/ai-setup.txt`](tools/sd_card/ai-setup.txt) to the root of the
+micro SD card (FAT32), fill in `WIFI_SSID`, `WIFI_PASSWORD` and `GEMINI_API_KEY`, put the card in the board and power it on.
+The board imports the file, stores the values encrypted in `agent/secrets.json` on the card and deletes the plain file.
+(The Studio's **💾 SD card file…** button writes this file for you.)
+
+Prefer a keyboard? Use the PC app instead (step below) — every setting is there.
+
+### ESP32-AI Studio (PC app, optional)
+
+Not published with this repository (the source code is not public, T178) — on the maintainer's PC: Python 3.9+ (the python.org installer includes Tkinter), then:
+
+```bash
+pip install -r tools/pc_app/requirements.txt
+python tools/pc_app/esp32_ai_studio.py
+```
+
+On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio (or press **Disconnect**) before flashing from another tool — or flash from the Studio's **🔧 Firmware** tab, which releases the port for you.
+
+## 💬 Using it
+
+| Do this | What happens |
+|---|---|
+| Speak when the screen shows **พร้อมคุย** | Voice answer + subtitles (and a data card when relevant) |
+| Tap 🎤 (bottom-left) | Mute / unmute the mic |
+| Tap 🔔 (next to Wi-Fi, shown while alerts are set) | All reminders, timers and price alerts — edit text / day / time / repeat / target price, or delete |
+| Tap the screen or press BOOT while it speaks | Stop talking (barge-in) |
+| Tap while asleep / paused | Wake up / reconnect immediately |
+| Say the **wake word** while asleep | Offline wake word (ESP-SR WakeNet after our echo removal, works over the radio and on the rest-screen clock, in every wake mode). **Pick one of 9 words** (T145) — Jarvis, Hi ESP, Alexa, Hi M Five, Hey Gigi, Computer, Sophia, Mycroft, Hey Willow — in ⚙ "เสียง & ไมโครโฟน" → "คำปลุก", Studio or the phone app; it switches at once, no reboot. "ความไวคำปลุก" (0.40-0.70) trades waking by itself against missed calls; asleep, the log shows every loud sound that was not the word (level, clipped samples). ⚙ "ปลุกด้วยเสียง" picks where loudness wakes it too · `set wakeword alexa`, `set wakethreshold 0.6`, `set wake level\|word\|both` |
+| Say the **wake word** while the assistant is talking | It stops and listens to you at once - the speaker is removed from the mic first, so its own voice cannot interrupt it |
+| "turn on the fan", "dim the desk lamp to 30", "is the door closed?" | Your own relays, dimmers, buttons/sensors and analog inputs on the free pins, listed by name in `agent/devices.json` on the SD card — see [wiki 15](wiki/15-Expansion-Ports.md) for the free ports and what they can drive |
+| Long-press the screen 1.5 s | Fresh conversation (long-term memory stays) |
+| Silent for 3 min → asleep (closed eyes); 5 more min → **dim clock** | Speak or tap to wake: full brightness + eyes open (times: ⚙ menu / Studio / by voice) |
+| "turn it down a bit", "brighter", "rest the screen", "mute the mic" | Volume / brightness up-down, dim clock right away, mic off by voice — turning the mic **on** is only possible with the 🎤 button (the mute survives reboots) |
+| Tap a data card | Close it (cards also close after ~30 s) |
+
+**Things to try** *(Thai shown, English works too)*
+
+```text
+"จำไว้นะว่าฉันแพ้กุ้ง"                    → saves a memory          ("Remember I'm allergic to shrimp")
+"อากาศที่เชียงใหม่วันนี้เป็นยังไง ฝุ่นเยอะไหม" → weather + PM2.5 card
+"ราคาน้ำมันดีเซลวันนี้เท่าไหร่"               → Thai fuel price table
+"วิเคราะห์ทองคำทุกกรอบเวลา"                 → multi-timeframe gauge card
+"หุ้นไทยตัวไหนขึ้นแรงวันนี้"                  → SET top gainers
+"สัปดาห์นี้มีข่าวเศรษฐกิจอะไรสำคัญ"            → economic calendar in Thai time
+"เตือนฉันถ้าบิทคอยน์ต่ำกว่า 80,000"           → spoken price alert (checked every 2 min)
+"เตือนกินยาทุกวันสองทุ่ม"                    → daily reminder that rings
+"เปลี่ยนเป็นเสียงผู้ชาย" / "ราตรีสวัสดิ์"         → change voice / go to sleep
+```
+
+## 🛠️ Tools
+
+The model calls these by itself. Data tools run in a background task and draw a card while the AI keeps talking. The same lookup asked again within its refresh time (weather 10 min, fuel 30 min, news 5 min, quotes 1 min) is answered from memory - no new HTTPS round trip. Weather for any of the 77 Thai provinces takes ~3 s: their coordinates are built in (no geocoding request), and a lookup someone is waiting for runs above the screen animation.
+
+<details>
+<summary><b>All 42 tools</b> (36 without the optional finance pack)</summary>
+
+| Group | Tools |
+|---|---|
+| **Memory** | `save_memory` · `save_relation` · `recall_memory` · `forget_memory` · `recall_conversation` |
+| **Time & tasks** | `set_timer` · `set_reminder` · `list_reminders` · `cancel_reminder` · `add_task` · `list_tasks` · `update_task` |
+| **Assistant & device** | `about_me` (who it is + everything it can do, built at call time from its real tools; 3.5 MB PSRAM playback buffer + TCP flow-control backpressure lets it speak 2–3 min replies cleanly to the end) · `get_device_status` · `configure_assistant` · `list_assistant_options` · `set_volume` · `set_brightness` (level or +/- change) · `configure_device` (mic, sleep, clock mode) · `rest_screen` (clock now) · `play_radio` / `stop_radio` (Internet radio) · `mute_microphone` · `control_led` · `go_to_sleep` · `device` (only with `agent/devices.json`) · `vehicle` (dash open / close, live values, health + trip, `scan` / `explain` / `clear_codes` trouble codes) |
+| **Live data** 🖼️ | `get_weather` (Open-Meteo + PM2.5, IP location by default) · `get_oil_price` (Bangchak) · `get_market_quote` (TradingView) · `convert_currency` · `get_news` (Google News) |
+| **Utilities** 🖼️ | `calculate` · `convert_units` (incl. Thai ไร่/งาน/ตารางวา, บาททอง) · `get_world_time` (DST-aware) · `get_location` · `search_knowledge` (Wikipedia th/en) · `notes` |
+| **Water** 🖼️ | `water` — measured river level per province (bars by % of the bank, a 2-day graph for one station), 24 h / 3 / 5 / 7-day rain, the top 8 provinces nationwide for rain or river level, storms near Thailand, from ThaiWater (คลังข้อมูลน้ำแห่งชาติ); `set water 0` turns it off |
+| **Finance pack** 🖼️ | `market_overview` (+ crypto Fear & Greed) · `market_analysis` (RSI, MACD, EMA, ADX, multi-timeframe, P/E, dividend) · `market_chart` (candlestick chart from real history: trend, support / resistance, EMA, RSI, MACD, ATR, Bollinger; `compare` = correlation; `view: smc` = order blocks, FVG, liquidity, BOS / CHoCH from the author's own SMC indicator; `view: signals` = a five-strategy vote on 1-4 timeframes) · `market_sentiment` (US stock fear & greed computed on the board, crypto Fear & Greed + Binance long / short, US / Thai inflation, rates, jobs, GDP) · `market_scan` (gainers / losers / volume / RSI, TH-US-crypto) · `economic_calendar` (ForexFactory, Thai time) · `position_size` · `price_alert` (price, RSI level, MACD / EMA cross, SMC CHoCH) |
+| **Web search** | No general web search by default: Google Search grounding needs a key with a Search allowance (free-tier projects have none — `set search 1` to enable on a paid key). Current events go through `get_news` (Google News, last 7 days first), facts through `search_knowledge`. DuckDuckGo was evaluated and is not usable (no free search API; the HTML page blocks automated requests). |
+
+All data sources are free and key-less; every HTTPS connection is certificate-verified.
+Results say **when** a figure is valid, so the assistant does not call old data "today": `as_of` on every live-data result, the fuel price's effective date, market open/closed + quote time, news publish time.
+Market data comes from TradingView's public scanner endpoint (unofficial) and is **read-only** — the assistant cannot place trades or connect to a broker. **For information only, not investment advice.**
+
+Details and timings → [wiki/11-Data-Tools-and-Cards.md](wiki/11-Data-Tools-and-Cards.md) · [wiki/09-Assistant-Profiles-and-Tools.md](wiki/09-Assistant-Profiles-and-Tools.md)
+
+</details>
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart LR
+    MIC[🎙️ MEMS mic<br/>ES8311] -->|I2S 24 kHz → 16 kHz<br/>VAD + AGC| AG
+    subgraph ESP32-S3
+        AG[AgentController<br/>state · fallback · tools]
+        IO[geminiIO task<br/>WebSocket + TLS]
+        WT[webTools task<br/>HTTPS data tools]
+        MEM[(Memory<br/>BM25 + graph<br/>SD / LittleFS)]
+        UI[UI task<br/>eyes · cards · menus]
+        AG <--> IO
+        AG <--> WT
+        AG <--> MEM
+        AG --> UI
+        WT --> UI
+    end
+    IO <-->|wss://| GEM[☁️ Gemini Live API]
+    WT -->|https://| DATA[☁️ Open-Meteo · Bangchak<br/>TradingView · Wikipedia ...]
+    AG -->|24 kHz PCM| SPK[🔊 Speaker]
+    UI --> LCD[📱 2.8″ touch LCD]
+    PC[🖥️ ESP32-AI Studio] <-->|USB serial<br/>TAG + JSON| AG
+```
+
+- **Models:** preferred Live model → `gemini-3.8-live` → `gemini-3.8-live-extended-thinking` (its tool calls currently fail on Google's side) → `gemini-3.1-flash-live-preview`; text tasks use `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite`. Quota / overload / auth errors are classified and each model cools down separately.
+- **Memory budget:** audio rings, the LCD sprite, WebSocket frames and all TLS buffers live in PSRAM, keeping ~85 KB of internal RAM free under full load. Since T119 every TLS object goes to PSRAM when internal RAM drops under 32 KB, the JSON parsed during a session and the long-lived queues live in PSRAM, a PSRAM allocation never falls back into the last 24 KB of internal RAM, and the daily update check waits for room (`[Health]` and `diag` show the largest free block).
+- **Tokens:** local VAD, context compression and auto-sleep keep usage well under the 65k tokens/min Live limit.
+
+Full design → [PROJECT_ARCHITECTURE_SPEC.md](PROJECT_ARCHITECTURE_SPEC.md)
+
+## 🖥️ ESP32-AI Studio
+
+| Tab | Highlights |
+|---|---|
+| 📜 Debug log | Colour-coded live log, regex filter, copy/save, console with history |
+| 💬 Chat | Type to the assistant; it answers through the board's speaker |
+| ⚙️ Settings | Wi-Fi scan, API key + self-test, profile / voice / personality, models, Search, mic sensitivity, finance tools, import/export (no secrets) |
+| 🧰 Tools | Record what the AI hears (waveform + WAV), speaker test, run any of the AI's tools, eye emotions, memory tools |
+| 🖥️ Screen | Live mirror of the LCD — click to tap, drag to swipe, right-click to long-press |
+| 📊 Status | Session, models & cool-downs, tokens/min graph, RAM, storage, battery |
+| 🔧 Firmware | Build, build + upload, host unit tests, update over Wi-Fi, **create / back up / restore the release signing key** (one button each) |
+| 📻 Radio | Station list: play / stop, add, edit, delete, reorder, reset to defaults, test a stream URL from the PC |
+
+Copy/paste works with both Thai and English keyboard layouts. Docs → [wiki/10-PC-Studio-App.md](wiki/10-PC-Studio-App.md)
+
+## 🧪 Tests
+
+Portable modules (memory, tools, scheduler, tasks, personas, model fallback, calculator, units …) are tested on the PC:
+
+```bat
+host_tests\run_tests.bat
+```
+
+77 suites · 2,945 checks · needs Visual Studio Build Tools (`cl.exe`) and one `pio run` first (for ArduinoJson).
+Linux / macOS / CI: `bash host_tests/run_tests.sh` (g++ or clang++).
+
+The phone app has its own JVM tests (58: the console parser and settings, the phone link incl. a real Wi-Fi handshake, Google Maps parsing, and the flasher against a simulated ESP32-S3 ROM bootloader with a virtual 16 MB flash):
+`cd tools/mobile_app && ./gradlew :esp32:testDebugUnitTest`. The app builds without Kotlin warnings. A new PC or a fresh Windows install gets a new
+debug signing key, so uninstall the old app from the phone once, or copy back the old `~/.android/debug.keystore` ([wiki 17](wiki/17-Mobile-Flasher.md)).
+The Gradle daemon ("OpenJDK Platform binary" in Task Manager) exits after 15 idle minutes; `gradlew --stop` ends it at once.
+
+## 📁 Project layout
+
+Only the documentation is on GitHub; these folders stay on the maintainer's PC (T178).
+
+```text
+src/agent      AgentController (the brain: setup/loop) + AgentSession (Wi-Fi, Live session, fallback, tool calls),
+               AgentMic (VAD/AGC), AgentRoutines (sleep, reminders, consolidation), AgentDevice (status, device, radio),
+               AgentTools, WebTools + WebToolsExtra (data tools), Personas, Scheduler, TaskList
+src/ai         GeminiLiveClient (geminiIO task), TextModelClient, ModelFallback, root CAs
+src/ui         Eyes, FaceScreen, CardScreen (data cards), menus, Thai keyboard
+src/audio      AudioManager (I2S), ES8311 driver, resampler
+src/memory     MemoryStore (BM25 + graph), EpisodicLog
+src/display    LovyanGFX config, touch driver, Thai fonts 26/20 px
+src/system     I2C bus, storage (SD / LittleFS) · src/util  UTF-8, calculator, units, time, JSON helpers
+src/phone      phone app link: GPS, Google Maps turn-by-turn, spoken turns (USB / Wi-Fi, paired over USB) + src/ui/NavScreen
+src/vehicle    vehicle dash: readings, dash model, simulator, ELM327, Honda K-Line, UART / BLE links (+ src/ui/DashScreen)
+tools/pc_app   ESP32-AI Studio (Python + Tkinter + pyserial)
+tools/mobile_app  Phone app "Personal AI Bot": the Jarvis assistant (composeApp, from the PersonalAIBot project; TradingView only, no MT5; on-device wake word "Hey Jarvis" or your own word, e.g. Thai "จาวิส", trained with your voice) + the ESP32 board screen
+               (esp32 module: USB OTG flasher, Studio-like status, log, settings, chat, GPS navigation for the board)
+tools/         gen_thai_font.py, gen_root_ca.py
+host_tests/    PC unit tests
+wiki/          Obsidian knowledge base (Thai): hardware, setup, protocol, UI, memory, troubleshooting log
+```
+
+## 📚 Documentation
+
+| | |
+|---|---|
+| [00 Home dashboard](wiki/00-Home-Dashboard.md) | Index and change log |
+| [01 Hardware](wiki/01-Hardware-ES3C28P-Pinout.md) · [02 Installation](wiki/02-Installation-and-Setup.md) · [03 Libraries](wiki/03-Libraries-and-Dependencies.md) | Board, setup, dependencies |
+| [04 Architecture](wiki/04-System-Architecture.md) · [05 Gemini Live protocol](wiki/05-Gemini-Live-API-Protocol.md) | How it works |
+| [06 Eyes & Thai UI](wiki/06-Avatar-and-Thai-UI.md) · [08 Long-term memory](wiki/08-Long-Term-Memory-GraphRAG.md) | Face, menus, memory design |
+| [09 Profiles & tools](wiki/09-Assistant-Profiles-and-Tools.md) · [11 Data tools & cards](wiki/11-Data-Tools-and-Cards.md) · [20 Tool & command list](wiki/20-Tool-Command-Reference.md) | What the assistant can do (every tool with example phrases and console calls) |
+| [10 PC Studio](wiki/10-PC-Studio-App.md) · [07 Troubleshooting log](wiki/07-Troubleshooting-Log.md) | Tools and 40+ solved problems |
+| [12 Internet radio](wiki/12-Internet-Radio.md) | Streaming, mixing/ducking, voice wake over music |
+| [13 Firmware update (OTA)](wiki/13-OTA-Update.md) | Over Wi-Fi from GitHub Releases, verified, automatic rollback |
+| [16 Vehicle dash](wiki/16-Vehicle-Dash.md) | OBD-II (wired ELM327; Bluetooth LE in the release firmware since T118), Honda K-Line, simulator; wiring, layouts, the `vehicle` tool, RAM budget |
+| [19 ESP32-P4 firmware](wiki/19-ESP32-P4-JC4880P443C.md) | Separate firmware for the Guition JC4880P443C (ESP32-P4 + C6, 4.3" MIPI-DSI): `pio run -d firmware-p4`; the assistant sees through the OV02C10 camera (tool `camera`, T133), RS485 Modbus RTU tool (T131); first run on the board (rev v3.2 → default env `esp32p4-r3`, ESP32-C6 radio firmware update over USB: `tools/p4_c6_update.py`, T147); volume 100 % = −6.5 dB, no more DAC boost past 0 dB, radio and voice volumes independent, `sdformat` (T148); now a full assistant: no vehicle dash, portrait 480x800 UI, the phone app's pet robot (pre-rendered with Godot, live eyes; `tools/p4_avatar/`), a 90s-style radio / MP3 player, tool results as the phone app's scene: the robot raising a hologram window, its words in a bubble, on black (T149); bigger text everywhere (34 / 26 px), the finance cards in the same style, ten review fixes (T150); a `day_trade` tool on TradingView candles (opening-range breakout with entry / stop / target / size, a replay of past sessions + a simulation, daily chart setups; ideas from day-trader-skill, MIT, rewritten) and no phone navigation (T151); no subtitles on the home screen, only system notices (T152); the mic no longer feeds the room to the AI (a stricter VAD, speech held back until it is clearly a nearby voice, no blind follow-up streaming, no forced answers to noise or its own echo) and the "Hi ESP" wake word measured on the board (T153); a short wake chime the moment "Hi ESP" is heard instead of a spoken greeting, so a false wake no longer makes the AI talk (T154); ESP32-AI Studio and the phone app work with both boards: the firmware names its chip in `config`, Studio builds / uploads the right project and mirrors the 480x800 screen, the phone app flashes the P4 (bootloader 0x2000, 6 MB app) and picks its files, and one release carries both boards (`-factory-p4.bin` / `-app-p4.bin`, which the P4 updates itself from) (T155); the 7 clock faces of the S3 on the P4's power-save screen, laid out again to fill the 4.3" portrait panel (Oswald 180/120/64 px digits, Thai text in the largest size that fits) (T156); the clock face in 3 bands: tap the middle to wake the assistant, tap or swipe the top / bottom band to cycle through the faces (T157); the home screen in 3 bands: the status bar (no gear, battery at the right) opens the settings as a 3D carousel of picture icons over the home screen (tap or pull down, drag to turn, tap to open), the robot in the middle, a mini music player at the bottom that expands to the full player (T158), with the robot standing in front of it on the info cards (T159); the missing tools as a few combined ones (+2.5 KB of declarations): chart patterns (harmonic, Elliott, deep score), squeeze / breakout scans, a combined verdict, a signal journal with chart watches, reminders that give the AI a job, and background research jobs on the text model (T160); a boot splash of the "AI / GEMINI LIVE" picture with light moving over it (rings, sparkles, a loading light) at 20 fps while the system starts (T161); a 16 KB stack for the web tools task, which the new finance tools needed (T162); a richer get_weather - wind direction, UV, sunrise/sunset, moon phase, the next 12 hours' rain, the place's own time zone, the last good answer when a lookup fails - and a six-box weather card (T163); a review of the P4 firmware with all ten findings fixed - background jobs that cannot hang or crowd out the conversation's lookups, no duplicate signals in the journal, a size limit on it, and smaller UI fixes (T164); everything left untested checked on a steady network - watches that fire, candle cards (an EMA line no longer runs past the chart), the journal trim (T165); `wifi off` / `wifi on` console test for stale weather cache (T166); Wi-Fi RF diagnosis verified on the board (the `CA-C03` ceramic antenna sits behind the 4.3" LCD steel backplate: `-60 dBm` front vs `-45 dBm` rear) plus six deep-review fixes across `about_me` hardware identity / opt-in `control_led`, CPU-to-PSRAM cache sync before hardware JPEG DMA, shared JPEG decoder for `ui open splash`, atomic `TextModelClient` queue busy state + background-job isolation from consolidation, `Camera`/`WakeWord` error-path cleanup & `MAP_FAILED` check, and recursive I2C bus locking across GT911 touch and camera SCCB (T167); fixed a permanent board freeze during stalled nationwide ThaiWater gzip streams (`TINFL_FLAG_HAS_MORE_INPUT` zero-padding infinite loop in ESP32 ROM `miniz` at priority 4), rejected truncated station arrays instead of caching partial rankings, aborted in-flight web lookups immediately on server tool cancellation / sleep, and suppressed false 8 s no-reply warnings & idle auto-sleep while a web tool is running (T168, both P4 and S3); a new battery gauge: the P4 no longer shows "USB" after the cable is pulled, the percent no longer jumps on plug / unplug (T170, both boards) |
+| [21 2D / 3D animation on the ESP32-P4](wiki/21-P4-2D-3D-Animation-Research.md) | Research notes: what the PPA can and cannot do, the hardware JPEG decoder, software 3D (a3d, tgx), LVGL, Lottie, and why the pre-rendered robot is the best value |
+| [18 Phone link & navigation](wiki/18-Phone-Link-Navigation-Plan.md) | Phone GPS on the dash, Google Maps turn-by-turn on the board, the assistant says each turn, "navigate to …" by voice (Wi-Fi / USB) |
+| [17 Phone app](wiki/17-Mobile-Flasher.md) | Android app over a USB-C cable: flash (update keeping settings, verified downloads), status, log, settings, chat |
+
+## 🔒 Security & privacy
+
+**Where your Wi-Fi password and API key live**
+
+| Place | Contains secrets? |
+|---|---|
+| Source code in this repo | **No.** Secrets are typed on the device (touch menu or Studio), never into the code. |
+| `include/secrets.h` (optional build-time defaults) | Only if you fill it in — it is **git-ignored**, so it is never uploaded. `secrets.example.h` holds placeholders only. |
+| Firmware binary (`.pio/`) | Only if you used `secrets.h`; the build folder is git-ignored. |
+| The SD card — `agent/secrets.json` (or the board's NVS flash when no card is inserted) | **Yes, encrypted** — AES-256-GCM with a key derived from this chip's factory MAC + unique-ID eFuses (`src/app/SecretBox.*`). The file opens only on the board that wrote it (moving the card to another board = set up again with `ai-setup.txt`); reading the card on a PC shows no secrets. A plain `ai-setup.txt` is overwritten and deleted right after import. Older plain-text copies are wiped automatically once (including the Wi-Fi driver's own copy, now disabled with `WiFi.persistent(false)`). |
+
+- This is not full flash encryption: someone who has your board **and** this firmware could still derive the key. Use a dedicated API key and rotate it if the board is lost.
+- Neither the firmware nor the Studio ever prints the API key or Wi-Fi password; `config` shows only a masked hint and `secretsSealed`. Exported settings files contain no secrets; voice recordings (`recordings/`) are git-ignored.
+- Audio is streamed to Google's Gemini API while the mic is open. Memory and notes stay on the board's SD card / flash.
+- The Gemini key is sent in the `x-goog-api-key` header (never in a URL). Data tools only use certificate-verified HTTPS; plain `http://` is refused.
+
+## 🧑‍💻 For developers
+
+- **Fork & build:** `pio run` builds from a clean clone — no `secrets.h` needed. Settings live in NVS (`src/app/Settings.*`), so your own keys never touch the source tree.
+- **Add a tool:** declare it in `AgentTools::addDeclarations` (`src/agent/AgentTools.cpp`); network tools go in `src/agent/WebToolsExtra.cpp` and draw a `CardData` (see [wiki/11](wiki/11-Data-Tools-and-Cards.md)).
+- **Test without a board:** `host_tests\run_tests.bat`; on a board, every tool can be called from the Studio's 🧰 tab or the serial console (`tool <name> {json}`).
+- **See the Live API conversation:** `trace on` on the serial console prints one `[Trace]` line per server event (transcripts, tool calls, `generationComplete` / `turnComplete`; audio chunks only counted) and per JSON message the board sends (`trace off` to stop, not saved) — how a doubled answer after tool calls was tracked down ([T071](wiki/07-Troubleshooting-Log.md)).
+- **Publishing a release:** bump `FIRMWARE_VERSION` in `src/app/AppConfig.h` and `firmware-p4/src/app/AppConfig.h` (the same version: one release carries both boards, T155) → commit → `git push` → `python tools/publish_release.py`. The script builds the factory image (`tools/make_release.py`), creates the GitHub Release as a draft, uploads the factory image and the OTA `-app.bin` (each with a `.sha256`) and the Android phone app `PersonalAIBot-Mobile.apk` (built automatically when an Android SDK is installed; no keystore needed — it is signed with the SDK's debug key unless you made your own with `--create-keystore`), publishes it and re-downloads it to check the sha256. The host tests run before anything is published (`--skip-tests` only on a PC without a compiler). Releases here are **immutable**: a published version can never get new files or reuse its tag, so every release needs a new version number. (`--dry-run` only checks.) Wi-Fi password and API key need no release keys at all: they stay on the board's SD card, sealed with a key derived from that board's chip (another card or another board = set them again), and OTA updates keep them. **Optional — signed OTA updates:** ESP32-AI Studio → 🔧 Firmware → **🔑 สร้างกุญแจ** (or `pip install cryptography` → `python tools/ota_keygen.py`) → commit `src/app/OtaPublicKey.h` and back up the private key it prints (outside the repo) — boards built with that key install only updates signed with it ([wiki 13](wiki/13-OTA-Update.md)).
+- **CI:** [`.github/workflows/firmware.yml`](.github/workflows/firmware.yml) does the same on GitHub Actions but is manual-only for now (*Actions → Firmware → Run workflow*); the release job waits for the host-tests job. `tools/make_release.py` refuses to run while `include/secrets.h` holds real values and scans the image for API-key-like strings.
+- **Docs:** the `wiki/` folder is an Obsidian vault; please add problems you solve to [wiki/07-Troubleshooting-Log.md](wiki/07-Troubleshooting-Log.md).
+
+Pull requests and issues are welcome.
+
+## 📄 License
+
+[MIT](LICENSE) © 2026 skyliner2008 — free to use, modify and share; keep the copyright notice. Third-party fonts, libraries and data services keep their own licenses/terms (see [LICENSE](LICENSE)).
+
+## 🙏 Credits
+
+- [Google Gemini Live API](https://ai.google.dev/gemini-api/docs/live) · [LovyanGFX](https://github.com/lovyan03/LovyanGFX) · [ArduinoJson](https://arduinojson.org/) · [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel)
+- Thai font: **TH Sarabun New** (SIPA, Thai national font) · MP3/AAC decoding: **RealNetworks Helix** (RPSL, `lib/helix-*`) — `noiseless.c` patched: a damaged AAC frame is rejected instead of looping forever (a station rebooted the board) · default station list checked with the help of [Radio Browser](https://www.radio-browser.info)
+- Data: [Open-Meteo](https://open-meteo.com/) · [Bangchak](https://www.bangchak.co.th/) · [TradingView](https://www.tradingview.com/) · [Wikipedia](https://www.wikipedia.org/) · [ForexFactory](https://www.forexfactory.com/) · [alternative.me](https://alternative.me/crypto/fear-and-greed-index/) · [ipwho.is](https://ipwho.is/) · Google News
+- Tools and finance features ported from the **PersonalAIBot** Android app
+
+<div align="center">
+
+Made with ❤️ in Thailand · ⭐ Star the repo if it helped you
+
+</div>
