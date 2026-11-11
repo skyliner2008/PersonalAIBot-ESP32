@@ -36,7 +36,7 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 | live data (อากาศ, น้ำมัน, ราคา, แลกเงิน, ข่าว) | 5 | เสมอ |
 | utilities ที่พอร์ตจาก PersonalAIBot | 6 | เสมอ |
 | **water** (ThaiWater, T100) | 1 | `set water 1` (ค่าเริ่มต้น เปิด) |
-| **finance pack** | 6 | `set finance 1` (ค่าเริ่มต้น เปิด) |
+| **finance pack** | 6 (+ `market_chart`, `market_sentiment`, **`market_anticipation` T187**; P4 มี `market_signals`, `day_trade` เพิ่ม) | `set finance 1` (ค่าเริ่มต้น เปิด) |
 | `about_me` (T096) | 1 | เสมอ |
 
 ค่าเริ่มต้น = **44 tools** (~15.6 KB JSON ต่อ setup — งบใน host test 15.7 KB: `about_me` +200 B, `water` +470 B; `play_radio` `music` +100 B (T122) → งบ 15.8 KB; tool ใหม่ต้องย่อคำอธิบายเก่าหรือทำเป็นชุดเปิดปิดได้; core 25 รวม `configure_device`, `rest_screen`, `mute_microphone`, `play_radio`, `stop_radio`) + Google Search (ถ้าใช้ได้) — ทดสอบใน host test `tool_declarations_per_model`
@@ -84,6 +84,8 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 
 | `day_trade(action?, symbol?, symbols?, or_minutes?, stop?, target_r?, side?, account?, risk_percent?)` **(ESP32-P4, T151)** | แนวคิดจาก [day-trader-skill](https://github.com/Jakeschincariol/day-trader-skill) (MIT) เขียนใหม่: **`orb`** เบรกกรอบเปิดตลาด (กรอบ 15 นาทีแรก, แท่ง 5 นาทีแรกที่ปิดเหนือ/ใต้กรอบ) + แผน เข้า / ตัดขาดทุน (กึ่งกลางกรอบ, ขอบอีกด้าน, %, ATR) / เป้า (R) / จำนวน (ทุน × % เสี่ยง ปัดตาม lot) / ออกก่อนปิด · **`backtest`** กฎเดียวกันทุกวันย้อนหลัง + จำลอง 2,000 ครั้งจากแท่งของวันก่อนๆ ตามช่วงเวลาของวัน → คำตัดสินเทียบจุดคุ้มทุน · **`setups`** รูปแบบรายวัน 1-8 ตัว (ทะลุจุดสูง 20 วัน, ธงขาขึ้น, กลับเหนือเส้น 20 วัน, RSI < 30, เด้งจาก RSI < 30) · ไม่ส่งคำสั่งซื้อขาย · คณิตใน `firmware-p4/src/util/DayTradeMath.h` (host tested) | **TradingView chart websocket** (แท่ง 5 นาที 2,500 แท่ง / รายวัน 90 แท่ง, `agent/MarketHistory.cpp` ของ P4, User-Agent `ESP32-AI/<version>`, ไม่มี Yahoo สำรอง) |
 
+| `market_anticipation(action, symbol?, timeframe?, period?, delivery?, factors?, set?)` **(S3 + P4, T187)** | **คาดการณ์ล่วงหน้า / ระบบปลุก AI** (พอร์ตจาก `trading_signal_anticipation` ของแอปมือถือ): เครื่องเฝ้ากราฟ M5 / M15 / H1 / H4 ด้วย **35 ปัจจัย 14 หมวด** ทุก 2 นาที · เหตุการณ์ใหม่ **ปลุกโมเดลข้อความ** ให้ดูภาพ 4 ไทม์เฟรมแล้วตอบแบบฟอร์ม 7 บรรทัด (NOTIFY/SKIP · BUY/SELL · SL · TP · ความมั่นใจ · เหตุผล · สรุป) → ระบบตรวจซ้ำ (SL ≥ 1 ATR, RR ≥ 1:1, ห้ามสวน H4/H1/M15) → **พูดเตือนเฉพาะ NOTIFY** · ติดตามว่าชน TP หรือ SL · ดูหัวข้อ "คาดการณ์ล่วงหน้า" ด้านล่าง | แท่งเทียน TradingView (websocket เดียวต่อรอบ) + `generativelanguage.googleapis.com` (โมเดลข้อความ) · `<agentDir>/antic*.json` |
+
 ทุก tool การเงินใส่ note ให้ AI ปิดท้ายด้วยข้อเสนอที่ช่วยต่อได้ 1 อย่าง (ตั้งแจ้งเตือนราคา วิเคราะห์เพิ่ม เทียบตัวอื่น ข่าวที่กระทบ) —
 **ไม่ลงท้ายด้วย "ไม่ใช่คำแนะนำการลงทุน"** แล้ว (T139: ผู้ใช้ไม่ต้องการ; เดิมทุกคำตอบลงท้ายแบบนี้)
 
@@ -92,6 +94,62 @@ AI เรียก tool → บอร์ดดึงข้อมูลจริ�
 ![[images/card-calendar.png]] ![[images/card-alert.png]]
 ![[images/card-calc.png]] ![[images/card-worldtime.png]]
 ![[images/card-position.png]] ![[images/card-wiki.png]]
+
+### คาดการณ์ล่วงหน้า — `market_anticipation` (T187, S3 + P4)
+
+พอร์ตจาก tool `trading_signal_anticipation` ของแอปมือถือ (`tools/mobile_app/.../automation/wake/`) ให้ทำงานในตัวบอร์ด
+หลักการเดียวกับแอป: **ปัจจัยเป็นแค่ "นาฬิกาปลุก" ไม่ใช่ข้อสรุป** — เมื่อเกิดเหตุการณ์ AI ถูกปลุกมาดูภาพรวมแล้วตัดสินเองว่าควรแจ้งไหม
+ปัจจัยไม่คำนวณ Entry / SL / TP ให้ (กัน anchor AI)
+
+**ขั้นตอนต่อรอบ (ทุก `check_minutes`, ค่าปกติ 2 นาที — task `webTools` ตอนว่าง เหมือน price alert):**
+
+1. ตลาดปิด (FX / ทอง: ศุกร์ 17:00 ถึงอาทิตย์ 17:00 เวลานิวยอร์ก คิด DST ให้) → **ไม่ดึงแท่งเทียนเลย** · หุ้น: ไม่มีแท่ง M5 ใหม่เกิน 45 นาที = ปิด · คริปโตเปิดตลอด
+2. ดึง M5 / M15 / H1 / H4 อย่างละ 300 แท่ง ของทุกสินทรัพย์ที่เฝ้า (สูงสุด 3) **ใน websocket เดียว** + ตลาดเกี่ยวข้อง H1 60 แท่ง (ทอง / FX → `TVC:DXY`, เหรียญอื่น → BTC)
+3. สแกนปัจจัยบน**แท่งที่ปิดแล้ว**ของทุกไทม์เฟรม (`util/WakeFactors.h`) — **เหตุการณ์ (E)** ปลุกได้ · **สภาวะ (S)** เป็นบริบท
+4. Governor (`util/WakeLogic.h`): ปัจจัยเดิม × TF เดิม × ทิศเดิม เว้น `cooldown_bars` (3) แท่งของ TF นั้น · แต่ละปัจจัยปลุกได้เฉพาะ TF ที่เหมาะ
+   (ตารางเดียวกับ `WakeTfProfile` ของแอป ตัด M1) + TF หลักของงานปลุกได้เสมอ · เว้น 1 นาที/การปลุก · งบ `hourly_budget` (12 / ชม. / สินทรัพย์)
+   และ `daily_budget` (200 / วัน) · เหตุการณ์ที่ติดงบ**พกไปแสดงในการปลุกครั้งถัดไป** (≤ 10 นาที) · 60 นาทีก่อนตลาดปิดสุดสัปดาห์ไม่ปลุก
+5. ปลุก: สร้าง prompt (เหตุการณ์ + สถิติของปัจจัยนั้นบน TF นั้น, สภาวะ, มุมมองเดิม 24 ชม. พร้อมผล, ภาพโครงสร้าง 4 TF, บรรทัดสรุปทิศ, กติกา)
+   → `generateContent` ของโมเดลข้อความที่ตั้งไว้ (อีกตัวเป็นสำรอง) → แยกคำตอบ 7 บรรทัด
+6. ระบบตรวจซ้ำ (ลำดับเดียวกับแอป): ตัดระดับที่ผิดฝั่ง / ห่างเกิน 20 % → SL ชิดกว่า 1 ATR ของ TF หลัก **ขยายเป็น 1 ATR** แล้วคิด RR ใหม่ (ไม่ถึง 1:1 → SKIP)
+   → RR < 1:1 หรือไม่มีระดับ → SKIP → NOTIFY สวนเทรนด์ที่ H4/H1/M15 เรียงกัน → SKIP (คงทิศไว้วัดผล)
+7. บันทึกทุกคำตอบ (`antic_views.json`, 80 ครั้งล่าสุด) · **NOTIFY → พูดเตือน** + ข้อความบนหน้า + กริ่ง (ปลุกจากโหมดพัก) · SKIP = เงียบ
+8. เรียนรู้ (ไม่ใช้โทเคน): ทุกเหตุการณ์ที่มีทิศถูกวัด **12 แท่งข้างหน้าของ TF ที่เกิด** หน่วย ATR (`antic_learn.json`) — n ≥ 40 และเฉลี่ย ≤ 0 = **ลดชั้น**
+   (เก็บสถิติต่อ ไม่ปลุก) · TF นอกชุดเริ่มต้นที่เฉลี่ย ≥ 0.2 และไปตามทิศ ≥ 55 % = **เลื่อนชั้น** · มุมมองที่มี SL/TP ถูกตามทีละแท่ง 48 แท่ง
+   (ช่วงแท่งแรกใช้ M5 กันชนปลอม; แท่งเดียวโดนทั้งคู่ = SL) · SKIP วัดว่า 12 แท่งต่อมาราคาไปไกลเกิน 3 ATR ไหม
+
+**action:** `create` (เฝ้า — เหตุการณ์ที่อยู่บนกราฟตอนตั้งไม่นับเป็นข่าว) · `remove` (`symbol: "all"` = ทั้งหมด) · `list` (งบที่ใช้ + ค่าตั้ง) ·
+`scan` (ดูอย่างเดียว: ไม่กิน cooldown / งบ ไม่ถาม AI) · `analyze` (scan + มุมมอง AI ตอนนี้ — ไม่บันทึก ไม่ใช้งบ) · `factors` (รายการปัจจัยตามหมวด) ·
+`config` (`factors: "A,B"` = เปิดเฉพาะ, `"+A,-B"` = เปิด/ปิด — ชื่อผิดไม่เดาให้; `set: "hourly_budget=12,daily_budget=200,cooldown_bars=3,check_minutes=2"`) ·
+`learning` (ปัจจัยที่ผลดี/แย่, ลดชั้น/เลื่อนชั้น) · `summary` (ปลุกกี่ครั้ง, NOTIFY กี่ครั้ง แยก BUY/SELL + ชน TP/SL รวมกี่ R, SKIP กี่ครั้งเพราะอะไร —
+`period`: today / 24h / 7d / 30d / all) · `delivery: "direct"` ตอน create = แจ้งเหตุการณ์ตรงๆ ไม่ถาม AI
+
+**ปัจจัย 35 ตัว 14 หมวด** (id เดียวกับแอปเมื่อเป็นแนวคิดเดียวกัน): โครงสร้าง `BOS` `CHOCH` `RANGE_BREAKOUT` · จุดสำคัญ `OB_TOUCH` `FVG_ENTER`
+`KEY_LEVEL_TOUCH` `PREMIUM_DISCOUNT_EXTREME`(S) · สภาพคล่อง `LIQUIDITY_SWEEP_REJECTION` · เทรนด์ `EMA_CROSS` `GOLDEN_DEATH_CROSS` `PRICE_CROSS_EMA200`
+`EMA_RIBBON_ALIGN`(S) `ADX_TREND_BIRTH` · โมเมนตัม `RSI_EXIT_EXTREME` `RSI_50_CROSS` `RSI_DIVERGENCE` `MACD_SIGNAL_CROSS` `MACD_ZERO_CROSS` · ผันผวน
+`VOLATILITY_SQUEEZE`(S) `SQUEEZE_FIRE` `BAND_REJECTION` · volume `VOLUME_SPIKE` · แท่งเทียน `ENGULFING_AT_LEVEL` `PIN_BAR` `INSIDE_BAR_BREAK` `IMPULSE_CANDLE` ·
+รูปแบบ `DOUBLE_TOP_BOTTOM` · หลาย TF `ALL_TF_ALIGNED`(S) `HTF_CONFLICT`(S) `LTF_PULLBACK_END` · session `SESSION_OPEN` · engine `STRATEGY_VOTE`
+(5 กลยุทธ์โหวต ±2) · ตลาดเกี่ยวข้อง `DXY_MOVE` `CRYPTO_BROAD_MOVE` · ผิดปกติ `PRICE_ANOMALY`
+
+**ต่างจากแอปมือถือ (และเหตุผล):**
+
+| จุด | แอป | บอร์ด | เหตุผล |
+|---|---|---|---|
+| ไทม์เฟรม | M1 / M5 / M15 / H1 / H4 × ~800 แท่ง, เก็บในฐานข้อมูลเครื่อง | M5 / M15 / H1 / H4 × 300 แท่ง ดึงใหม่ทุกรอบ | RAM + เวลาดึง (S3 ~5 วิ / P4 ~1.3 วิ ต่อรอบ); รอบ 2 นาทีทำให้ M1 ไม่มีความหมาย |
+| ปัจจัย | 115 ตัว 15 หมวด | 35 ตัว 14 หมวด | เฉพาะที่คำนวณได้จาก `MarketMath` / `SmcMath` / `MarketSignals` ที่มีอยู่; ไม่มี Ichimoku, VWAP, volume profile, harmonic/Elliott, ข่าว, Fear & Greed |
+| รอบตรวจ | ทุก 1 นาที | ทุก 2 นาที (ตั้ง 1–30) | task เดียวกับ tool อื่น — ระหว่างตรวจ tool ที่ผู้ใช้ถามต้องรอ |
+| งบ | 40 / ชม. · 3000 / วัน (สลับ API key 7 ตัว) | 12 / ชม. · 200 / วัน (ตั้งได้ถึง 60 / 1000) | บอร์ดมี key เดียว และ AI ตอบ 14–22 วิ / ครั้ง (ช่วงนั้น tool อื่นรอ) |
+| จำนวนงาน | ไม่จำกัด, `timeframe: all` = 4 งาน | 3 สินทรัพย์ งานละ 1 TF หลัก (ทุกงานอ่าน 4 TF อยู่แล้ว) | 1 websocket ต่อรอบ |
+| การเรียนรู้ | แยกสภาพแวดล้อม (MTF / ADX / ความผันผวน / session), ปัจจัยไม่มีทิศเทียบเส้นฐาน | สถิติรวมต่อปัจจัย × TF เฉพาะเหตุการณ์ที่มีทิศ | ที่เก็บ + ขนาดโค้ด |
+| ประวัติ | NOTIFY 365 วัน / SKIP 30 วัน, action `inspect` | 80 คำตอบล่าสุด, ไม่มี `inspect` | ไฟล์ JSON เล็กบน SD / LittleFS |
+| ช่องทางแจ้ง | notification + การ์ดแชท + เสียง (`voice` ปิดได้) | เสียง AI + ข้อความบนหน้า + กริ่ง | บอร์ดไม่มี notification; ไม่มีพารามิเตอร์ `voice` |
+| เมื่อ AI ไม่ตอบ | `WakeAiFallback` | ไม่แจ้ง (log `[Antic] no verdict`) การปลุกนั้นนับงบแล้ว | เรียบง่าย ไม่แจ้งมั่ว |
+
+**ไฟล์:** `util/WakeFactors.h`, `util/WakeLogic.h` (pure, เหมือนกันทั้ง `src/util` และ `firmware-p4/src/util` — host test `test_anticipation.cpp` 13 ชุด),
+`agent/MarketAnticipation.cpp` (ต่างกันบรรทัดเดียว: `Wanted.tf` ↔ `Wanted.resolution`) · declaration +1,130 B (งบ host test 18.1 KB)
+
+**ทดสอบบนบอร์ดจริง 2026-11-11 (console `tool market_anticipation {...}`):** S3 `scan` BTC 6.0 วิ (ดึง 5.6 วิ), `analyze` 28 วิ (AI 22 วิ, prompt 10.3 KB) —
+AI เสนอ SELL แต่ **ระบบเปลี่ยนเป็น SKIP เพราะ RR 1:0.68** · P4 `analyze` ทอง 16 วิ (ดึง 1.3 + DXY 0.8, AI 14 วิ) → SKIP "H4 ขาลงแต่ H1/M15 ขาขึ้น"
 
 ### น้ำ: ระดับน้ำ / ฝน / พายุ จาก ThaiWater (T100)
 

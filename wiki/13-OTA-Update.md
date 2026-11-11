@@ -113,6 +113,15 @@ RAM ภายในต่ำสุด 36 KB
 - เฝ้า serial ข้ามการรีบูต: เปิด COM4 ด้วย DTR/RTS = low แล้ว**ไม่ปิด/เปิดพอร์ตใหม่** — USB ของ S3 อยู่รอดการรีเซ็ตแบบ software (`esp_restart`) log ต่อเนื่อง
   · ถ้าพอร์ตหลุด อย่าเปิดใหม่ก่อน ~75 วิ: การเปิดพอร์ตอาจรีเซ็ตบอร์ด และรีเซ็ตก่อนยืนยัน 60 วิ = bootloader rollback
 
+## Xmini-C3: เช็คจาก redirect ไม่ใช่ JSON (T186)
+JSON ของ `api.github.com/.../releases/latest` ใหญ่ ~43 KB แล้ว (release เดียวมี 19 ไฟล์) — บอร์ดที่มี PSRAM เก็บได้สบาย แต่ Xmini-C3
+ไม่มี PSRAM: String ก้อน 43 KB จองไม่ได้ข้าง Wi-Fi + TLS (ขณะเปิดเซสชัน heap เหลือชิ้นละ 7–28 KB) → เช็คอัปเดตไม่ได้
+- C3 ขอ `https://github.com/<repo>/releases/latest` แบบ**ไม่ตาม redirect** → `302 Location: .../releases/tag/v4.9.2` = ได้ tag จาก header
+  (`ota::tagFromReleaseUrl`) · ไม่มี release = redirect ไป `.../releases` → "ยังไม่มี release บน GitHub"
+- URL ไฟล์สร้างจาก tag (`ota::releaseFromTag`, ชื่อตาม `tools/make_release.py`) แล้วโหลด `.sha256` (~100 B) ตอนเช็คเพื่อยืนยันว่า release
+  มีไฟล์ของบอร์ดนี้จริง · ไม่รู้ขนาดล่วงหน้า (appSize = 0) — ตอนติดตั้งยังตรวจขนาด partition, ชิป, marker เวอร์ชัน, sha256 ครบเหมือนเดิม
+- บอร์ดอื่น (S3, P4, XH-S3E-AI) ยังใช้ API JSON เหมือนเดิม · host tests ครอบคลุมทั้งสองฟังก์ชัน · **ยังไม่ได้ลองบน Xmini-C3 จริง**
+
 ## ข้อจำกัด / ต่อยอด
 - ความน่าเชื่อถือของไฟล์ = บัญชี GitHub + TLS + sha256 ใน release เดียวกัน **จนกว่าจะรัน `tools/ota_keygen.py`** — จากนั้น = ลายเซ็นของกุญแจ release (T074)
 - เปลี่ยนกุญแจ (rotation) ยังไม่รองรับ: บอร์ดรู้จักกุญแจเดียว — ต้องการเปลี่ยนต้องแฟลช USB หรือออก release ที่เซ็นด้วยกุญแจเก่าแต่ฝังกุญแจใหม่ (ทำมือ)

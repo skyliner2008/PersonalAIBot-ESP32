@@ -7,6 +7,11 @@ status: active
 
 # 16 — หน้าปัดรถ (รถยนต์ + มอเตอร์ไซค์)
 
+> **เฉพาะบอร์ด ES3C28P (`src/`)** — ตรวจแล้ว 2026-11-11 (T186): `firmware-p4/` ไม่มีโค้ดหน้าปัด/OBD เลย (tool บนบอร์ด P4 จริง
+> 49 ตัว ไม่มี `vehicle`) · บอร์ดจิ๋ว (`firmware-s3-mini/`, `firmware-c3-mini/`) ไม่มีโฟลเดอร์ `vehicle/` และ `vehicleEnabled()`
+> คืน false → ไม่ประกาศ tool `vehicle` (เหลือแค่ฟังก์ชันว่างที่คืน "the vehicle dash is not installed on this board") ·
+> บอร์ด ES3C28P จริง (v4.9.0) ประกาศ `vehicle` ตามปกติ
+
 > **Related:** [[00-Home-Dashboard]] · [[15-Expansion-Ports]] · [[09-Assistant-Profiles-and-Tools]] · [[07-Troubleshooting-Log#T076 หน้าปัดรถ — ฟีเจอร์ใหม่ เขียนเองทั้งหมด (MIT) จากแนวคิดของ redline-gauge]] · [[07-Troubleshooting-Log#T112]]
 > โค้ด: `src/vehicle/` (ข้อมูล, โมเดลหน้าปัด, ตัวจำลอง, ELM327, **Obd** (PID/รหัสปัญหา/VIN), **VehicleHealth** (วิเคราะห์ + ทริป), Honda K-Line, task + UART/BLE) · `src/ui/DashScreen.*` · `tools/dash_preview/`
 

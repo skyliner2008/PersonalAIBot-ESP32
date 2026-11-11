@@ -242,6 +242,7 @@
 | `market_chart` | กราฟแท่งเทียน แนวโน้ม แนวรับ/ต้าน EMA RSI MACD ATR Bollinger | **symbol**, timeframe (5m / 15m / 1h / 4h / 1d / 1w), compare (correlation ≤ 4 ตัว), view (chart / smc / signals / patterns **(P4)**) |
 | `market_sentiment` | อารมณ์ตลาด / เศรษฐกิจ | **topic** (stocks / crypto / economy), symbol |
 | `market_signals` **(P4, T160)** | สมุดบันทึกสัญญาณกลยุทธ์ + เฝ้ากราฟ (พูดเตือนเมื่อเกิดสัญญาณซื้อ/ขายใหม่) | **action** (stats / watch / unwatch / watches / export / import), symbol, timeframe (ค่าปกติ 1h), config (import) |
+| `market_anticipation` **(T187)** | คาดการณ์ล่วงหน้า: เฝ้ากราฟ M5–H4 ด้วย 35 ปัจจัย → ปลุก AI ตัดสินเองว่าควรพูดเตือนไหม (พร้อมจุดผิดทาง + เป้า) → ติดตามผล | **action** (create / remove / list / scan / analyze / factors / config / learning / summary), symbol (สูงสุด 3 สินทรัพย์; remove: `all`), timeframe (5m / 15m / 1h / 4h, ค่าปกติ 15m), period (summary: today / 24h / 7d / 30d / all), delivery (ai / direct), factors (config: `A,B` = เปิดเฉพาะ; `+A,-B`), set (config: `hourly_budget=12,daily_budget=200,cooldown_bars=3,check_minutes=2`) |
 | `economic_calendar` | ปฏิทินข่าวเศรษฐกิจ (เวลาไทย) | range (today / tomorrow / week), impact (high / medium) |
 | `position_size` | คำนวณขนาด lot/หุ้นจากความเสี่ยง | **balance**, risk_percent (ค่าปกติ 1), **entry**, **stop_loss**, symbol, contract_size |
 | `price_alert` | แจ้งเตือนราคา / indicator (เช็คทุก 2 นาที แล้วพูดเตือน) | **action** (add / list / remove), symbol, above, below, id (-1 = ทั้งหมด), condition, timeframe |
@@ -320,7 +321,19 @@
   tool market_signals {"action":"export"}
   tool market_signals {"action":"import","config":"{\"sl_atr\":1.2,\"tp_atr\":2.4,\"check_minutes\":10}"}
   tool market_signals {"action":"unwatch","symbol":"BTCUSDT","timeframe":"1h"}
+  tool market_anticipation {"action":"create","symbol":"XAUUSD","timeframe":"15m"}
+  tool market_anticipation {"action":"create","symbol":"BTCUSDT","timeframe":"5m","delivery":"direct"}
+  tool market_anticipation {"action":"scan","symbol":"BTC"}
+  tool market_anticipation {"action":"analyze","symbol":"ทอง"}
+  tool market_anticipation {"action":"list"}
+  tool market_anticipation {"action":"factors"}
+  tool market_anticipation {"action":"config","factors":"-RSI_50_CROSS,-SESSION_OPEN","set":"hourly_budget=6,check_minutes=5"}
+  tool market_anticipation {"action":"summary","period":"7d"}
+  tool market_anticipation {"action":"learning"}
+  tool market_anticipation {"action":"remove","symbol":"all"}
   ```
+- `market_anticipation` (T187): คำพูดที่ใช้ — "ตั้งคาดการณ์ล่วงหน้าทองให้หน่อย", "เตือนก่อนเกิดสัญญาณ BTC", "สแกนทองตอนนี้", "คาดการณ์ล่วงหน้าแจ้งไปกี่ครั้งแล้ว ชน TP หรือ SL",
+  "ทำไมไม่แจ้ง", "ปัจจัยปลุกมีอะไรบ้าง", "ปิดปัจจัย RSI_50_CROSS", "เลิกเฝ้าทอง" · log เบื้องหลังขึ้นต้น `[Antic]` (เหตุการณ์ที่ปลุก, เวลาที่ AI ตอบ, NOTIFY/SKIP + เหตุผล, ผล TP/SL)
 - P4: ชื่อคริปโตเปล่าๆ ที่ลงท้าย USDT / USDC / FDUSD (เช่น `BTCUSDT`) จะลอง `BINANCE:` แล้ว `BYBIT:` ให้เอง (T160)
 
 ---
