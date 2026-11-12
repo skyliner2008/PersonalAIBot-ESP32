@@ -85,6 +85,8 @@
 
 ใช้ command line ก็ได้: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v4.9.4-factory.bin`
 
+**📱 แอปเล็กสำหรับแฟลช (T195):** **`ESP32-AI-Flasher.apk`** จาก release (~0.8 MB ขอสิทธิ์แค่อินเทอร์เน็ต) ทำแค่: ตรวจว่าเสียบบอร์ดรุ่นไหน (4 รุ่น) → โหลดเฟิร์มแวร์ล่าสุดจาก GitHub แฟลชให้ · ตั้งค่า · ดู log (`python tools/build_flasher_apk.py`) — ถ้ามีแอป Flasher 1.0 เดิม ให้ถอนก่อนครั้งเดียว
+
 **📱 แฟลชจากมือถือ Android (ไม่ต้องมีคอม):** ติดตั้งแอปมือถือ **Personal AI Bot** (`PersonalAIBot-Mobile.apk` จากหน้า release หรือ build เอง:
 `python tools/build_mobile_apk.py`) แตะไอคอนชิปที่แถบบนเพื่อเปิดหน้า **บอร์ด ESP32** เสียบสาย USB-C จากมือถือเข้าบอร์ด (มือถือต้องรองรับ USB OTG) แล้วกด **แฟลชลงบอร์ด**
 แอปดาวน์โหลด release ล่าสุดเองและตรวจ sha256 (และลายเซ็นของ release) · **อัปเดต** เขียนไฟล์ `-app.bin` โดยค่าที่ตั้งไว้และความจำอยู่ครบ ·
@@ -131,14 +133,16 @@ micro SD (FAT32) กรอก `WIFI_SSID`, `WIFI_PASSWORD`, `GEMINI_API_KEY` แ
 
 ### ESP32-AI Studio (แอปบน PC, ไม่บังคับ)
 
-ไม่ได้เผยแพร่ใน repo นี้ (ซอร์สโค้ดไม่เปิดเผย, T178) — บน PC ของผู้ดูแล: Python 3.9+ (ตัวติดตั้งจาก python.org มี Tkinter มาให้) แล้ว:
+**ไม่ต้องมี Python (T194):** ดาวน์โหลด **`ESP32-AI-Studio.exe`** จาก [release ล่าสุด](https://github.com/skyliner2008/PersonalAIBot-ESP32/releases/latest) แล้วดับเบิลคลิกได้เลย (Windows 10/11 ไฟล์เดียว ไม่ต้องติดตั้ง — ถ้า SmartScreen ถาม: *More info → Run anyway*) ใช้ได้ทุกแท็บ ยกเว้น Build / Upload / host tests ที่ต้องมีซอร์สโค้ด (อัปเดตบอร์ดผ่าน Wi-Fi ในแท็บ 🔧 แทน) ไฟล์อัดเสียงเก็บที่ `Documents\ESP32-AI Studio\recordings`
+
+จากซอร์สโค้ด (ไม่ได้เผยแพร่ใน repo นี้, T178) — บน PC ของผู้ดูแล: Python 3.9+ (ตัวติดตั้งจาก python.org มี Tkinter มาให้) แล้ว:
 
 ```bash
 pip install -r tools/pc_app/requirements.txt
 python tools/pc_app/esp32_ai_studio.py
 ```
 
-บน Windows ดับเบิลคลิก `tools\pc_app\run_studio.bat` ได้เลย — ก่อนแฟลชด้วยโปรแกรมอื่นให้ปิด Studio (หรือกด **ตัดการเชื่อมต่อ**)
+บน Windows ดับเบิลคลิก `tools\pc_app\run_studio.bat` ได้เลย (`python tools/build_studio_exe.py` สร้าง .exe ไว้ใน `dist/` — `publish_release.py` แนบให้ทุก release) — ก่อนแฟลชด้วยโปรแกรมอื่นให้ปิด Studio (หรือกด **ตัดการเชื่อมต่อ**)
 หรือแฟลชจากแท็บ **🔧 เฟิร์มแวร์** ใน Studio ซึ่งปล่อยพอร์ตให้เอง
 
 ## 💬 วิธีใช้

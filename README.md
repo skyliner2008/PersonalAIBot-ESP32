@@ -86,6 +86,8 @@ Pinout, board photos and connector guide → [wiki/01-Hardware-ES3C28P-Pinout.md
 
 Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v4.9.4-factory.bin`
 
+**📱 Small flasher app (T195):** **`ESP32-AI-Flasher.apk`** from the release (~0.8 MB, internet permission only) does just this: tells which of the four boards is plugged in, flashes its firmware from the latest release, edits its settings and shows its log (`python tools/build_flasher_apk.py`). An old Flasher 1.0 must be uninstalled once.
+
 **📱 From an Android phone (no computer):** install the phone app **Personal AI Bot** (`PersonalAIBot-Mobile.apk` from the release, or
 build it: `python tools/build_mobile_apk.py`), open the **ESP32 board** screen (chip icon on the top bar), plug the board into the phone
 with a USB-C cable (USB OTG) and tap **แฟลชลงบอร์ด**.
@@ -136,14 +138,16 @@ Prefer a keyboard? Use the PC app instead (step below) — every setting is ther
 
 ### ESP32-AI Studio (PC app, optional)
 
-Not published with this repository (the source code is not public, T178) — on the maintainer's PC: Python 3.9+ (the python.org installer includes Tkinter), then:
+**No Python needed (T194):** download **`ESP32-AI-Studio.exe`** from the [latest release](https://github.com/skyliner2008/PersonalAIBot-ESP32/releases/latest) and double-click it (Windows 10/11; one portable file, nothing to install — if SmartScreen asks: *More info → Run anyway*). Everything works except Build / Upload / host tests, which need the source code; update the board over Wi-Fi from the 🔧 tab instead. Recordings go to `Documents\ESP32-AI Studio\recordings`.
+
+From source (not published with this repository, T178) — on the maintainer's PC: Python 3.9+ (the python.org installer includes Tkinter), then:
 
 ```bash
 pip install -r tools/pc_app/requirements.txt
 python tools/pc_app/esp32_ai_studio.py
 ```
 
-On Windows you can double-click `tools\pc_app\run_studio.bat`. Close the Studio (or press **Disconnect**) before flashing from another tool — or flash from the Studio's **🔧 Firmware** tab, which releases the port for you.
+On Windows you can double-click `tools\pc_app\run_studio.bat`; `python tools/build_studio_exe.py` builds the .exe into `dist/` (`publish_release.py` attaches it to every release). Close the Studio (or press **Disconnect**) before flashing from another tool — or flash from the Studio's **🔧 Firmware** tab, which releases the port for you.
 
 ## 💬 Using it
 

@@ -293,6 +293,8 @@ host_tests\run_tests.bat                  # unit tests บน PC (MSVC)
 
 `tools/pc_app/esp32_ai_studio.py` (Python 3.9+, Tkinter, pyserial) ต่อ USB serial 115200 โดยไม่รีเซ็ตบอร์ด
 
+PC ที่ไม่มี Python: `ESP32-AI-Studio.exe` (T194, `tools/build_studio_exe.py` = PyInstaller ไฟล์เดียว แนบทุก release) — ไม่มีซอร์สโค้ดข้าง .exe = โหมดพกพา (ไม่มี build/upload/tests/กุญแจ OTA)
+
 - แท็บ: Debug log (สี/กรอง/บันทึก/คำสั่ง) • แชท (`ask`) • ตั้งค่า (Wi-Fi สแกน, API key + ทดสอบ, ผู้ช่วย, โมเดล, เครื่อง, ส่งออก/นำเข้า)
   • เครื่องมือ (เสียง, ไมค์, I2C, อารมณ์, ความจำ, รัน 20 tools, วินิจฉัย Live) • หน้าจอ (ภาพสด + แตะ/ลาก/กดค้างจาก PC) • สถานะ (`diag` + กราฟโทเคน) • เฟิร์มแวร์ (build/upload/tests)
 - คำตอบที่เครื่องอ่านได้: หนึ่งบรรทัด `<TAG> <json>` — `CONFIG`, `OPTIONS`, `TOOLS`, `DIAG`, `WIFISCAN`, `APITEST`, `TOOL <name>`;
@@ -306,6 +308,8 @@ host_tests\run_tests.bat                  # unit tests บน PC (MSVC)
 ## 12. แอปมือถือ (Android): แฟลช + คอนโซล
 
 `tools/mobile_app/esp32/` (Kotlin, Android 8+, ไม่มีไลบรารีภายนอก — โมดูลหน้าบอร์ดในแอป Personal AI Bot, T088) แฟลชบอร์ดผ่านสาย USB-C จากมือถือ (USB OTG) — ไม่มี server
+- แอปเล็ก **ESP32-AI Flasher** (`tools/mobile_app/flasher`, T195) = โมดูลนี้อย่างเดียว (`R.bool.esp32_lite`: ไม่มีนำทาง / GPS) ~0.8 MB
+- บอร์ด 4 รุ่น (`Chip`): ชิปจาก ROM + รุ่นจาก `config` "chip" / ช่องเลือกรุ่น (ES3C28P กับ XH-S3E-AI เป็น S3 ทั้งคู่ ไม่เดา) · อัปเดตตรวจ entry app0 ในบอร์ดก่อน
 - USB: พอร์ตของ S3 (USB-Serial-JTAG 303A:1001) เป็น CDC-ACM → Android USB host API ตรงๆ (bulk + `SET_CONTROL_LINE_STATE`)
 - ROM bootloader ของ ESP32-S3: รีเซ็ตด้วย DTR/RTS แบบ esptool → `SYNC` → `GET_SECURITY_INFO` (chip 9) → `SPI_ATTACH` / `SPI_SET_PARAMS` 16 MB →
   `FLASH_DEFL_*` บล็อก 1 KB (zlib) → `SPI_FLASH_MD5` → hard reset

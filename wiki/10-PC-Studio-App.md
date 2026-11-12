@@ -1,7 +1,7 @@
 ---
 tags: [pc-app, tools, settings, debug, serial, python]
 created: 2026-10-14
-updated: 2026-10-15
+updated: 2026-11-13
 status: implemented
 ---
 
@@ -13,6 +13,21 @@ status: implemented
 ต่อบอร์ดผ่าน USB (serial 115200) แล้วจัดการทุกอย่างจาก PC — ไม่ต้องพิมพ์บนคีย์บอร์ดจอเล็ก
 
 ## เริ่มใช้งาน
+
+### เครื่องที่ไม่มี Python — `ESP32-AI-Studio.exe` (T194)
+
+ดาวน์โหลด `ESP32-AI-Studio.exe` จาก GitHub release ล่าสุด → ดับเบิลคลิก (ไฟล์เดียว ~14 MB มี Python + Tkinter + pyserial อยู่ข้างใน ไม่ต้องติดตั้งอะไร;
+SmartScreen ถามครั้งแรก: *More info → Run anyway* เพราะ .exe ไม่ได้เซ็นโค้ด)
+
+- **โหมดพกพา** (ไม่มี `platformio.ini` ในโฟลเดอร์ของ .exe หรือโฟลเดอร์แม่ 2 ชั้น): ทุกแท็บใช้ได้ — ตั้งค่า, log, แชท, เครื่องมือ, จอเสมือน, วิทยุ/เพลง/SD, สถานะ
+  · แท็บ 🔧 เหลือแค่ **อัปเดตผ่าน Wi-Fi** (บอร์ดโหลด release เอง) — ไม่มี Build / Upload / host tests / กุญแจเซ็น OTA (ต้องมีซอร์สโค้ด + PlatformIO / `cryptography`)
+  · ไฟล์อัดเสียงไมค์ไป `Documents\ESP32-AI Studio\recordings`
+- วาง .exe ไว้ใน repo (เช่น `dist/`) → เจอโปรเจกต์ → Build / Upload / tests กลับมา (กุญแจ OTA ยังต้องรันจากซอร์ส)
+- สร้าง: `python tools/build_studio_exe.py` → `dist/ESP32-AI-Studio.exe` + `.sha256` (PyInstaller `--onefile --windowed`, ติดตั้ง PyInstaller ให้เองถ้ายังไม่มี,
+  ใส่เลขเวอร์ชันจาก `FIRMWARE_VERSION` ใน Properties ของไฟล์) · `tools/publish_release.py` build + แนบให้ทุก release
+- `run_studio.bat` บนเครื่องที่ไม่มี Python จะเปิด `dist\ESP32-AI-Studio.exe` แทน (ถ้ามี)
+
+### จากซอร์สโค้ด (มี Python)
 
 ```powershell
 tools\pc_app\run_studio.bat                 # ติดตั้ง pyserial ให้ถ้ายังไม่มี แล้วเปิดแอป

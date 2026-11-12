@@ -16,6 +16,8 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T195 | [[#T195 หน้าแฟลชในแอปมือถือเห็นแต่ P4 เมื่อเสียบบอร์ด mini + แอป ESP32-AI Flasher เดิมใช้กับโปรเจกต์ปัจจุบันไม่ได้]] | Mobile app | ✅ แก้แล้ว — อัปเดต XH-S3E-AI ผ่านมือถือจริงสำเร็จ (Xmini-C3 / P4 ยังไม่ได้ลอง) |
+| T194 | [[#T194 ESP32-AI Studio ใช้ไม่ได้บน PC ที่ไม่มี Python]] | PC app | ✅ แก้แล้ว (.exe เปิดได้บนเครื่องนี้โดยไม่มี Python ใน PATH; ยังไม่ได้ลองบน PC เครื่องอื่น) |
 | T187 | [[#T187 tool คาดการณ์ล่วงหน้า (market_anticipation) บน S3 + P4 — และ P4 บูตไม่ขึ้นเพราะ image เกิน partition]] | Feature / Build | ✅ เพิ่มแล้ว ลองบนบอร์ดจริงทั้งคู่ (ยังไม่ได้ commit / ออก release) |
 | T186 | [[#T186 Review เฟิร์มแวร์ทั้ง 4 บอร์ด — P4 ขาดแก้ T134 / T138, วิทยุ chunked ไม่เคยทำงาน, ชื่อไฟล์เพลง P4, OTA ของ Xmini-C3]] | Review | 🔶 แก้แล้ว (S3 + P4 ลองบนบอร์ด, บอร์ดจิ๋ว build อย่างเดียว) |
 | T185 | [[#T185 ปรับความสว่างจอ OLED แล้วเหมือนเดิม + ฟอร์มตั้งค่าใน Studio เด้งกลับค่าเดิมเอง]] | UI / PC app | ✅ แก้แล้ว (รอผู้ใช้ดูจอจริง) |
@@ -119,6 +121,41 @@ This page documents common issues encountered during development and their solut
 > 📘 Reference = แนวทางทั่วไปที่เขียนไว้ก่อนทดสอบบนบอร์ดจริง ไม่ใช่ปัญหาที่เกิดขึ้นแล้ว
 
 ---
+
+## T195: หน้าแฟลชในแอปมือถือเห็นแต่ P4 เมื่อเสียบบอร์ด mini + แอป ESP32-AI Flasher เดิมใช้กับโปรเจกต์ปัจจุบันไม่ได้
+
+**อาการ:** เสียบบอร์ด mini แอปเจอบอร์ด แต่หน้าแฟลชพูดถึงแต่ "ESP32-S3 / ESP32-P4" · `dist/ESP32-AI-Flasher.apk` (1.0.1, 22 ต.ค.) มี notification
+listener (Play Protect บล็อก, T182), Wi-Fi handshake v1 (เฟิร์มแวร์ปัจจุบันปฏิเสธ), แฟลชได้แค่ S3
+
+**สาเหตุ:** โค้ดแฟลช (`:esp32`) รู้จักแค่ 2 ชิป — ตัดสินบอร์ดจากชิปของ ROM อย่างเดียว:
+- XH-S3E-AI = ESP32-S3 → แอปจะเลือก `-factory.bin` / `-app.bin` ของ **ES3C28P** ไปแฟลชลงบอร์ด mini (ผิดเฟิร์มแวร์)
+- Xmini-C3 (chip 5) → "บอร์ดนี้ไม่ใช่ ESP32-S3 / ESP32-P4"
+- เจอเพิ่ม: P4 `appSize` ยังเป็น 6 MB ทั้งที่ T193 ขยายเป็น 6.25 MB → `-app-p4.bin` v4.9.4 (6,296,720 ไบต์) ถูกปฏิเสธ "ใหญ่เกิน partition"
+  และถ้าไม่ปฏิเสธ บอร์ด P4 v4.9.3 (app0 6 MB) จะได้แอปที่ยาวเกินพาร์ติชันของตัวเอง
+
+**แก้:** `Chip` เป็นรุ่นบอร์ด 4 ตัว + ช่องเลือกรุ่นในหน้าแฟลช + ไม่เดาเมื่อ S3 ไม่รู้รุ่น + อ่าน magic register ของ C3 + ตรวจ entry app0 ในบอร์ดก่อนอัปเดต
+(รายละเอียด [[17-Mobile-Flasher#แอปเล็ก ESP32-AI Flasher + แฟลชได้ครบ 4 รุ่น (T195)]]) · แอปเล็กใหม่ `tools/mobile_app/flasher` (ESP32-AI Flasher 2.0.0, ~0.8 MB,
+สิทธิ์แค่อินเทอร์เน็ต) แทน 1.0.1 · แอปใหญ่ขึ้นเป็น 2.2.1
+
+**ทดสอบ:** `:esp32:testDebugUnitTest` 70 ผ่าน (รวมไฟล์ release v4.9.4 จริงทั้ง 4 บอร์ด) · `:flasher:assembleRelease` + `:composeApp:compileReleaseKotlinAndroid` ผ่าน
+· มือถือจริง (Galaxy S22 Ultra, Android 16): แอปเล็กเจอครบ 4 บอร์ด, **อัปเดต XH-S3E-AI ผ่านมือถือสำเร็จ** (ไฟล์ `-app-xh-s3e-ai.bin` ถูกรุ่น)
+· ผู้ใช้ขอหน้าตาสะอาดขึ้น: แถบบนแสดงแค่ชื่อรุ่น, ตั้งค่าแยกเป็นแท็บหมวด, หน้าแฟลชตัดคำอธิบาย → ปุ่ม ❔ วิธีใช้ (popup)
+· บทเรียน: ข้อความ strings.xml ที่มีบรรทัดใหม่จริง (ไม่ใช่ `\n`) Android ยุบเป็นช่องว่าง — popup ติดกันเป็นก้อน
+· ยังไม่ได้: แฟลช Xmini-C3 / P4 ด้วยมือถือ
+
+## T194: ESP32-AI Studio ใช้ไม่ได้บน PC ที่ไม่มี Python
+
+**อาการ:** Studio เป็นสคริปต์ Python (`tools/pc_app/esp32_ai_studio.py`) — PC ที่ไม่มี Python + pyserial เปิดไม่ได้ และซอร์สโค้ดไม่ขึ้น GitHub (T178) ผู้ใช้ทั่วไปจึงไม่มีทางได้แอป PC เลย
+
+**แก้:**
+- `tools/build_studio_exe.py`: PyInstaller `--onefile --windowed` → `dist/ESP32-AI-Studio.exe` (~14 MB, มี Python + Tkinter + pyserial; ตัด `cryptography` ออก) + `.sha256` + เลขเวอร์ชันใน Properties
+- Studio รู้ว่ารันเป็น .exe (`sys.frozen`) และหาโปรเจกต์จาก `platformio.ini` (โฟลเดอร์ .exe หรือแม่ 2 ชั้น) — ไม่เจอ = **โหมดพกพา**: ซ่อน Build / Upload / host tests;
+  กุญแจ OTA ไม่อยู่ใน .exe เลย (เดิมจะเรียก `sys.executable -m pip install cryptography` ซึ่งใน .exe คือตัวแอปเอง) · `PROJECT_DIR` ไม่ใช้ `Path(__file__).parents[2]` ใน .exe
+  (ชี้ไปโฟลเดอร์ชั่วคราว `_MEIxxxx`) · ไฟล์อัดเสียงไป `Documents\ESP32-AI Studio\recordings` แทนโฟลเดอร์โปรเจกต์
+- `publish_release.py` build + แนบ .exe ทุก release (+ คำอธิบายใน release notes) · `run_studio.bat` เปิด `dist\ESP32-AI-Studio.exe` เมื่อไม่มี Python
+
+**ทดสอบ:** รัน .exe จากโฟลเดอร์ว่างโดย PATH มีแค่ `C:\Windows` → หน้าต่าง "ESP32-AI Studio" ขึ้น ไม่ crash · โหมดซอร์สยังเจอโปรเจกต์ + pio + ปุ่มกุญแจครบ
+· ยังไม่ได้ลองบน PC เครื่องอื่นจริง / ยังไม่ได้ต่อบอร์ดผ่าน .exe
 
 ## T192: market_anticipation แบบเรียลไทม์ — สตรีมราคาสด + M1 + เหตุการณ์ระหว่างแท่ง + ตัวตัดสินโมเดล Live
 
