@@ -60,7 +60,7 @@ console `dash style <race|digital|classic|info>` · จำใน NVS `veh/style`
 | จำลอง (ขับเอง) | `sim` | ไม่ต้องต่อ | ทุกค่า — ลูป 60 วิ: เดินเบา → ในเมือง → เร่งสุดผ่าน shift light → เบรก → ทางยาว |
 | จำลอง (แตะเป็นคันเร่ง) | `touch` | ไม่ต้องต่อ | กดค้างที่หน้าจอ ขวามาก = คันเร่งมาก, ปล่อย = เบรกเบาๆ |
 | **Honda K-Line** | `kline` | บอร์ดแปลง K-Line (L9637D หรือเทียบเท่า) ที่ช่อง UART | รอบ, อุณหภูมิเครื่อง, อากาศเข้า, MAP, แบต, ความเร็ว (ถ้า ECU รู้) |
-| OBD-II Bluetooth (**release ตั้งแต่ T118 / `esp32s3-ble`**, ดูด้านล่าง) | `obd_ble` | ELM327 **รุ่น BLE / dual-mode** เสียบช่อง OBD ของรถ | เหมือน OBD-II ต่อสาย |
+| OBD-II Bluetooth (**เฉพาะ build `esp32s3-ble`** — ไม่อยู่ใน release ตั้งแต่ T192, ดูด้านล่าง) | `obd_ble` | ELM327 **รุ่น BLE / dual-mode** เสียบช่อง OBD ของรถ | เหมือน OBD-II ต่อสาย |
 | OBD-II ต่อสาย | `obd_uart` | ELM327 / STN แบบ TTL ที่ช่อง UART (หา baud เอง: 38400 → 9600 → 115200 → 57600 → 230400 → 500000, T112) | **ทุก PID ที่รถรองรับ** (รอบ ความเร็ว น้ำ อากาศเข้า คันเร่ง MAP ภาระ MAF fuel trim องศาไฟ น้ำมันในถัง ...) + แบต (ATRV) + **รหัสปัญหา / VIN / freeze frame / readiness** (T112) |
 | ข้อความผ่าน UART | `serial` | บอร์ดอื่น (Arduino ฯลฯ) ส่ง `rpm=3200 spd=86 clt=87 volt=13.9 iat=42 gear=3` หรือ JSON (115200) — T112 เพิ่มคีย์ `load` `fuel` `maf` `amb` `oil_c` `lph` | ตามที่ส่ง |
 | **GPS มือถือ** (T083) | `phone` | แอป ESP32-AI Flasher ส่ง GPS ทาง Wi-Fi / USB ([[18-Phone-Link-Navigation-Plan]]) — รถทุกคัน ไม่ต้องมี adapter | ความเร็วอย่างเดียว (รอบ/อุณหภูมิ = "--") |
@@ -74,7 +74,13 @@ console `dash style <race|digital|classic|info>` · จำใน NVS `veh/style`
 **เปิดหน้าปัด:** แตะ **ปุ่มหน้าปัดมุมขวาล่าง** ของหน้าหลัก · พูด "เปิดหน้าปัด" / "เปิด Smart Gauge" · เมนู → หน้าปัดรถ → เปิดหน้าปัด ·
 ถ้ายังไม่ได้เลือกแหล่งข้อมูล ปุ่มกับเสียงจะเปิด **ตัวจำลอง (ขับเอง)** ให้ (`Vehicle::openDash`, T079) · console `dash ...` · ค่าเก็บใน NVS `veh`
 
-### Bluetooth: `esp32s3-ble` = เฟิร์มแวร์หลักตั้งแต่ T118 — ใช้พร้อมผู้ช่วยเสียงได้ (T078 → T113)
+### Bluetooth: `esp32s3-ble` = build แยก (ตั้งแต่ T192) — ใช้พร้อมผู้ช่วยเสียงได้ (T078 → T113)
+**T192 (ผู้ใช้เลือก):** `pio run`, release และ OTA กลับเป็น build **ไม่มี** OBD Bluetooth (`default_envs = esp32s3`, `make_release.py` ENV) —
+RAM ภายใน ~23 KB ของ BLE controller ไปให้สตรีมราคาสดและตัวตัดสินโมเดล Live ของ `market_anticipation` (heap ว่าง 93 / ต่ำสุด 62 KB แทน 70 / 30) ·
+หน้าปัด, ELM327 ต่อสาย (`obd_uart`), K-Line, ตัวจำลอง ยังอยู่ครบ · บอร์ดที่ตั้งแหล่ง `obd_ble` ไว้แล้วอัปเดต OTA: บูตแล้วปิดแหล่งเอง
+(`[Vehicle] OBD over Bluetooth is not in this firmware`) เลือกแหล่งใหม่ในเมนู · ต้องการบลูทูธ: `pio run -e esp32s3-ble -t upload`
+
+ประวัติ (T118–T191):
 **T118 (ผู้ใช้เลือก):** `pio run`, release และอัปเดต OTA = build ที่มี OBD Bluetooth (`default_envs = esp32s3-ble`, `make_release.py` ENV) —
 บลูทูธเริ่มเฉพาะเมื่อเลือกแหล่ง `obd_ble` และเปิดเฉพาะตอนหน้าปัดแสดง (T114); ค่าใช้จ่ายที่เหลือเมื่อไม่ใช้: โค้ด BLE ใน IRAM ~20 KB
 (RAM ภายในตอนคุยกับ AI ~49 KB แทน 69 KB) · ไม่ต้องการบลูทูธเลย: `pio run -e esp32s3 -t upload` (ไม่มีแหล่ง `obd_ble`)
