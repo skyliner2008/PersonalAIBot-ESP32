@@ -103,7 +103,7 @@ status: active
 | โค้ด | `tools/mobile_app/esp32/` (Kotlin, ไม่มี AndroidX) · package `io.github.skyliner2008.pabflasher` — อยู่ในแอป `tools/mobile_app/composeApp` |
 | มือถือ | Android 8.0+ (API 26) ที่รองรับ **USB OTG** · iPhone/iPad ใช้ไม่ได้ (iOS ไม่ให้แอปคุยกับพอร์ต USB serial) |
 | สาย | USB-C ↔ USB-C (หรือ OTG adapter + สาย A↔C) ที่**ส่งข้อมูลได้** |
-| Build | `python tools/build_mobile_apk.py` → `dist/PersonalAIBot-Mobile.apk` · `publish_release.py` แนบไฟล์นี้ให้ release อัตโนมัติถ้ามี |
+| Build | `python tools/build_mobile_apk.py` → `dist/PersonalAIBot-Mobile.apk` · `publish_release.py` แนบไฟล์นี้ให้ release อัตโนมัติถ้ามี — **ยกเว้น `--no-mobile-app`** (T196: ตั้งแต่ v4.9.6 release ไม่มี APK ใหญ่ / `.json` → ปุ่ม "อัปเดตแอป" ของแอปใหญ่จะไม่เจออัปเดต; ESP32-AI-Flasher.apk ยังแนบอยู่) |
 
 ![[images/flasher_main.png]] ![[images/flasher_factory_confirm.png]]
 

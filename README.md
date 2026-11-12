@@ -88,7 +88,7 @@ Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIB
 
 **📱 Small flasher app (T195):** **`ESP32-AI-Flasher.apk`** from the release (~0.8 MB, internet permission only) does just this: tells which of the four boards is plugged in, flashes its firmware from the latest release, edits its settings and shows its log (`python tools/build_flasher_apk.py`). An old Flasher 1.0 must be uninstalled once.
 
-**📱 From an Android phone (no computer):** install the phone app **Personal AI Bot** (`PersonalAIBot-Mobile.apk` from the release, or
+**📱 From an Android phone (no computer):** install the phone app **Personal AI Bot** (`PersonalAIBot-Mobile.apk` — not in the releases from v4.9.6 (T196, ~225 MB):
 build it: `python tools/build_mobile_apk.py`), open the **ESP32 board** screen (chip icon on the top bar), plug the board into the phone
 with a USB-C cable (USB OTG) and tap **แฟลชลงบอร์ด**.
 It downloads the latest release itself and checks its sha256 (and the release signature). **อัปเดต** writes the `-app.bin` and keeps
