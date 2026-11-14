@@ -57,8 +57,8 @@ SmartScreen ถามครั้งแรก: *More info → Run anyway* เพ
   signer ของ APK; publish_release แนบเฉพาะส่วนที่ sha256 ตรงกับไฟล์ที่แนบ) · **exe:** ดาวน์โหลด → ตรวจ sha256 → เปลี่ยนชื่อตัวที่รันอยู่เป็น `.old`
   (Windows ยอมให้เปลี่ยนชื่อ .exe ที่กำลังรัน) → วางตัวใหม่ → เปิดตัวใหม่ → ปิดตัวเก่า (ลบ `.old` ตอนเปิดครั้งถัดไป) · **apk:** เทียบ versionCode,
   ถ้า signer ต่างบอกให้ถอนก่อน, ขอสิทธิ์ติดตั้งแอปครั้งแรก, ดาวน์โหลด + sha256 → PackageInstaller (Android ถามผู้ใช้ทุกครั้ง, `FlasherUpdateReceiver`)
-  — เฉพาะแอปเล็ก (แอปใหญ่มีตัวอัปเดตของมันเอง T097) · release v4.9.6 ยังไม่มี json → ขึ้น "ยังไม่มีข้อมูลเวอร์ชันแอป" · **ยังไม่ได้ลองอัปเดตจริง**
-  (ต้องมี release ที่มี json ก่อน)
+  — เฉพาะแอปเล็ก (แอปใหญ่มีตัวอัปเดตของมันเอง T097) · release v4.9.6 ยังไม่มี json → ขึ้น "ยังไม่มีข้อมูลเวอร์ชันแอป" · **ลองจริงบน release v4.9.7:** exe ตัวทดสอบ v2.0.9 เห็น v2.1.0 (การ์ดแดง) → อัปเดต → ไฟล์
+  กลายเป็น v2.1.0 sha256 ตรงกับ release, `.old` ถูกลบ, เปิดใหม่แล้วต่อบอร์ดเอง · apk ยังไม่ได้ลองบนมือถือ
 - ช่องพิมพ์เป็นของ Windows เอง: Ctrl+C/V/A + คลิกขวาใช้ได้ทั้งแป้นไทย/อังกฤษ · ข้อความแชท / log เลือกคัดลอกได้
 - โค้ด: `tools/pc_flasher/` — `Shared/EspFlash.cs` (ROM loader + บอร์ด 4 รุ่น + สแกน I2C + ตรวจ app0, พอร์ตจาก esp_flash.py / Kotlin),
   `Shared/Releases.cs`, `Shared/BoardConsole.cs` (protocol + ฟอร์มตั้งค่า), `Esp32AiFlasher/` (WPF) · tests `tools/pc_flasher/Tests`
