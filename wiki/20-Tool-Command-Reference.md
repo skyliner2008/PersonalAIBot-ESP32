@@ -12,7 +12,26 @@
 - ⚙️ = มีเฉพาะเมื่อเปิดใช้ / มีอุปกรณ์ (ไม่เปิด = ไม่ถูกประกาศ ไม่กินโทเคน)
 - พารามิเตอร์ **ตัวหนา** = ต้องใส่
 
-ทั้งหมด 49 tool (+ Google Search ถ้าเปิด `set search 1` และ API key มีสิทธิ์ใช้ Search)
+ES3C28P มีได้สูงสุด 49 tool (+ Google Search ถ้าเปิด `set search 1` และ API key มีสิทธิ์ใช้ Search) — บอร์ดอื่นดูตารางด้านล่าง
+
+### tool แยกตามบอร์ด (ตรวจจากซอร์ส 2026-11-15, T203)
+
+43 ตัวมีทุกบอร์ด (หมวด 0–3, หมวด 4 ยกเว้นวิทยุ / LED, หมวด 6–8, `device`, และการเงิน 8 ตัว: `market_overview` `market_analysis` `market_scan`
+`market_chart` `market_sentiment` `economic_calendar` `position_size` `price_alert`) ส่วนที่ต่าง:
+
+| Tool | ES3C28P (S3) | ESP32-P4 | XH-S3E-AI | Xmini-C3 |
+|---|---|---|---|---|
+| สูงสุดที่ประกาศได้ | 49 | 52 | 47 | 44 |
+| `play_radio`, `stop_radio` | ✅ | ✅ | ✅ | ❌ |
+| `control_led` | ✅ | ❌ (ไม่มี LED) | ✅ | ❌ |
+| `vehicle` | ✅ | ❌ | ❌ | ❌ |
+| `navigate` ⚙️ | ✅ | ❌ | ✅ | ✅ |
+| `market_anticipation` | ✅ | ✅ | ❌ | ❌ |
+| `set_expression` | ❌ (T140) | ✅ | ❌ | ❌ |
+| `background_task`, `day_trade`, `market_signals` | ❌ | ✅ | ❌ | ❌ |
+| `camera` ⚙️, `modbus` ⚙️ | ❌ | ✅ | ❌ | ❌ |
+
+Xmini-C3: `water` ต้องระบุจังหวัด, `market_sentiment` ไม่มี `stocks` (RAM — [[07-Troubleshooting-Log#T203]])
 
 ---
 
@@ -144,7 +163,7 @@
 | Tool | มีเมื่อ | ทำอะไร | พารามิเตอร์ |
 |---|---|---|---|
 | `device` | มี `agent/devices.json` (wiki 15) | อ่าน / สั่งรีเลย์ dimmer เซนเซอร์ | **action** (list / read / set), name, value (on / off / 0-100) |
-| `vehicle` | เฟิร์มแวร์ที่มีหน้าปัด (ทุก release) | หน้าปัดรถ OBD-II / K-Line | **action** (status / scan / explain / clear_codes / open / close / set_source), source (off / sim / touch / kline / obd_ble / obd_uart / serial / phone / replay), code |
+| `vehicle` | เฟิร์มแวร์ที่มีหน้าปัด (**เฉพาะ ES3C28P**) | หน้าปัดรถ OBD-II / K-Line | **action** (status / scan / explain / clear_codes / open / close / set_source), source (off / sim / touch / kline / obd_ble / obd_uart / serial / phone / replay), code |
 | `navigate` | จับคู่แอปมือถือแล้ว (wiki 18) — **เฉพาะ ESP32-S3** (P4 ถอดออก T151) | Google Maps บนมือถือ | **action** (go / stop / status / where), to |
 
 - 🗣️

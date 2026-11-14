@@ -16,6 +16,8 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T204 | [[#T204 งานดึงข้อมูล (web tool) ค้าง = ทั้งบอร์ดไม่ตอบ — ตัวกันค้าง ทุกบอร์ด]] | Tools / ทุกบอร์ด | ✅ กันอาการแล้ว (ทดสอบบน XH-S3E-AI) · สาเหตุต้นทางยังไม่รู้ |
+| T203 | [[#T203 Xmini-C3 — tool ข้อมูลสด 8 คำสั่งล้มเพราะ RAM (ThaiWater, ปฏิทิน, TradingView หลายชุด) + console `tools` ว่าง]] | Xmini-C3 / tools | ✅ แก้แล้ว (ทดสอบบนบอร์ด 40 คำสั่ง) |
 | T199 | [[#T199 ESP32-AI Flasher.exe (C#) — บอร์ดรีบูตทุกครั้งที่ต่อ + คอนโซลบอร์ดค้างหลังปิดแอป]] | PC app | ✅ แก้แล้ว ลองกับ ES3C28P จริง |
 | T197 | [[#T197 Studio .exe แฟลชบอร์ดผ่าน USB — แฟลชเสร็จแต่บอร์ดค้างในโหมดแฟลช (usbser.sys ไม่ส่ง RTS)]] | PC app | ✅ แก้แล้ว ลองกับ ES3C28P จริง |
 | T195 | [[#T195 หน้าแฟลชในแอปมือถือเห็นแต่ P4 เมื่อเสียบบอร์ด mini + แอป ESP32-AI Flasher เดิมใช้กับโปรเจกต์ปัจจุบันไม่ได้]] | Mobile app | ✅ แก้แล้ว — อัปเดต XH-S3E-AI ผ่านมือถือจริงสำเร็จ (Xmini-C3 / P4 ยังไม่ได้ลอง) |
@@ -121,6 +123,64 @@ This page documents common issues encountered during development and their solut
 | T010 | [[#T010 Wi-Fi เชื่อมต่อไม่ได้]] | Network | 📘 Reference |
 
 > 📘 Reference = แนวทางทั่วไปที่เขียนไว้ก่อนทดสอบบนบอร์ดจริง ไม่ใช่ปัญหาที่เกิดขึ้นแล้ว
+
+---
+
+## T204: งานดึงข้อมูล (web tool) ค้าง = ทั้งบอร์ดไม่ตอบ — ตัวกันค้าง ทุกบอร์ด
+
+**วันที่:** 2026-11-15 · **บอร์ด:** ทั้ง 4 (`AgentSession.cpp` `handleWebResults()`, `WebTools.h/.cpp`)
+
+**อาการ:** XH-S3E-AI (fw 4.9.5) ค้างที่ `[Web] job stuck? stage "market_chart: yahoo"` > 35 นาที (ดู T203) — task `webTools` (priority 4 ระหว่างทำงาน)
+วนไม่ยอมคืน CPU → `loopTask` (priority 1: console / Studio) ไม่ได้รัน และ tool ข้อมูลสดทุกตัวหลังจากนั้นเข้าคิวรอไม่มีวันจบ T105 แค่พิมพ์เตือน
+
+**สาเหตุต้นทาง:** ยังไม่รู้ (อยู่ใน `httpGet()` ของ Yahoo fallback หลัง TradingView ต่อไม่ติด — เกิดซ้ำไม่ได้, ไม่มี log ตอนเริ่ม)
+
+**วิธีกัน (T204):**
+- ค้างที่ stage เดียว > 60 วิ → `vTaskPrioritySet(webtools::gTask, 1)`: console กลับมาตอบ (`JobPriority` คืนค่าเองเมื่องานจบ) · log `stuck job "...": its task now runs at the console's priority`
+- ค้าง > 5 นาที → `ESP.restart()` (ปลด session TLS ที่ค้างจากข้างนอกอย่างปลอดภัยไม่ได้) · log `job stuck in "..." for 300 s - restarting the board`
+- ทดสอบ: `tool _hang {"seconds":900}` (งานจำลองที่วนไม่คืน CPU — ไม่ถูกประกาศให้ AI) บน XH-S3E-AI: `status` ไม่ตอบช่วง 0–60 วิ, ตอบหลังลด priority, รีสตาร์ตที่ 300 วิ แล้วบูตปกติ
+- build ผ่านทั้ง 4 บอร์ด (P4 `firmware.bin` 6,297,216 B จากพาร์ทิชัน 6,553,600) · host tests 4,348 ผ่าน · ออกใน v4.9.8 (ทดสอบ `_hang` บนบอร์ดจริงเฉพาะ XH-S3E-AI)
+
+**ข้อจำกัด:** เฝ้าเฉพาะงานที่ถูกสั่ง (`_web.busy()`); งานเบื้องหลังตอนว่าง (อากาศหน้านาฬิกา, แจ้งเตือนราคา, คาดการณ์ล่วงหน้า) ที่ค้างยังไม่ถูกจับ ·
+Xmini-C3 (แกนเดียว) ยังไม่ได้ทดสอบ `_hang`
+
+---
+
+## T203: Xmini-C3 — tool ข้อมูลสด 8 คำสั่งล้มเพราะ RAM (ThaiWater, ปฏิทิน, TradingView หลายชุด) + console `tools` ว่าง
+
+**วันที่:** 2026-11-15 · **บอร์ด:** Xmini-C3 (`firmware-c3-mini/`, ไม่มี PSRAM: heap ว่าง ~60 KB, ก้อนใหญ่สุด ~39 KB, เหลือ ~11–25 KB ตอนเปิด TLS)
+
+**ที่มา:** ตรวจ tool ทุกตัวของทั้ง 4 บอร์ด (ซอร์ส + ยิง `tool <ชื่อ> <json>` ใส่บอร์ดจริง): ES3C28P ผ่านครบ 60 คำสั่ง, Xmini-C3 ล้ม 8
+
+| อาการบน C3 | สาเหตุ | วิธีแก้ |
+|---|---|---|
+| `water` ทุก action: "unreachable - check the Internet" (code -4 ใน ~0.9 วิ) | ตัวคลาย gzip ต้องการ 43 KB (หน้าต่าง 32 KB + สถานะ 11 KB) ข้าง session TLS | ขอ body แบบไม่บีบ (`Accept-Encoding: identity`) — JSON ถูกกรองระหว่างสตรีมอยู่แล้ว (จังหวัดหนึ่ง 82–91 KB, 2.5–3.5 วิ) · -4 ได้ข้อความ "not enough memory" ของตัวเอง |
+| `water` ระดับจังหวัด "no data" หลังแก้ข้อบน | เอกสารของทั้งจังหวัด (47 สถานี ~20 KB) ไม่พอ heap → ว่างเปล่า | `fetchItems()` อ่านทีละสถานี (`parseJsonArrayItems`) แล้วจัดอันดับสะสม — ผลเท่ากับ `pickWaterLevels` / `pickRain` |
+| `water` ไม่ระบุจังหวัด: "out of memory" | ทั้งประเทศ 4.8 MB + ตารางอันดับ ~25 KB | C3 ตอบ error ให้ถามจังหวัด + คำอธิบายพารามิเตอร์ `province` เปลี่ยน |
+| `economic_calendar` "อ่านไม่ได้" (และค้างแบบนั้น 30 นาที) | `http.getString()` ของ feed 14 KB ถูกตัดที่ 6–9 KB แล้วถูกเก็บ cache ทั้งที่อ่านไม่ได้ | `httpGetObjects()` (HTTP/1.0, อ่านทีละ object ระหว่างสตรีม) เก็บเฉพาะ High / Medium (~1.5 KB) · ไม่ครบ = ไม่ cache · cache ที่อ่านไม่ได้ถูกทิ้ง |
+| `market_sentiment economy`, `market_chart` compare / signals: "TradingView: timeout" | ขอทุก series พร้อมกัน → คำตอบรวมเป็น websocket message เดียว 18–20 KB (economy 10 series: heap หมดกลาง write) | ขอทีละ series บนสายเดียว + `chart_delete_session` เมื่อครบ · message ใหม่ที่ต้องขยาย buffer ปล่อยของเดิมก่อน · งานที่ RAM ไม่พอถูกนับว่าจบ (เดิมรอจน timeout) · timeout 10 → 20 วิ |
+| `market_sentiment stocks` ล้มทุกครั้ง | ต้องใช้ 6 series × 420 แท่ง (~120 KB; คำตอบเดียว 49 KB) | **ไม่มีบน C3**: ถอด `stocks` ออกจาก enum + error แนะนำ `get_market_quote TVC:VIX` |
+| console `tools` พิมพ์ว่าง | ข้อความ ~17 KB ใน `String` สองชุดข้างเอกสาร | `describeTools(Print&)` สตรีมออก Serial |
+
+**ผลหลังแก้ (บอร์ดจริง, ตอนหลับ):** 40 คำสั่ง — ผ่าน 38, อีก 2 คือ error ที่ตั้งใจ (stocks, น้ำทั้งประเทศ) · economy 3.1 วิ · ปฏิทิน 3.2 วิ · ระดับน้ำ 2.5 วิ
+
+**ยังเปิดอยู่:**
+- `get_oil_price` ทำ C3 รีบูต 1 ครั้งก่อนแก้ (Guru Meditation, Store access fault — ไม่ได้เก็บ backtrace) ลองซ้ำ 5 ครั้งหลังแก้ไม่เกิดอีก ยังไม่รู้สาเหตุ
+- ThaiWater `provinces/rain3d|rain5d|rain7d?province_code=NN` ตอบ `"data":[]` ทุกจังหวัด (ตรวจด้วย curl 2026-11-15) → ฝนหลายวันระดับจังหวัดตอบ "no rain station reports" **ทุกบอร์ด**; 24 ชม. ใช้ได้
+- คำสั่ง console `tool` ไม่ปิด session ของ Gemini ให้ (ต่างจากตอน AI เรียก) — ทดสอบ tool ข้อมูลสดบน C3 ต้อง `sleep` ก่อน
+- P4 ยังประกาศ `set_expression` (S3 ถอดใน T140)
+- **XH-S3E-AI ค้างทั้งบอร์ด 1 ครั้ง (fw 4.9.5, ยังไม่รู้สาเหตุ):** ระหว่าง `market_chart` compare ตอน TradingView ต่อไม่ติด (P4 บน Wi-Fi เดียวกันก็ได้
+  "TradingView connect failed" 5 คำสั่งในช่วงเดียวกัน ~00:49) งานตกไป Yahoo แล้ว log ขึ้น `[Web] job stuck? stage "market_chart: yahoo"` นาน > 35 นาที —
+  console ไม่ตอบแม้ `status` (agent task ยังพิมพ์ได้) ต้องรีเซ็ต (RTS ผ่าน esptool) · ไม่ได้เก็บ log ตอนเริ่มค้าง · ยิงกราฟ 40 คำสั่งพร้อมกันสองบอร์ดซ้ำไม่เกิดอีก ·
+  `httpRequest()` + `fetchYahooBars()` ของ XH-S3E-AI เหมือน ES3C28P ทุกบรรทัด → ES3C28P เสี่ยงเท่ากัน
+
+**P4 + XH-S3E-AI บนบอร์ดจริง (2026-11-15, หลังเสียบเพิ่ม):** รายการ `tools` ตรงกับซอร์ส (P4 fw 4.9.3 ประกาศ 50: ไม่มี `device` / `modbus` เพราะไม่ได้ตั้งค่า;
+XH-S3E-AI fw 4.9.5 ประกาศ 45: ไม่มี `device`, `navigate` ยังไม่จับคู่) · P4: 69 คำสั่งผ่านครบเมื่อยิงบอร์ดเดียว (รวม `day_trade`, `market_signals`,
+`market_anticipation`, patterns / squeeze / breakout / combined, `background_task list`, `camera` — กล้องต้องมี session เปิดอยู่ ไม่งั้นตอบ "connection busy") ·
+XH-S3E-AI: 57 คำสั่งผ่านครบเมื่อยิงบอร์ดเดียว (`vehicle` ตอบ "not installed" ตามที่ตั้งใจ) · ทั้งสองบอร์ด: ฝน 3 วันทั้งประเทศ "ThaiWater has no data right now"
+(ต้นทางตอบ `data: []`) · เฟิร์มแวร์บนบอร์ดเก่ากว่าซอร์ส (4.9.7) — ไม่ได้แฟลชใหม่
+
+**เอกสารที่เกี่ยวข้อง:** [[20-Tool-Command-Reference]] · [[22-Mini-OLED-Boards-XHS3E-XminiC3]]
 
 ---
 
