@@ -136,9 +136,13 @@ The board imports the file, stores the values encrypted in `agent/secrets.json` 
 
 Prefer a keyboard? Use the PC app instead (step below) — every setting is there.
 
+### ESP32-AI Flasher for Windows (easiest)
+
+**`ESP32-AI-Flasher.exe`** from the [latest release](https://github.com/skyliner2008/PersonalAIBot-ESP32/releases/latest) — one ~100 KB file for Windows 10/11, nothing to install (T199). Plug the board in with USB and it connects by itself; five tabs like the phone Flasher: board status + chat, log, settings (Wi-Fi, API key, assistant, models, device), **tools** (the board's screen with touch, radio / MP3, SD card files) and **flash** — the latest release into any of the four boards, a brand-new one too ("install all"; the two ESP32-S3 boards are told apart by their I2C pull-ups). If SmartScreen asks: *More info → Run anyway*.
+
 ### ESP32-AI Studio (PC app, optional)
 
-**No Python needed (T194):** download **`ESP32-AI-Studio.exe`** from the [latest release](https://github.com/skyliner2008/PersonalAIBot-ESP32/releases/latest) and double-click it (Windows 10/11; one portable file, nothing to install — if SmartScreen asks: *More info → Run anyway*). Everything works except Build / Upload / host tests, which need the source code; update the board over Wi-Fi from the 🔧 tab instead. Recordings go to `Documents\ESP32-AI Studio\recordings`.
+**No Python needed (T194):** download **`ESP32-AI-Studio.exe`** from the [latest release](https://github.com/skyliner2008/PersonalAIBot-ESP32/releases/latest) and double-click it (Windows 10/11; one portable file, nothing to install — if SmartScreen asks: *More info → Run anyway*). Everything works except Build / Upload / host tests, which need the source code. **🔧 → Flash over USB (T197)** writes the latest release into any of the four boards — a brand-new one too ("install all"; it tells the two ESP32-S3 boards apart by their I2C pull-ups, T198) — and the 🔧 tab also updates the board over Wi-Fi. Recordings go to `Documents\ESP32-AI Studio\recordings`.
 
 From source (not published with this repository, T178) — on the maintainer's PC: Python 3.9+ (the python.org installer includes Tkinter), then:
 

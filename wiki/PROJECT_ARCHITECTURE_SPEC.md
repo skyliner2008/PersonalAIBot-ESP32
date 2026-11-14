@@ -294,6 +294,8 @@ host_tests\run_tests.bat                  # unit tests บน PC (MSVC)
 `tools/pc_app/esp32_ai_studio.py` (Python 3.9+, Tkinter, pyserial) ต่อ USB serial 115200 โดยไม่รีเซ็ตบอร์ด
 
 PC ที่ไม่มี Python: `ESP32-AI-Studio.exe` (T194, `tools/build_studio_exe.py` = PyInstaller ไฟล์เดียว แนบทุก release) — ไม่มีซอร์สโค้ดข้าง .exe = โหมดพกพา (ไม่มี build/upload/tests/กุญแจ OTA)
+แฟลชผ่าน USB จาก GitHub (T197, `tools/pc_app/esp_flash.py`: ROM loader เขียนเอง, บอร์ด 4 รุ่น, ตรวจ sha256/MD5/app0) — บอร์ดใหม่ก็ได้ · ESP32-S3 สองรุ่นแยกด้วยการสแกน pull-up ของสาย I2C ในโหมด ROM (T198, Studio + แอปมือถือ)
+ESP32-AI Flasher สำหรับ Windows (T199): `tools/pc_flasher` C# WPF บน .NET Framework 4.8 → `ESP32-AI-Flasher.exe` ~100 KB ไม่ต้องติดตั้ง (4 แท็บแบบแอปมือถือ, ตัวแฟลชพอร์ตจาก esp_flash.py, xunit)
 
 - แท็บ: Debug log (สี/กรอง/บันทึก/คำสั่ง) • แชท (`ask`) • ตั้งค่า (Wi-Fi สแกน, API key + ทดสอบ, ผู้ช่วย, โมเดล, เครื่อง, ส่งออก/นำเข้า)
   • เครื่องมือ (เสียง, ไมค์, I2C, อารมณ์, ความจำ, รัน 20 tools, วินิจฉัย Live) • หน้าจอ (ภาพสด + แตะ/ลาก/กดค้างจาก PC) • สถานะ (`diag` + กราฟโทเคน) • เฟิร์มแวร์ (build/upload/tests)

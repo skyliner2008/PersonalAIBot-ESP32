@@ -131,9 +131,13 @@ micro SD (FAT32) กรอก `WIFI_SSID`, `WIFI_PASSWORD`, `GEMINI_API_KEY` แ
 
 ไม่อยากพิมพ์บนจอเล็ก? ใช้แอป PC (หัวข้อถัดไป) ตั้งค่าได้ทุกอย่าง
 
+### ESP32-AI Flasher สำหรับ Windows (ง่ายที่สุด)
+
+**`ESP32-AI-Flasher.exe`** จาก [release ล่าสุด](https://github.com/skyliner2008/PersonalAIBot-ESP32/releases/latest) — ไฟล์เดียว ~100 KB สำหรับ Windows 10/11 ไม่ต้องติดตั้ง (T199) เสียบบอร์ดด้วยสาย USB แล้วโปรแกรมต่อให้เอง มี 5 แท็บเหมือนแอปมือถือ: สถานะบอร์ด + แชท, log, ตั้งค่า (Wi-Fi, API key, ผู้ช่วย, โมเดล, เครื่อง), **เครื่องมือ** (หน้าจอบอร์ด + แตะสั่ง, วิทยุ / MP3, ไฟล์ในการ์ด SD) และ **แฟลช** — เฟิร์มแวร์ล่าสุดลงบอร์ดได้ทั้ง 4 รุ่น บอร์ดใหม่ก็ได้ ("ติดตั้งใหม่ทั้งหมด" — แยก ESP32-S3 สองรุ่นด้วยการสแกนขา I2C) · ถ้า SmartScreen ถาม: *More info → Run anyway*
+
 ### ESP32-AI Studio (แอปบน PC, ไม่บังคับ)
 
-**ไม่ต้องมี Python (T194):** ดาวน์โหลด **`ESP32-AI-Studio.exe`** จาก [release ล่าสุด](https://github.com/skyliner2008/PersonalAIBot-ESP32/releases/latest) แล้วดับเบิลคลิกได้เลย (Windows 10/11 ไฟล์เดียว ไม่ต้องติดตั้ง — ถ้า SmartScreen ถาม: *More info → Run anyway*) ใช้ได้ทุกแท็บ ยกเว้น Build / Upload / host tests ที่ต้องมีซอร์สโค้ด (อัปเดตบอร์ดผ่าน Wi-Fi ในแท็บ 🔧 แทน) ไฟล์อัดเสียงเก็บที่ `Documents\ESP32-AI Studio\recordings`
+**ไม่ต้องมี Python (T194):** ดาวน์โหลด **`ESP32-AI-Studio.exe`** จาก [release ล่าสุด](https://github.com/skyliner2008/PersonalAIBot-ESP32/releases/latest) แล้วดับเบิลคลิกได้เลย (Windows 10/11 ไฟล์เดียว ไม่ต้องติดตั้ง — ถ้า SmartScreen ถาม: *More info → Run anyway*) ใช้ได้ทุกแท็บ ยกเว้น Build / Upload / host tests ที่ต้องมีซอร์สโค้ด · **แท็บ 🔧 → แฟลชผ่านสาย USB (T197)** เขียนเฟิร์มแวร์ล่าสุดจาก GitHub ลงบอร์ดทั้ง 4 รุ่น — บอร์ดใหม่ก็ได้ ("ติดตั้งใหม่ทั้งหมด" — สแกนขา I2C แยก ES3C28P / XH-S3E-AI ให้เอง, T198) และอัปเดตผ่าน Wi-Fi ได้ด้วย ไฟล์อัดเสียงเก็บที่ `Documents\ESP32-AI Studio\recordings`
 
 จากซอร์สโค้ด (ไม่ได้เผยแพร่ใน repo นี้, T178) — บน PC ของผู้ดูแล: Python 3.9+ (ตัวติดตั้งจาก python.org มี Tkinter มาให้) แล้ว:
 

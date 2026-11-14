@@ -20,12 +20,72 @@ status: implemented
 SmartScreen ถามครั้งแรก: *More info → Run anyway* เพราะ .exe ไม่ได้เซ็นโค้ด)
 
 - **โหมดพกพา** (ไม่มี `platformio.ini` ในโฟลเดอร์ของ .exe หรือโฟลเดอร์แม่ 2 ชั้น): ทุกแท็บใช้ได้ — ตั้งค่า, log, แชท, เครื่องมือ, จอเสมือน, วิทยุ/เพลง/SD, สถานะ
-  · แท็บ 🔧 เหลือแค่ **อัปเดตผ่าน Wi-Fi** (บอร์ดโหลด release เอง) — ไม่มี Build / Upload / host tests / กุญแจเซ็น OTA (ต้องมีซอร์สโค้ด + PlatformIO / `cryptography`)
+  · แท็บ 🔧 มี **แฟลชผ่านสาย USB** (T197, ด้านล่าง) + **อัปเดตผ่าน Wi-Fi** (บอร์ดโหลด release เอง) — ไม่มี Build / Upload / host tests / กุญแจเซ็น OTA (ต้องมีซอร์สโค้ด + PlatformIO / `cryptography`)
   · ไฟล์อัดเสียงไมค์ไป `Documents\ESP32-AI Studio\recordings`
 - วาง .exe ไว้ใน repo (เช่น `dist/`) → เจอโปรเจกต์ → Build / Upload / tests กลับมา (กุญแจ OTA ยังต้องรันจากซอร์ส)
 - สร้าง: `python tools/build_studio_exe.py` → `dist/ESP32-AI-Studio.exe` + `.sha256` (PyInstaller `--onefile --windowed`, ติดตั้ง PyInstaller ให้เองถ้ายังไม่มี,
   ใส่เลขเวอร์ชันจาก `FIRMWARE_VERSION` ใน Properties ของไฟล์) · `tools/publish_release.py` build + แนบให้ทุก release
 - `run_studio.bat` บนเครื่องที่ไม่มี Python จะเปิด `dist\ESP32-AI-Studio.exe` แทน (ถ้ามี)
+
+### ESP32-AI Flasher สำหรับ Windows — `ESP32-AI-Flasher.exe` (T199)
+
+ผู้ใช้ไม่เอาแอปแบบ Python (Tkinter: คัดลอก/วางยาก — Ctrl+C/V พังเมื่อแป้นเป็นภาษาไทย, ไม่มีเมนูคลิกขวา, หน้าตาเก่า) → เขียนใหม่เป็น
+**C# / WPF บน .NET Framework 4.8** ที่ Windows 10/11 มีในตัว: **.exe ไฟล์เดียว ~100 KB เปิดได้ทันที ไม่ต้องติดตั้ง** (เครื่องที่ build ต้องมี
+.NET SDK — `winget install Microsoft.DotNet.SDK.8`; เครื่องผู้ใช้ไม่ต้อง)
+- หน้าตา/การทำงานเหมือนแอปมือถือ ESP32-AI Flasher: ธีม Jarvis มืด/ฟ้า · แถบบน = ชื่อรุ่น + พอร์ต COM (เลือกพอร์ต ESP32 / ต่อเองเมื่อเสียบ)
+  · 4 แท็บ: **บอร์ด** (การ์ดสถานะ diag, ปุ่มด่วน 6 ปุ่ม, แชท) · **Log** (สี, คัดลอก/บันทึก/ล้าง, ส่งคำสั่ง) · **ตั้งค่า** (แท็บหมวด Wi-Fi /
+  API key / ผู้ช่วย / โมเดล / เครื่อง / การเงิน — ฟิลด์และกติกาเดียวกับแอปมือถือ)
+  · Log: มีเวลาทุกบรรทัด, ข้อความเครื่อง (CONFIG / OPTIONS / DIAG ที่เป็น JSON) ซ่อนไว้ — เหลือสรุปบรรทัดเดียว, DIAG ทุก 3 วิไม่แสดง
+    (อยู่ในแท็บบอร์ดแล้ว) · สวิตช์ "ข้อมูลดิบ" = แสดง JSON เต็ม (ผู้ใช้บอก log ดูมั่ว) · **แฟลช** (รุ่นอัตโนมัติ + สแกน I2C, เทียบเวอร์ชันเขียว/แดง,
+  อัปเดต / ติดตั้งใหม่ทั้งหมด / ไฟล์ .bin, ❔ วิธีใช้)
+- **แท็บ 🧰 เครื่องมือ (T200, ทั้ง ESP32-AI-Flasher.exe และ .apk — ผู้ใช้ขอ):** 3 หมวด
+  - **📺 หน้าจอ:** `screenshot` (RGB565 big endian + `\nEND\n`) แสดงภาพจอบอร์ด · แตะ/คลิก = `ui tap`, ลาก = `ui drag`, แตะค้าง/คลิกขวา = `ui long`
+    · ปุ่ม 🏠 ↩ ☰ (`ui home|back|open menu`) · อัปเดตเองทุก 2 วิ · บันทึก PNG
+  - **📻 วิทยุ / MP3:** ความดัง (`set volume`), รายการสถานี (`radiolist` → RADIOLIST) ▶ `radio N` ■ `radio stop` · เพลงในการ์ด SD
+    (`musiclist` → MUSICLIST) ▶ `music N` ⏯ `music pause|resume` ⏭ `music next` 🗑 `musicdel N`
+  - **แก้รายการวิทยุ + เพิ่มเพลง MP3 (T201, ผู้ใช้ขอ):** ✚ เพิ่ม / ✎ แก้ (ฟอร์มชื่อ + URL + แนว ตรวจกติกาเดียวกับ Studio) / 🗑 ลบ / ▲▼ เลื่อน / ↺ ค่าเริ่มต้น
+    (`radioadd|radioedit|radiodel|radiomove|radioreset`) · ✚ ในหัว MP3 = เลือกเพลงหลายไฟล์ (.mp3 / .aac) ส่งลง `/sdcard/music` แบบ `musicput` / `musicdata`
+    (base64 1 KB, window, go-back-N) / `musicend` sha256 พร้อมแถบคืบหน้า + ยกเลิก — `BoardMedia.cs` / `BoardMedia.kt` (+ tests: เส้นทางที่ส่งหาย) ·
+    แก้บั๊ก: ACK ของบรรทัดที่ส่งซ้ำมาก่อน OK แล้วถูกนับเป็นคำตอบของ musicend (แก้ใน `music_upload.py` ของ Studio ด้วย) ·
+    ลองจริง: ส่งเพลง 300 KB ลง ES3C28P 2.0 วิ (~150 KB/s) sha256 ตรง แล้วลบ · apk ยังไม่ได้ลองบนมือถือ
+  - **💾 ไฟล์ SD:** `sdlist <path>` (SDLIST) เปิดโฟลเดอร์ / ขึ้น · ดาวน์โหลด `sdget` (SDGETFILE / SDGETDATA base64 / SDGETEND + sha256 ตรวจ;
+    บรรทัดเหล่านี้ไม่ลง log) · ลบ `sddel` · โฟลเดอร์ใหม่ `sdmkdir` — บอร์ด mini ไม่มีการ์ด SD
+  - Link ของทั้งสองแอปเก็บ byte ของ SCREENSHOT ไว้ส่งให้แท็บนี้ (เดิมข้ามทิ้ง) · ลองจริงบน exe + ES3C28P: ภาพจอ, 40 สถานี, รายการเพลง,
+    เปิด /sdcard/agent และดาวน์โหลด radio_stations.json สำเร็จ (sha256 ตรง) · apk build + unit tests 72 ผ่าน **ยังไม่ได้ลองบนมือถือ**
+- **อัปเดตแอปตัวเองจาก GitHub (T202, ESP32-AI Flasher .exe 2.1.0 + .apk 2.1.0):** แท็บแฟลช → การ์ด "แอป" (เปิดแอปแล้วตรวจเงียบๆ 1 ครั้ง ขึ้นแดงเมื่อมีใหม่)
+  · release แนบ `ESP32-AI-Flasher.json` (`tools/flasher_manifest.py`: build_flasher_exe / build_flasher_apk เขียนส่วนของตัวเอง — เวอร์ชัน, sha256, size,
+  signer ของ APK; publish_release แนบเฉพาะส่วนที่ sha256 ตรงกับไฟล์ที่แนบ) · **exe:** ดาวน์โหลด → ตรวจ sha256 → เปลี่ยนชื่อตัวที่รันอยู่เป็น `.old`
+  (Windows ยอมให้เปลี่ยนชื่อ .exe ที่กำลังรัน) → วางตัวใหม่ → เปิดตัวใหม่ → ปิดตัวเก่า (ลบ `.old` ตอนเปิดครั้งถัดไป) · **apk:** เทียบ versionCode,
+  ถ้า signer ต่างบอกให้ถอนก่อน, ขอสิทธิ์ติดตั้งแอปครั้งแรก, ดาวน์โหลด + sha256 → PackageInstaller (Android ถามผู้ใช้ทุกครั้ง, `FlasherUpdateReceiver`)
+  — เฉพาะแอปเล็ก (แอปใหญ่มีตัวอัปเดตของมันเอง T097) · release v4.9.6 ยังไม่มี json → ขึ้น "ยังไม่มีข้อมูลเวอร์ชันแอป" · **ยังไม่ได้ลองอัปเดตจริง**
+  (ต้องมี release ที่มี json ก่อน)
+- ช่องพิมพ์เป็นของ Windows เอง: Ctrl+C/V/A + คลิกขวาใช้ได้ทั้งแป้นไทย/อังกฤษ · ข้อความแชท / log เลือกคัดลอกได้
+- โค้ด: `tools/pc_flasher/` — `Shared/EspFlash.cs` (ROM loader + บอร์ด 4 รุ่น + สแกน I2C + ตรวจ app0, พอร์ตจาก esp_flash.py / Kotlin),
+  `Shared/Releases.cs`, `Shared/BoardConsole.cs` (protocol + ฟอร์มตั้งค่า), `Esp32AiFlasher/` (WPF) · tests `tools/pc_flasher/Tests`
+  (xunit, ROM จำลอง 11 ข้อ + ไฟล์ release จริง) · build: `python tools/build_flasher_exe.py` → `dist/ESP32-AI-Flasher.exe` (publish_release แนบ)
+- **เจอตอนลองจริง:** (1) .NET เปิดพอร์ตแล้วตั้ง DTR/RTS ทีละตัว → ผ่าน (DTR 0, RTS 1) = รีเซ็ตชิป: บอร์ดรีบูตทุกครั้งที่ต่อ → เปิดที่ (1,1)
+  แล้วลด RTS แล้ว DTR (ผ่าน (1,0) ไม่รีเซ็ต) จบที่ (0,0) แบบ Studio · (2) ค้าง DTR=1 แล้วแอปถูกปิดแบบบังคับ → คอนโซลบอร์ดเงียบ (เฟิร์มแวร์คิดว่า
+  host ยังอ่านอยู่) ต้องรีเซ็ต — จึงไม่ค้าง DTR=1 · (3) คำสั่งแรกหลังเปิดพอร์ตหาย → ส่ง config/options หลัง 0.6 วิ และซ้ำจนได้ CONFIG
+- ลองจริง ES3C28P (COM3): ต่อเอง ไม่รีเซ็ตบอร์ด, ชื่อรุ่น + การ์ดเขียว "ล่าสุดแล้ว", หน้าตั้งค่าอ่านค่าได้, **แฟลชอัปเดตจากปุ่มในแอปสำเร็จ**
+  (สแกน I2C → ES3C28P, sha256, เขียน, รีสตาร์ต, ต่อกลับเอง) — ช้ากว่าตัว Python (~1.5 นาที vs ~50 วิ) · ยังไม่ได้ลอง: factory บนบอร์ดเปล่า, P4, mini
+- Windows SmartScreen อาจเตือนครั้งแรก (ไม่ได้เซ็นโค้ด): More info → Run anyway · ESP32-AI-Studio.exe (Python) ยังอยู่เป็นเครื่องมือเต็ม
+
+### แฟลชผ่านสาย USB จาก GitHub — บอร์ดใหม่ก็ได้ (T197)
+
+แท็บ 🔧 → **"แฟลชผ่านสาย USB (เฟิร์มแวร์จาก GitHub)"** ใช้ได้ทั้งจากซอร์สและ .exe (ไม่ต้องมี PlatformIO / esptool)
+- เลือกพอร์ต COM ด้านบน → **รุ่นบอร์ด** (อัตโนมัติ = จาก `config` "chip" ของเฟิร์มแวร์ในบอร์ด · บอร์ดใหม่ให้เลือกเอง: ES3C28P กับ XH-S3E-AI
+  เป็น ESP32-S3 ทั้งคู่ โปรแกรมไม่เดา; P4 / Xmini-C3 รู้จากชิป) → **อัปเดต** (`-app.bin`, เก็บการตั้งค่า) / **ติดตั้งใหม่ทั้งหมด** (factory —
+  บอร์ดใหม่ต้องใช้แบบนี้) / **ไฟล์ .bin ในเครื่อง** → "⬇ แฟลชผ่าน USB" · ❔ วิธีใช้ = popup
+- โหลดไฟล์ของรุ่นนั้นจาก release ล่าสุด → ตรวจ sha256 → ROM loader เขียนแบบ zlib + ตรวจ MD5 → รีเซ็ตเข้าเฟิร์มแวร์ใหม่ → Studio ต่อกลับเอง
+- อัปเดตตรวจ entry app0 ในบอร์ดก่อน (บอร์ดเปล่า / P4 ตารางเก่า 6 MB → บอกให้ใช้ติดตั้งใหม่ทั้งหมด) · ไฟล์ของบอร์ดรุ่นอื่นหยุดก่อนลบอะไร
+- **สแกนรุ่น ESP32-S3 ก่อนแฟลช (T198):** ES3C28P กับ XH-S3E-AI เป็นชิปเดียวกัน แต่สาย I2C อยู่คนละขาและมีตัวต้านทาน pull-up บนบอร์ด (ES3C28P: SDA 16 / SCL 15 — ทัช + codec · XH-S3E-AI: SDA 41 / SCL 42 — OLED) → ในโหมด ROM ตั้งขา 15, 16, 41, 42 เป็น input + pull-down อ่อนของชิป (WRITE_REG ที่ IO_MUX 0x60009004+4n) แล้วอ่าน GPIO_IN — ขาที่ยังเป็น 1 = มี pull-up บนบอร์ด · คู่ไหนเป็น 1 ทั้งคู่ (คู่เดียว) = รุ่นนั้น · **ไม่ส่งไฟออกขาใด** และคืนค่าขาเดิมหลังอ่าน · วัดจริงบน ES3C28P: 15=1 16=1 41=1 (SD_D1) 42=0 (LED RGB) → ES3C28P ✔
+  · "อัตโนมัติ" + บอร์ดเปล่า → ใช้ผลสแกน · เลือกรุ่นเองแต่สแกนได้อีกรุ่น → **ไม่แฟลช** (บอกให้เลือกตามที่สแกน) · รุ่นที่เฟิร์มแวร์ในบอร์ดบอก (`config`) ชนะผลสแกน (`trust_told` / `trustFallback`) · สแกนไม่ชัด (ทั้งสองคู่ / ไม่มีคู่ไหน) → ไม่เดา ให้เลือกเอง
+  · `esp_flash.py` (`Loader.probe_s3_board`) + `EspLoader.probeS3Board()` (แอปมือถือ) · tests: Python 15, Kotlin 72 · วัดจริงบน XH-S3E-AI: 15=0 16=0 (I2S ลำโพง) 41=1 42=1 (I2C ของ OLED) → XH-S3E-AI ✔ (ทั้งสองบอร์ดบูตกลับเฟิร์มแวร์เดิม การตั้งค่าครบ)
+- บรรทัดเทียบเวอร์ชัน: "✔ ล่าสุดแล้ว" (เขียว) / "⬆ มีเวอร์ชันใหม่" (แดง) เทียบเฟิร์มแวร์ในบอร์ดกับ GitHub · "🔍 ตรวจ GitHub"
+- โค้ด: `tools/pc_app/esp_flash.py` (เขียนเองจากเอกสาร serial protocol ของ ROM — ไม่ใช้ esptool ซึ่งเป็น GPL; ขั้นตอน/การตรวจเหมือน
+  `EspLoader.kt` / `FlashJob.kt` ของแอปมือถือ) · tests: `python tools/pc_app/test_esp_flash.py` (ROM จำลอง 13 ข้อ + `REAL_RELEASE_DIR=dist` ไฟล์ release จริง 4 บอร์ด)
+- ลองจริง: ES3C28P (COM3) อัปเดต v4.9.6 ~50 วิ ทั้งจากสคริปต์และปุ่มใน Studio → บูตกลับ v4.9.6 การตั้งค่า (Wi-Fi / API key) ครบ ·
+  ยังไม่ได้ลอง: บอร์ดเปล่า (factory), P4, บอร์ด mini
 
 ### จากซอร์สโค้ด (มี Python)
 

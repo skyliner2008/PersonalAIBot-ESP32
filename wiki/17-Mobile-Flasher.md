@@ -161,6 +161,33 @@ Jarvis → ตั้งค่า → **อัปเดตแอป** (การ�
   (`REAL_RELEASE_DIR`, `_P4`, `_XH`, `_C3`: entry app0 ในไฟล์ factory ตรงกับที่แอปเทียบ)
 - หน้าตั้งค่า: คีย์ `set` ทุกตัวที่แอปส่ง มีในเฟิร์มแวร์ทั้ง 4 บอร์ด (ตั้งค่าได้ทุกรุ่น)
 
+**แท็บ 🧰 เครื่องมือ (T200, ทั้ง ESP32-AI-Flasher.exe และ .apk — ผู้ใช้ขอ):** 3 หมวด
+  - **📺 หน้าจอ:** `screenshot` (RGB565 big endian + `\nEND\n`) แสดงภาพจอบอร์ด · แตะ/คลิก = `ui tap`, ลาก = `ui drag`, แตะค้าง/คลิกขวา = `ui long`
+    · ปุ่ม 🏠 ↩ ☰ (`ui home|back|open menu`) · อัปเดตเองทุก 2 วิ · บันทึก PNG
+  - **📻 วิทยุ / MP3:** ความดัง (`set volume`), รายการสถานี (`radiolist` → RADIOLIST) ▶ `radio N` ■ `radio stop` · เพลงในการ์ด SD
+    (`musiclist` → MUSICLIST) ▶ `music N` ⏯ `music pause|resume` ⏭ `music next` 🗑 `musicdel N`
+  - **แก้รายการวิทยุ + เพิ่มเพลง MP3 (T201, ผู้ใช้ขอ):** ✚ เพิ่ม / ✎ แก้ (ฟอร์มชื่อ + URL + แนว ตรวจกติกาเดียวกับ Studio) / 🗑 ลบ / ▲▼ เลื่อน / ↺ ค่าเริ่มต้น
+    (`radioadd|radioedit|radiodel|radiomove|radioreset`) · ✚ ในหัว MP3 = เลือกเพลงหลายไฟล์ (.mp3 / .aac) ส่งลง `/sdcard/music` แบบ `musicput` / `musicdata`
+    (base64 1 KB, window, go-back-N) / `musicend` sha256 พร้อมแถบคืบหน้า + ยกเลิก — `BoardMedia.cs` / `BoardMedia.kt` (+ tests: เส้นทางที่ส่งหาย) ·
+    แก้บั๊ก: ACK ของบรรทัดที่ส่งซ้ำมาก่อน OK แล้วถูกนับเป็นคำตอบของ musicend (แก้ใน `music_upload.py` ของ Studio ด้วย) ·
+    ลองจริง: ส่งเพลง 300 KB ลง ES3C28P 2.0 วิ (~150 KB/s) sha256 ตรง แล้วลบ · apk ยังไม่ได้ลองบนมือถือ
+  - **💾 ไฟล์ SD:** `sdlist <path>` (SDLIST) เปิดโฟลเดอร์ / ขึ้น · ดาวน์โหลด `sdget` (SDGETFILE / SDGETDATA base64 / SDGETEND + sha256 ตรวจ;
+    บรรทัดเหล่านี้ไม่ลง log) · ลบ `sddel` · โฟลเดอร์ใหม่ `sdmkdir` — บอร์ด mini ไม่มีการ์ด SD
+  - Link ของทั้งสองแอปเก็บ byte ของ SCREENSHOT ไว้ส่งให้แท็บนี้ (เดิมข้ามทิ้ง) · ลองจริงบน exe + ES3C28P: ภาพจอ, 40 สถานี, รายการเพลง,
+    เปิด /sdcard/agent และดาวน์โหลด radio_stations.json สำเร็จ (sha256 ตรง) · apk build + unit tests 72 ผ่าน **ยังไม่ได้ลองบนมือถือ**
+
+- **อัปเดตแอปตัวเองจาก GitHub (T202, ESP32-AI Flasher .exe 2.1.0 + .apk 2.1.0):** แท็บแฟลช → การ์ด "แอป" (เปิดแอปแล้วตรวจเงียบๆ 1 ครั้ง ขึ้นแดงเมื่อมีใหม่)
+  · release แนบ `ESP32-AI-Flasher.json` (`tools/flasher_manifest.py`: build_flasher_exe / build_flasher_apk เขียนส่วนของตัวเอง — เวอร์ชัน, sha256, size,
+  signer ของ APK; publish_release แนบเฉพาะส่วนที่ sha256 ตรงกับไฟล์ที่แนบ) · **exe:** ดาวน์โหลด → ตรวจ sha256 → เปลี่ยนชื่อตัวที่รันอยู่เป็น `.old`
+  (Windows ยอมให้เปลี่ยนชื่อ .exe ที่กำลังรัน) → วางตัวใหม่ → เปิดตัวใหม่ → ปิดตัวเก่า (ลบ `.old` ตอนเปิดครั้งถัดไป) · **apk:** เทียบ versionCode,
+  ถ้า signer ต่างบอกให้ถอนก่อน, ขอสิทธิ์ติดตั้งแอปครั้งแรก, ดาวน์โหลด + sha256 → PackageInstaller (Android ถามผู้ใช้ทุกครั้ง, `FlasherUpdateReceiver`)
+  — เฉพาะแอปเล็ก (แอปใหญ่มีตัวอัปเดตของมันเอง T097) · release v4.9.6 ยังไม่มี json → ขึ้น "ยังไม่มีข้อมูลเวอร์ชันแอป" · **ยังไม่ได้ลองอัปเดตจริง**
+  (ต้องมี release ที่มี json ก่อน)
+
+**สแกนรุ่น ESP32-S3 ก่อนแฟลช (T198):** ES3C28P กับ XH-S3E-AI เป็นชิปเดียวกัน แต่สาย I2C อยู่คนละขาและมีตัวต้านทาน pull-up บนบอร์ด (ES3C28P: SDA 16 / SCL 15 — ทัช + codec · XH-S3E-AI: SDA 41 / SCL 42 — OLED) → ในโหมด ROM ตั้งขา 15, 16, 41, 42 เป็น input + pull-down อ่อนของชิป (WRITE_REG ที่ IO_MUX 0x60009004+4n) แล้วอ่าน GPIO_IN — ขาที่ยังเป็น 1 = มี pull-up บนบอร์ด · คู่ไหนเป็น 1 ทั้งคู่ (คู่เดียว) = รุ่นนั้น · **ไม่ส่งไฟออกขาใด** และคืนค่าขาเดิมหลังอ่าน · วัดจริงบน ES3C28P: 15=1 16=1 41=1 (SD_D1) 42=0 (LED RGB) → ES3C28P ✔
+- "อัตโนมัติ" + บอร์ดเปล่า → ใช้ผลสแกน · เลือกรุ่นเองแต่สแกนได้อีกรุ่น → **ไม่แฟลช** (บอกให้เลือกตามที่สแกน) · รุ่นที่เฟิร์มแวร์ในบอร์ดบอก (`config`) ชนะผลสแกน (`trust_told` / `trustFallback`) · สแกนไม่ชัด (ทั้งสองคู่ / ไม่มีคู่ไหน) → ไม่เดา ให้เลือกเอง
+- `esp_flash.py` (`Loader.probe_s3_board`) + `EspLoader.probeS3Board()` (แอปมือถือ) · tests: Python 15, Kotlin 72 · วัดจริงบน XH-S3E-AI: 15=0 16=0 (I2S ลำโพง) 41=1 42=1 (I2C ของ OLED) → XH-S3E-AI ✔ (ทั้งสองบอร์ดบูตกลับเฟิร์มแวร์เดิม การตั้งค่าครบ)
+
 | | ES3C28P | JC4880P443C | XH-S3E-AI | Xmini-C3 |
 |---|---|---|---|---|
 | ชิป (id) | ESP32-S3 (9) | ESP32-P4 (18) | ESP32-S3 (9) | ESP32-C3 (5) |
