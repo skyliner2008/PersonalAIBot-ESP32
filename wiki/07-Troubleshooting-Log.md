@@ -16,6 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T208 | [[#T208 ไม่มีเสียงหลังแฟลชกลับจาก XiaoZhi — ES8311 ค้าง DAC mute]] | Audio / ES8311 | ✅ แก้แล้ว — ทดสอบบน ES3C28P |
 | T207 | [[#T207 แอปแฟลชบนมือถือเชื่อมต่อ-หลุดวนไปกับบอร์ดที่รัน XiaoZhi]] | Apps / USB console | ✅ แก้แล้ว (Flasher 2.1.2, Studio) — ยังไม่ได้ลองบนมือถือ |
 | T205 | [[#T205 เฟิร์มแวร์ ES3C28P (2.8") ใช้กับบอร์ด ES3C35P (3.5") ไม่ได้ — เพิ่ม build es3c35p]] | Hardware / new board | 🟡 build ผ่าน ยังไม่ได้ลองบนบอร์ด |
 | T204 | [[#T204 งานดึงข้อมูล (web tool) ค้าง = ทั้งบอร์ดไม่ตอบ — ตัวกันค้าง ทุกบอร์ด]] | Tools / ทุกบอร์ด | ✅ กันอาการแล้ว (ทดสอบบน XH-S3E-AI) · สาเหตุต้นทางยังไม่รู้ |
@@ -125,6 +126,26 @@ This page documents common issues encountered during development and their solut
 | T010 | [[#T010 Wi-Fi เชื่อมต่อไม่ได้]] | Network | 📘 Reference |
 
 > 📘 Reference = แนวทางทั่วไปที่เขียนไว้ก่อนทดสอบบนบอร์ดจริง ไม่ใช่ปัญหาที่เกิดขึ้นแล้ว
+
+---
+
+## T208: ไม่มีเสียงหลังแฟลชกลับจาก XiaoZhi — ES8311 ค้าง DAC mute
+
+**วันที่:** 2026-11-16 · **บอร์ด:** ES3C28P หลังแฟลช v4.9.10 (factory) ทับ XiaoZhi 2.6.0
+
+**อาการ:** ไม่มีเสียงเลย — ทั้งเสียง AI และเพลง MP3 · log บูตปกติ (`chip id 0x83`, echo reference on, `codec ok`) ไมค์ได้ยินปกติ
+
+**ตรวจ:** `radiotone 1000 3000 16000` + `audio`: echo reference (R, DAC loopback ดิจิทัล) = 0.109 → codec ส่งเสียงออก · ไมค์ (L) 0.0007 → ลำโพงเงียบ ·
+`regs`: **`31:60`** = บิต DAC mute ทั้งสอง (DSM + DEM) · เฟิร์มแวร์เราไม่เคยเขียน REG31 (`setMute()` ไม่มีใครเรียก) · ไม่มีแบต (`bat`: present 0)
+
+**สาเหตุ:** XiaoZhi ปิด DAC เมื่อว่าง ("Set output enable to false") ด้วยการ mute REG31 · soft reset ของเรา (REG00 = 0x1F) ไม่ล้าง REG31 และรีเซ็ต/แฟลช
+ไม่ได้ตัดไฟ codec → init ของเราที่อาศัยค่าเริ่มต้นตอนจ่ายไฟ เริ่มทำงานโดยลำโพงถูก mute
+
+**ยืนยัน:** `reg 31 00` แล้วเล่น tone → ไมค์ได้ยิน 0.18 (เสียงกลับมา, ชั่วคราวจนรีบูต)
+
+**แก้:** `ES8311::begin()` (ทุกบอร์ดที่มี ES8311: S3 / ES3C35P / P4 / C3 + s3-mini) เขียนเองทุกครั้ง: REG0B = 00, REG0C = 00, REG10 = 1F, REG11 = 7F (ค่าจากบอร์ดที่ทำงานอยู่)
+และ **REG31 = 00 (ไม่ mute)** · **ทดสอบบน ES3C28P:** `reg 31 60` (สภาพแบบ XiaoZhi) → `reboot` (ไม่ตัดไฟ codec) → บูตแล้ว `reg 31` = 00,
+tone ไมค์ได้ยิน 0.18 · ระหว่างรอเฟิร์มแวร์ใหม่: ถอดสาย USB (และแบต ถ้ามี) แล้วเสียบใหม่ = codec กลับค่าเริ่มต้น
 
 ---
 
