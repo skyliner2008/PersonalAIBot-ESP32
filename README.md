@@ -86,7 +86,7 @@ Pinout, board photos and connector guide → [wiki/01-Hardware-ES3C28P-Pinout.md
 
 Command-line alternative: `esptool.py --chip esp32s3 write_flash 0x0 PersonalAIBot-ESP32-v4.9.4-factory.bin`
 
-**📱 Small flasher app (T195):** **`ESP32-AI-Flasher.apk`** from the release (~0.8 MB, internet permission only) does just this: tells which of the four boards is plugged in, flashes its firmware from the latest release, edits its settings and shows its log (`python tools/build_flasher_apk.py`). An old Flasher 1.0 must be uninstalled once.
+**📱 Small flasher app (T195):** **`ESP32-AI-Flasher.apk`** from the release (~0.8 MB, internet permission only) does just this: tells which of the four boards is plugged in, flashes its firmware from the latest release, edits its settings and shows its log (`python tools/build_flasher_apk.py`). An old Flasher 1.0 must be uninstalled once. A board running other firmware (e.g. XiaoZhi) that does not read commands now shows "board does not take commands" and stays connected instead of connecting / dropping in a loop (Flasher 2.1.2, T207); to flash it, use the Flash tab — if that fails, hold BOOT, tap RESET, release BOOT first.
 
 **📱 From an Android phone (no computer):** install the phone app **Personal AI Bot** (`PersonalAIBot-Mobile.apk` — not in the releases from v4.9.6 (T196, ~225 MB):
 build it: `python tools/build_mobile_apk.py`), open the **ESP32 board** screen (chip icon on the top bar), plug the board into the phone

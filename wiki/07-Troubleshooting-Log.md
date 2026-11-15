@@ -16,6 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T207 | [[#T207 แอปแฟลชบนมือถือเชื่อมต่อ-หลุดวนไปกับบอร์ดที่รัน XiaoZhi]] | Apps / USB console | ✅ แก้แล้ว (Flasher 2.1.2, Studio) — ยังไม่ได้ลองบนมือถือ |
 | T205 | [[#T205 เฟิร์มแวร์ ES3C28P (2.8") ใช้กับบอร์ด ES3C35P (3.5") ไม่ได้ — เพิ่ม build es3c35p]] | Hardware / new board | 🟡 build ผ่าน ยังไม่ได้ลองบนบอร์ด |
 | T204 | [[#T204 งานดึงข้อมูล (web tool) ค้าง = ทั้งบอร์ดไม่ตอบ — ตัวกันค้าง ทุกบอร์ด]] | Tools / ทุกบอร์ด | ✅ กันอาการแล้ว (ทดสอบบน XH-S3E-AI) · สาเหตุต้นทางยังไม่รู้ |
 | T203 | [[#T203 Xmini-C3 — tool ข้อมูลสด 8 คำสั่งล้มเพราะ RAM (ThaiWater, ปฏิทิน, TradingView หลายชุด) + console `tools` ว่าง]] | Xmini-C3 / tools | ✅ แก้แล้ว (ทดสอบบนบอร์ด 40 คำสั่ง) |
@@ -124,6 +125,26 @@ This page documents common issues encountered during development and their solut
 | T010 | [[#T010 Wi-Fi เชื่อมต่อไม่ได้]] | Network | 📘 Reference |
 
 > 📘 Reference = แนวทางทั่วไปที่เขียนไว้ก่อนทดสอบบนบอร์ดจริง ไม่ใช่ปัญหาที่เกิดขึ้นแล้ว
+
+---
+
+## T207: แอปแฟลชบนมือถือเชื่อมต่อ-หลุดวนไปกับบอร์ดที่รัน XiaoZhi
+
+**วันที่:** 2026-11-16 · **บอร์ด:** ES3C28P ที่ผู้ใช้แฟลช XiaoZhi 2.6.0 (build บนเว็บ xiaozhi.me, บอร์ด `freenove-esp32s3-display-2.8-lcd` — ขาตรงกับ ES3C28P ทุกขา)
+
+**อาการ:** ESP32-AI Flasher (Android) ขึ้น "เชื่อมต่อ" แล้ว "หลุด" สลับไปเรื่อยๆ — บอร์ดอื่น (เฟิร์มแวร์เรา) ปกติ
+
+**ตรวจ (ไม่แฟลช):** บน PC บอร์ด XiaoZhi ไม่รีบูตเลย (ฟัง 25 นาที) · โค้ดเชื่อมต่อของแอปไม่แตะ DTR/RTS และไม่เปลี่ยนตั้งแต่ v4.9.7
+(การเพิ่ม ES3C35P ไม่เกี่ยว) · ส่ง `config` ไปที่บอร์ด → **เขียนไม่ออกเลย (timeout 2 วิ)**: XiaoZhi ไม่อ่าน USB console
+
+**สาเหตุ:** แอปถือว่าเขียนไม่ออก = สายหลุด → ปิด link → ต่อใหม่อัตโนมัติ → ส่ง `config` อีก → วน · Studio แย่กว่า: ไม่มี write timeout → ค้าง
+
+**วิธีแก้:** แยก "บอร์ดไม่อ่านคำสั่ง" (ยังอยู่บน USB) ออกจาก "สายหลุด" ทั้ง 3 แอป — ค้างการเชื่อมต่อ ไม่ส่งต่อ แจ้งครั้งเดียว ลองใหม่ทุก 30 วิ
+(รายละเอียด [[17-Mobile-Flasher]]) · Flasher Windows / Android 2.1.2 (release v4.9.10) · ทดสอบ Studio link กับบอร์ด XiaoZhi จริง: ค้าง 2 วิครั้งเดียว ไม่หลุด
+
+**ทางแก้ทันทีสำหรับแอปเก่า:** กด BOOT ค้าง แตะ RESET ปล่อย BOOT (โหมดดาวน์โหลด: ROM อ่าน USB) แล้วแฟลชที่แท็บแฟลช
+
+**สำรองก่อนแฟลช XiaoZhi:** flash ES3C28P ทั้ง 16 MB (fw 4.9.8) ใน `E:/APP-JARVIS/esp32-test-shots/backups/` (นอก repo)
 
 ---
 
