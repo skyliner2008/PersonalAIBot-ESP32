@@ -16,6 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T205 | [[#T205 เฟิร์มแวร์ ES3C28P (2.8") ใช้กับบอร์ด ES3C35P (3.5") ไม่ได้ — เพิ่ม build es3c35p]] | Hardware / new board | 🟡 build ผ่าน ยังไม่ได้ลองบนบอร์ด |
 | T204 | [[#T204 งานดึงข้อมูล (web tool) ค้าง = ทั้งบอร์ดไม่ตอบ — ตัวกันค้าง ทุกบอร์ด]] | Tools / ทุกบอร์ด | ✅ กันอาการแล้ว (ทดสอบบน XH-S3E-AI) · สาเหตุต้นทางยังไม่รู้ |
 | T203 | [[#T203 Xmini-C3 — tool ข้อมูลสด 8 คำสั่งล้มเพราะ RAM (ThaiWater, ปฏิทิน, TradingView หลายชุด) + console `tools` ว่าง]] | Xmini-C3 / tools | ✅ แก้แล้ว (ทดสอบบนบอร์ด 40 คำสั่ง) |
 | T199 | [[#T199 ESP32-AI Flasher.exe (C#) — บอร์ดรีบูตทุกครั้งที่ต่อ + คอนโซลบอร์ดค้างหลังปิดแอป]] | PC app | ✅ แก้แล้ว ลองกับ ES3C28P จริง |
@@ -123,6 +124,28 @@ This page documents common issues encountered during development and their solut
 | T010 | [[#T010 Wi-Fi เชื่อมต่อไม่ได้]] | Network | 📘 Reference |
 
 > 📘 Reference = แนวทางทั่วไปที่เขียนไว้ก่อนทดสอบบนบอร์ดจริง ไม่ใช่ปัญหาที่เกิดขึ้นแล้ว
+
+---
+
+## T205: เฟิร์มแวร์ ES3C28P (2.8") ใช้กับบอร์ด ES3C35P (3.5") ไม่ได้ — เพิ่ม build es3c35p
+
+**วันที่:** 2026-11-15 · **บอร์ด:** LCDWIKI ES3C35P (ESP32-S3-N16R8, 3.5" 320×480)
+
+**อาการ:** ผู้ใช้มีบอร์ด ESP32-S3 จอ 3.5" — เฟิร์มแวร์ ES3C28P ใช้ไม่ได้
+
+**สาเหตุ:** คนละฮาร์ดแวร์แม้ชิปเดียวกัน — จอ ST77922 แบบ QSPI (ไม่ใช่ ILI9341 SPI), ทัช ST77922 ในตัวที่ I2C 0x55 (ไม่ใช่ FT6336 0x38),
+ขา I2C / I2S / SD / ไฟจอ / RGB / แบต ต่างกันหมด (ตาราง: [[25-ES3C35P-3.5inch]])
+
+**วิธีแก้:** build env `es3c35p` (`-DBOARD_ES3C35P`) ในโปรเจคหลัก — `include/pins_config.h` แยกชุดขา, `LGFX_ES3C35P.hpp`
+(`Panel_ST77922` = `Panel_ST77916` + init table, MIT), `TouchST77922.h`, `UiManager::present()` หมุน + ขยายภาพเอง (จอสลับแกนไม่ได้),
+`OTA_ASSET_VARIANT "-es3c35p"`, `DeviceConfig` ขาว่าง 45 / 46 / 43 / 44, `make_release` / `publish_release` / Studio / Flasher (C# 2.1.1, Android 2.1.1)
+
+**ข้อควรระวังที่เจอระหว่างทำ:**
+- LovyanGFX: `Panel_ST77916::getInitCommands()` ไม่ virtual → override `init()` ทั้งก้อน · `setInvert()` ไม่สน `cfg.invert` → XOR เอง
+- driver ST77922 ของ Espressif มี init ของจอ 532 คอลัมน์ ไม่ใช่จอนี้ · ผู้ผลิตใช้ 80 MHz แต่ LovyanGFX ข้อมูลเพี้ยน → 60 MHz
+- ขา I2C ของ ES3C35P (38/39) บน ES3C28P เป็นสาย SD — วัดจริง 38=0 39=1 จึงแยกบอร์ดด้วย pull-up ได้ไม่ชนกัน
+
+**ยังไม่ได้ทดสอบบนบอร์ดจริง** — รายการตรวจใน [[25-ES3C35P-3.5inch#สถานะ (2026-11-15)]]
 
 ---
 

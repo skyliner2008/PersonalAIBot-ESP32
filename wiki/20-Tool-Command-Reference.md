@@ -32,6 +32,7 @@ ES3C28P มีได้สูงสุด 49 tool (+ Google Search ถ้าเ�
 | `camera` ⚙️, `modbus` ⚙️ | ❌ | ✅ | ❌ | ❌ |
 
 Xmini-C3: `water` ต้องระบุจังหวัด, `market_sentiment` ไม่มี `stocks` (RAM — [[07-Troubleshooting-Log#T203]])
+· ตารางเต็มทุก tool × ทุกบอร์ด + ผลทดสอบบนบอร์ดจริง → [[24-Tool-Matrix-Per-Board]]
 
 ---
 
