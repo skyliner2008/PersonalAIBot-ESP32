@@ -127,9 +127,76 @@ status: implemented
 
 ## ฟอนต์ภาษาไทย
 
-- `ThaiFont26` (ข้อความหลัก บรรทัด 28 px) และ `ThaiFont20` (ค่าในเมนู/ปุ่ม บรรทัด 22 px) — TH Sarabun New → VLW ด้วย `tools/gen_thai_font.py`
+- `ThaiFont26` (ข้อความหลัก) และ `ThaiFont20` (ค่าในเมนู/ปุ่ม/การ์ด) → VLW ด้วย `tools/gen_thai_font.py`
+- **T215 (2026-11-17):** ผู้ใช้: ตัวหนังสือบนจอ 2.8" เล็กเกินจะมองชัด → เปลี่ยนเป็น **TH SarabunPSK Bold 28 / 24 px** (บรรทัด 31 / 26 px, x-height 10 / 8 px)
+  จากเดิม TH Sarabun New 26 / 20 px (บรรทัด 28 / 22, x-height 9 / **7** px เส้นบาง) + `--gamma 0.8` ขอบคมขึ้น · ชื่อไฟล์/ฟังก์ชันคงเดิม (`thai26()` = 28 px, `thai20()` = 24 px)
+  คำสั่งสร้างอยู่หัวไฟล์ `gen_thai_font.py` · ตัวอักษรกว้างขึ้น ~25%: ระยะบรรทัดการ์ดข่าว/ข้อความเป็น 25 px, ชื่อการ์ดเมนูสั้นลง
 - ตัดบรรทัดตามพยางค์ (`TextWrap.h`): ไม่ฉีกสระบน/ล่าง/วรรณยุกต์ สระหน้าไม่อยู่ท้ายบรรทัด
 - อักขระที่ไม่มีในฟอนต์ (เช่น `·` U+00B7) จะเป็นกล่อง — ใช้ `•` แทน
+
+## ฟอนต์ภาษาอื่น — ญี่ปุ่น จีน เกาหลี ละตินขยาย รัสเซีย (T213, ES3C28P / ES3C35P)
+
+ก่อน T213 จอแสดงได้แค่ไทย + ASCII: ซับของโหมดล่าม (`live_translate`) ภาษาญี่ปุ่น/จีน/เกาหลีเป็นช่องว่าง
+ตอนนี้ `gUi.thai26()` / `gUi.thai20()` คืน **`MultiFont`** (`src/ui/MultiFont.*`) — ฟอนต์ตัวเดียวที่เลือก glyph ทีละตัวจากฟอนต์ที่มีมัน
+โค้ดวาดเดิมทุกจุด (`setFont` + `drawString` / `textWidth` / ตัดบรรทัด) จึงแสดงได้ทุกชุดอักษรโดยไม่ต้องแก้
+
+| ชุดอักษร | ฟอนต์ | ขนาดใน flash |
+|---|---|---|
+| ไทย + ASCII + เครื่องหมาย | `ThaiFont26` / `ThaiFont20` (เดิม) | — |
+| Latin-1, Latin Extended-A, pinyin (ǎ ǐ ǒ ǔ ǚ), เวียดนาม, ซีริลลิก — 409 ตัว | `LangExt18` / `LangExt15` (Noto Sans **Bold** → VLW; T215: 18 / 15 px มี x-height เท่า SarabunPSK Bold 28 / 24 = 10 / 8 px — เดิม `LangExt16/13` Regular) | 83.2 + 61.1 KB |
+| ญี่ปุ่น: คานะ + คันจิ 4,425 ตัว | `fonts::lgfxJapanGothic_16` ของ LovyanGFX (IPA Gothic, 1 บิต) ใช้ตามที่มา | 159.3 KB |
+| จีนตัวย่อ: GB 2312 ระดับ 1 (3,755 ตัว) + เครื่องหมาย = 3,873 ตัว | `CjkCn16` — **ตัดย่อ**จาก `efontCN_16` (7,428 ตัว 318 KB) | 168.5 KB |
+| เกาหลี: ฮันกึล KS X 1001 (2,350 ตัว) + จาโม + เครื่องหมาย = 2,561 ตัว | `CjkKr16` — **ตัดย่อ**จาก `efontKR_16` (8,194 ตัว 324 KB — ครึ่งหนึ่งเป็นฮันจา) | 90.9 KB |
+
+- รวม **+534 KB**: image ES3C28P 4,454,608 → 4,989,520 ไบต์ จาก 5,242,880 → **เหลือ 253 KB** (ถ้าใช้ฟอนต์จีน/เกาหลีเต็มชุดของไลบรารีที่ 14 px
+  จะเหลือ 20 KB — วัดจาก build จริง) · RAM: ตารางของ LangExt สองขนาด ~7 KB ใน PSRAM, ฟอนต์ CJK อ่านจาก flash ตรงๆ
+- **ลำดับเลือกฟอนต์** (`util/ScriptFont.h` — มี host test): ไทย/ASCII → ฟอนต์ไทย · U+00A0–1FFF → ฟอนต์ไทย (° ×) แล้ว LangExt ·
+  คานะ → ญี่ปุ่น · ฮันกึล → เกาหลี · อักษรฮั่น + เครื่องหมาย CJK + ตัวเต็มความกว้าง → ฟอนต์ของภาษาที่ใช้อยู่ก่อน แล้วอีกสองฟอนต์
+  (ตัวฮั่นรหัสเดียวกันเขียนต่างกันเล็กน้อยในแต่ละประเทศ: โหมดล่ามตั้ง `scriptfont::setPreferred()` จากภาษาเป้าหมาย/ต้นทาง ค่าเริ่มต้น = ญี่ปุ่น) ·
+  สัญลักษณ์ที่ฟอนต์ไทยไม่มี (→ ★ ※) ตกไปที่ฟอนต์ CJK
+- **เส้นฐานเดียวกัน:** ฟอนต์ทุกชนิดของ LovyanGFX วาดเส้นฐานที่ `y + y_offset + baseline` ของ metrics ตัวเอง — `MultiFont::drawChar` เลื่อน y ด้วยผลต่างนี้
+- **ตัดบรรทัด:** ตัวมีเครื่องหมาย/เวียดนาม/ซีริลลิกนับเป็นตัวอักษรของคำ (ไม่ฉีกกลางคำ `khỏe`) · ญี่ปุ่น/จีนตัดได้ทุกตัว (ไม่มีวรรค)
+- **สร้างฟอนต์:** `python tools/gen_lang_fonts.py` (ต้อง `pio run` ก่อน 1 ครั้งให้มี LovyanGFX) — LangExt จาก Noto Sans, CjkCn16 / CjkKr16 โดยคัดลอก glyph record
+  ของฟอนต์ U8g2 ทีละตัวแล้วสร้างตารางค้นหา Unicode ใหม่ (บล็อกละ 48 ตัว) และตรวจด้วยตัวถอดรหัสอ้างอิงที่เดินตารางแบบเดียวกับ `U8g2font::getGlyph`
+- **สัญญาอนุญาต:** /efont/ = BSD (`src/display/fonts/efont/COPYRIGHT.txt` — binary ต้องแนบประกาศนี้ในเอกสาร) · Noto Sans v1.04 บน PC ที่ build = Apache 2.0
+  (`src/display/fonts/noto/NOTICE.txt`; รุ่นปัจจุบันบน Google Fonts เป็น SIL OFL) · IPA Gothic = IPA Font License (มากับ LovyanGFX, ใช้โดยไม่ดัดแปลง)
+- **ไม่ครอบคลุม:** จีนตัวเต็ม (เฉพาะตัวที่ซ้ำกับ GB 2312 / JIS), ตัวจีนนอก GB 2312 ระดับ 1, ฮันกึลนอก 2,350 ตัว, กรีก, อาหรับ/ฮินดี (ต้องเชื่อมรูปอักษร) → เป็นช่องว่างเหมือนเดิม
+- **ตัวที่ไม่มีในฟอนต์ใดเลย** (จีนตัวเต็ม คันจิหายาก) = กล่องเปล่า · การค้นจนสุดฟอนต์ทั้งสามใช้ ~0.5 ms ต่อตัว และซับถูกวัด + วาดใหม่ทุกเฟรม → `MultiFont` จำ 48 ตัวล่าสุดที่หาไม่เจอ
+- **ปิดได้:** build flag `-DUI_LANG_FONTS=0` (คืน ~534 KB) — **env `esp32s3-ble` ปิดไว้**: BLE stack + ฟอนต์ชุดนี้ทำให้ `firmware.bin` = 5,245,568 ไบต์ เกินพาร์ทิชัน 2,688 ไบต์
+  (pio รายงาน "Flash 98.1%" เพราะไม่นับ `.eh_frame` — ดูขนาด `firmware.bin` เสมอ) · ES3C35P ใส่ได้ (4,990,768 ไบต์) · **ESP32-P4 ยังไม่มี** (เหลือ flash 218 KB และจอใหญ่ต้องใช้ตัว 20–24 px)
+- ทดสอบจาก console: `say a こんにちは 你好 안녕하세요 Xin chào Здравствуйте` · `cardtest <หัวข้อ>|<บรรทัดใหญ่>|<เนื้อหา>` (การ์ดข้อความ) แล้ว `screenshot`
+
+ประกาศลิขสิทธิ์ของฟอนต์ /efont/ (เฟิร์มแวร์มีบางส่วนของฟอนต์นี้ — เงื่อนไขข้อ 2 ให้แนบประกาศนี้กับเอกสารของ binary):
+
+```
+(c) Copyright 2000-2001 /efont/ The Electronic Font Open Laboratory.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. Neither the name of the team nor the names of its contributors
+   may be used to endorse or promote products derived from this font
+   without specific prior written permission.
+
+THIS FONT IS PROVIDED BY THE TEAM AND CONTRIBUTORS ``AS IS'' AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE TEAM OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS FONT, EVEN
+IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
 
 ---
 
@@ -158,5 +225,6 @@ status: implemented
 |---|---|
 | `expr love` | แสดงอารมณ์ (ผ่าน handler `set_expression` — ทดสอบได้ แม้โมเดลไม่เห็น tool นี้แล้ว) |
 | `say a ข้อความ` | ซับไตเติลทดสอบ |
+| `cardtest หัวข้อ\|บรรทัดใหญ่\|เนื้อหา` | การ์ดข้อความทดสอบ (T213: ทุกชุดอักษรที่จอแสดงได้) |
 | `ui tap x y` / `ui drag ...` / `ui open menu` / `ui type ...` | สั่ง UI โดยไม่ต้องแตะจอ |
 | `screenshot` | ส่ง frame RGB565 (ถ่ายระหว่างเฟรมใน UI task — ไม่ฉีก) · ดูสด + แตะจาก PC ได้ใน [[10-PC-Studio-App]] |

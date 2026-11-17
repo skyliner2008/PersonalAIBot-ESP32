@@ -11,8 +11,11 @@
 - 🖼️ = แสดงการ์ดบนจอ · ⏳ = ทำงานเบื้องหลัง (AI พูดต่อได้ระหว่างรอ แล้วตอบเมื่อข้อมูลมา)
 - ⚙️ = มีเฉพาะเมื่อเปิดใช้ / มีอุปกรณ์ (ไม่เปิด = ไม่ถูกประกาศ ไม่กินโทเคน)
 - พารามิเตอร์ **ตัวหนา** = ต้องใส่
+- 🧰 = อยู่ในกล่องเครื่องมือ `use_tool` บน ES3C28P + P4 (T209): `configure_assistant` `list_assistant_options` `configure_device` `control_led`
+  `convert_units` `get_world_time` `get_location` `position_size` + `market_signals` `day_trade` (S3, T211) + `live_translate` `meeting_notes` (T212) + `language_lesson` (T214) — พูดสั่งเหมือนเดิม, `tool <ชื่อ> <json>` ใช้ได้เหมือนเดิม,
+  เรียกแบบที่ AI เรียก: `tool use_tool {"name":"convert_units","args":"{\"value\":3,\"from\":\"ไร่\",\"to\":\"ตารางเมตร\"}"}`
 
-ES3C28P มีได้สูงสุด 49 tool (+ Google Search ถ้าเปิด `set search 1` และ API key มีสิทธิ์ใช้ Search) — บอร์ดอื่นดูตารางด้านล่าง
+ES3C28P มีได้สูงสุด 53 tool (+ Google Search ถ้าเปิด `set search 1` และ API key มีสิทธิ์ใช้ Search) — บอร์ดอื่นดูตารางด้านล่าง
 
 ### tool แยกตามบอร์ด (ตรวจจากซอร์ส 2026-11-15, T203)
 
@@ -74,7 +77,7 @@ Xmini-C3: `water` ต้องระบุจังหวัด, `market_sentime
 | Tool | ทำอะไร | พารามิเตอร์ |
 |---|---|---|
 | `set_timer` | นับถอยหลัง (บอร์ดส่งเสียงเมื่อครบ) | minutes, seconds, label |
-| `set_reminder` | เตือนตามเวลา / ปลุก | **when** (`YYYY-MM-DD HH:MM` / `HH:MM` / `tomorrow HH:MM`), **label**, repeat (none / daily / weekdays / weekly), ai_task **(P4, T160)** = งานให้ AI ทำเองเมื่อถึงเวลา (แทนเสียงกริ่ง) |
+| `set_reminder` | เตือนตามเวลา / ปลุก | **when** (`YYYY-MM-DD HH:MM` / `HH:MM` / `tomorrow HH:MM`), **label**, repeat (none / daily / weekdays / weekly), ai_task **(P4 T160, S3 T211)** = งานให้ AI ทำเองเมื่อถึงเวลา (แทนเสียงกริ่ง) |
 | `list_reminders` | ดูรายการที่ตั้งไว้ | – |
 | `cancel_reminder` | ยกเลิก | id หรือ all |
 | `background_task` **(P4, T160)** | งานหลายขั้นตอนทำเบื้องหลัง (ค้นหลายแหล่ง/หลายสินทรัพย์) ขณะคุยต่อได้ เสร็จแล้ว AI พูดสรุปให้ (1-3 นาที) | **action** (start / status / list / cancel), goal (start), id (status / cancel) |
@@ -134,6 +137,9 @@ Xmini-C3: `water` ต้องระบุจังหวัด, `market_sentime
 | `play_radio` | เปิดวิทยุ / เพลง MP3 จาก SD card | station (เลข / ชื่อ / แนว, ว่าง = สถานีล่าสุด), music (คำค้น / next / prev / random / `*`) |
 | `stop_radio` | ปิดวิทยุ | – |
 | `mute_microphone` | ปิดไมค์ (เปิดคืนได้ด้วยปุ่มไมค์บนจอเท่านั้น) | – |
+| `live_translate` 🧰 **(T212)** | โหมดล่าม: บอร์ดพูดคำแปลของทุกประโยคที่ได้ยิน (Gemini 3.5 Live Translate) — แตะจอ = สลับทิศ, "หยุดแปล" = กลับมาคุยกับผู้ช่วย | **target** (en / ja / zh / ko … หรือชื่อภาษา), from (ค่าปกติ th) |
+| `language_lesson` 🧰 **(T214)** | สอนภาษา: ผู้ช่วยเป็นครู บอร์ดเก็บคลังคำ + รอบทบทวน (1/2/4/8/16 วัน) + สถิติใน `agent/lang/<code>.json`, การ์ดคำศัพท์ (S3 แสดงตัวญี่ปุ่น/จีน/เกาหลี), ฝึกออกเสียงด้วย Gemini 3.5 Transcribe Live ให้คะแนนทีละประโยค, ฝึกฟัง (ซ่อนซับ) — "สอนภาษาญี่ปุ่นหน่อย", "ทบทวนคำศัพท์", "ฝึกออกเสียง" | **action** (start / show / review / drill / listen / progress / stop — ไม่ใส่ = เดาจาก argument), lang (ไม่ใส่ = ภาษาล่าสุด), text, reading, meaning, save, correct, items (drill: `text \| reading \| meaning` ต่อบรรทัด), on, level (A1–C2) |
+| `meeting_notes` 🧰 **(T212)** | จดประชุม / ถอดเสียงยาว (Gemini 3.5 Transcribe Live) ซับสดบนจอ เก็บไฟล์ใน `agent/meetings/` — "จบการประชุม" / แตะจอ = หยุด แล้วให้ AI สรุป | **action** (start / list / read), id (1 = ล่าสุด), part (read ไฟล์ยาว), words (start: คำเฉพาะ คั่นด้วย ,) |
 
 - 🗣️
   - "ตอนนี้กี่โมง" · "แบตเหลือเท่าไหร่"
@@ -257,16 +263,16 @@ Xmini-C3: `water` ต้องระบุจังหวัด, `market_sentime
 | Tool | ทำอะไร | พารามิเตอร์ |
 |---|---|---|
 | `market_overview` | ภาพรวม SET, S&P 500, Nasdaq, ทอง, WTI, BTC, USD/THB + Fear&Greed คริปโต | – |
-| `market_analysis` | วิเคราะห์เทคนิค RSI MACD Stoch EMA ADX + rating (gauge) | **symbol**, timeframe (15m / 1h / 4h / 1d / 1w / multi), fundamentals (P/E, P/BV, ปันผล), combined **(P4, T160)** = คำตัดสินรวม |
-| `market_scan` | สแกนหุ้น/คริปโต | **market** (thailand / america / crypto), **type** (gainers / losers / volume / oversold / overbought / squeeze / breakout **(P4, T160)**), limit 1-8 |
-| `market_chart` | กราฟแท่งเทียน แนวโน้ม แนวรับ/ต้าน EMA RSI MACD ATR Bollinger | **symbol**, timeframe (5m / 15m / 1h / 4h / 1d / 1w), compare (correlation ≤ 4 ตัว), view (chart / smc / signals / patterns **(P4)**) |
+| `market_analysis` | วิเคราะห์เทคนิค RSI MACD Stoch EMA ADX + rating (gauge) | **symbol**, timeframe (15m / 1h / 4h / 1d / 1w / multi), fundamentals (T211: มูลค่า หนี้ เงินสด margin ROE ราคาเป้า นักวิเคราะห์ — เงินเป็นสกุลของราคา), combined **(P4 T160, S3 T211)** = คำตัดสินรวม |
+| `market_scan` | สแกนหุ้น/คริปโต | **market** (thailand / america / crypto), **type** (gainers / losers / volume / oversold / overbought / squeeze / breakout **(P4 T160, S3 T211)**), limit 1-8 — คริปโตไม่รวม stablecoin (T211) |
+| `market_chart` | กราฟแท่งเทียน แนวโน้ม แนวรับ/ต้าน EMA RSI MACD ATR Bollinger | **symbol**, timeframe (5m / 15m / 1h / 4h / 1d / 1w), compare (correlation ≤ 4 ตัว), view (chart / smc / signals / patterns **(P4 T160, S3 T211)**) |
 | `market_sentiment` | อารมณ์ตลาด / เศรษฐกิจ | **topic** (stocks / crypto / economy), symbol |
-| `market_signals` **(P4, T160)** | สมุดบันทึกสัญญาณกลยุทธ์ + เฝ้ากราฟ (พูดเตือนเมื่อเกิดสัญญาณซื้อ/ขายใหม่) | **action** (stats / watch / unwatch / watches / export / import), symbol, timeframe (ค่าปกติ 1h), config (import) |
+| `market_signals` **(P4 T160; S3 🧰 T211)** | สมุดบันทึกสัญญาณกลยุทธ์ + เฝ้ากราฟ (พูดเตือนเมื่อเกิดสัญญาณซื้อ/ขายใหม่) | **action** (stats / watch / unwatch / watches / export / import), symbol, timeframe (ค่าปกติ 1h), config (import) |
 | `market_anticipation` **(T187, T188, T192)** | คาดการณ์ล่วงหน้าแบบเรียลไทม์ (T192: ราคาสดจากสตรีม TradingView, M1, เหตุการณ์ระหว่างแท่ง, ตัวตัดสินโมเดล Live — `config set judge=live\|text`; console `stream`): เฝ้ากราฟ M1–H4 ด้วย 62 ปัจจัย (ตรวจทุก 1 นาที) → ปลุก AI ตัดสินเองว่าควรพูดเตือนไหม (พร้อม SL + TP) → ติดตามผล + แดชบอร์ดสรุปสถิติ & แยกรายการแจ้ง/ข้ามผ่านปุ่ม 🔔 บนจอ | **action** (create / remove / list / scan / analyze / factors / config / learning / summary), symbol (สูงสุด 3 สินทรัพย์; remove: `all`), timeframe (5m / 15m / 1h / 4h, ค่าปกติ 15m), period (summary: today / 24h / 7d / 30d / all), delivery (ai / direct), factors (config: `A,B` = เปิดเฉพาะ; `+A,-B`), set (config: `hourly_budget=12,daily_budget=200,cooldown_bars=3,check_minutes=1`) |
 | `economic_calendar` | ปฏิทินข่าวเศรษฐกิจ (เวลาไทย) | range (today / tomorrow / week), impact (high / medium) |
 | `position_size` | คำนวณขนาด lot/หุ้นจากความเสี่ยง | **balance**, risk_percent (ค่าปกติ 1), **entry**, **stop_loss**, symbol, contract_size |
 | `price_alert` | แจ้งเตือนราคา / indicator (เช็คทุก 2 นาที แล้วพูดเตือน) | **action** (add / list / remove), symbol, above, below, id (-1 = ทั้งหมด), condition, timeframe |
-| `day_trade` **(P4, T151)** | เทรดรายวันจากแท่งเทียน TradingView: เบรกกรอบเปิดตลาด + แผนเข้า/ตัดขาดทุน/เป้า/จำนวน, ทดสอบย้อนหลัง + จำลอง, รูปแบบกราฟรายวัน — ไม่ส่งคำสั่งซื้อขาย | action (**orb** / backtest / setups), symbol, symbols (setups ≤ 8), or_minutes (15), stop (or_mid / or_range / pct:X / atr:K), target_r (2), side (long / short / both), account, risk_percent (1) |
+| `day_trade` **(P4 T151; S3 🧰 T211)** | เทรดรายวันจากแท่งเทียน TradingView: เบรกกรอบเปิดตลาด + แผนเข้า/ตัดขาดทุน/เป้า/จำนวน, ทดสอบย้อนหลัง + จำลอง, รูปแบบกราฟรายวัน — ไม่ส่งคำสั่งซื้อขาย | action (**orb** / backtest / setups), symbol, symbols (setups ≤ 8), or_minutes (15), stop (or_mid / or_range / pct:X / atr:K), target_r (2), side (long / short / both), account, risk_percent (1) |
 
 **`market_chart` view**
 - `chart` (ค่าปกติ, 1d) — กราฟแท่งเทียน + indicator
@@ -276,11 +282,11 @@ Xmini-C3: `water` ต้องระบุจังหวัด, `market_sentime
   Elliott (ช่วงคลื่น 1-5 / ABC), คะแนนรวม deep analysis (squeeze, โมเมนตัม, แรงซื้อขาย, ตำแหน่ง Fibonacci, ADX) −100…100
 - P4 แสดงการ์ดแท่งเทียนแบบโฮโลแกรม (60 แท่ง + EMA + แนวรับ/ต้าน; view smc วาดโซน OB/FVG ด้วย)
 
-**`market_scan` type ใหม่ (P4, T160)**
+**`market_scan` type ใหม่ (P4 T160, S3 T211)**
 - `squeeze` — Bollinger แคบสุด (60 ตัวที่วอลุ่มสูงสุด เรียงตามความกว้าง BB %)
 - `breakout` — วอลุ่มเทียบค่าเฉลี่ย 10 วัน > 2 เท่า + ขึ้น > 3% + ปิดเหนือ SMA20
 
-**`market_analysis` combined (P4, T160)** — รวมคะแนน: rating เทคนิค 40% + หลายกรอบเวลา 25% + อารมณ์ตลาด 15%
+**`market_analysis` combined (P4 T160, S3 T211)** — รวมคะแนน: rating เทคนิค 40% + หลายกรอบเวลา 25% + อารมณ์ตลาด 15%
 (คริปโต = Fear&Greed, อื่นๆ = VIX) + โทนข่าว 7 วัน (Google News) 20% → ซื้อ / ขาย / รอ
 
 **`market_signals`** — ไฟล์ใน SD `agent/`: `signals.jsonl` (สัญญาณที่บันทึก), `signal_watch.json` (เฝ้า ≤ 6 กราฟ),

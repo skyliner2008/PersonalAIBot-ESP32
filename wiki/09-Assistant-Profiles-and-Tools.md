@@ -104,6 +104,28 @@ status: implemented
   พร้อมตัวอย่าง — ข้อยกเว้นของการตอบสั้น, ไม่อ่านชื่อ tool; T098) · รายการชั่วคราวสร้างใน PSRAM (T098)
   · ผล ~5 KB (ส่งเฉพาะตอนเรียก) · คำประกาศ +~200 ไบต์/เทิร์น · **เพิ่ม tool ใหม่:** ประกาศใต้ `group(...)` ที่เหมาะสมใน `AgentTools::addDeclarations` แค่นั้น
 - คำอธิบาย tools เป็นภาษาอังกฤษแบบสั้น (≈6 KB JSON ≈ 1.6k tokens) เพราะถูกนับทุก turn
+- **กล่องเครื่องมือ `use_tool` (T209, ES3C28P + ESP32-P4):** tool ที่ใช้ไม่บ่อยไม่ถูกประกาศทีละตัว แต่เป็น 1 บรรทัดในคำอธิบายของ `use_tool`
+  รูปแบบ `name(arg, opt?, num#, pick=a|b): description` สร้างจากตาราง `Param` ชุดเดียวกับ `declare()` → ย้าย tool เข้า/ออกกล่อง = เปลี่ยน
+  `declare(` เป็น `box(` คำเดียว (handler / งานเว็บเดิมทำงานเหมือนเดิม) · AI เรียก `use_tool {"name": "...", "args": "<JSON>"}` → บอร์ดแกะออก
+  (`AgentTools::unbox`) แล้วส่งต่อแบบเรียกตรง (ในบอร์ด หรือ task webTools) และตอบกลับในชื่อ `use_tool` (งานเว็บจำ id ไว้ใน `_boxedToolIds`)
+  · `args` รับได้ทั้ง JSON string, object, อาร์กิวเมนต์วางข้าง `name`, `{'a': 1}` และ `key=value, key: value`
+  · เรียกผิด (args ผิด / ค่าไม่ถูก) ได้ `usage` = บรรทัดเต็ม **พร้อมคำอธิบายพารามิเตอร์** (ในรายการปกติตัดออกเพื่อประหยัด)
+  · เรียก tool ที่ประกาศปกติผ่าน `use_tool` = error "call it directly" (กันกรณีพิเศษอย่าง `vehicle scan` ที่ตอบทีหลัง)
+  · 3.8 Live: `use_tool` = `NON_BLOCKING` + `WHEN_IDLE` (อยู่ในรายการ background — tool ในกล่องอาจเป็นงานดึงเน็ต)
+  · console `tools` / แท็บ 🧰 ของ Studio / `background_task` (P4) ได้ทุก tool เป็นคำประกาศเต็ม (`addDeclarations(..., expandBox = true)`, ติด `"boxed": true` —
+  P4 ลบ field นี้ก่อนส่งให้โมเดลข้อความ) · `tool use_tool {...}` ใน console ทำงานเหมือน AI เรียก
+  · about_me ยังเห็น tool ในกล่องในหมวดเดิม (`box()` เรียก `addAbility`)
+  · **ในกล่องตอนนี้ (8 ตัว S3 / 7 ตัว P4):** `configure_assistant` `list_assistant_options` `configure_device` `control_led` (S3) `convert_units`
+  `get_world_time` `get_location` `position_size` · คำประกาศ S3 (host test, Search เปิด): **18,074 → 16,471 ไบต์** (−1,603) — บรรทัดในกล่อง ~140 ไบต์/ตัว
+  เทียบกับประกาศเต็ม ~420 ไบต์/ตัว → tool ใหม่ใส่กล่องได้ ~1 ใน 3 ของราคา
+  · **T211 / T212:** + `market_signals` `day_trade` (S3) + `live_translate` `meeting_notes` (ทั้งสองบอร์ด) → **12 ตัว S3 / 9 ตัว P4** ·
+  คำประกาศ S3 17,741 ไบต์ (ยังต่ำกว่า 18,074 ก่อนมีกล่อง; ประกาศเต็มทุกตัว = 21,798) · P4 (3.8 Live) ตอบ "พร้อมเป็นล่ามแล้ว"
+  โดยไม่เรียก tool จนกว่า prompt จะบอกชัดว่า "เรียก use_tool live_translate ทุกครั้ง … ห้ามตอบว่าพร้อมแล้วโดยไม่เรียก"
+  · **T214:** + `language_lesson` (ทั้งสองบอร์ด) → **13 ตัว S3 / 10 ตัว P4** · คำประกาศ S3 18,032 ไบต์ (ยังต่ำกว่า 18,074) ·
+  3.1 Flash เรียกผ่านกล่องโดย**ไม่ใส่ `action`** บ่อย → handler เดาจาก argument ที่ส่งมา (สอนภาษา: [[11-Data-Tools-and-Cards#สอนภาษา — `language_lesson` 🧰 (T214, S3 + P4)]])
+  · **ทดสอบบนบอร์ดจริง (2026-11-16):** S3 (gemini-3.1-flash-live) 5/5 เรียกผ่านกล่องถูก (แปลงหน่วย, เวลาโตเกียว, ตำแหน่ง, position size, ตัวเลือกนิสัย) ·
+  P4 (gemini-3.8-live) 3/3 — ครั้งแรกส่ง args ไม่ใช่ JSON ต้องถามซ้ำ 1 รอบ → เพิ่มตัวอ่าน `key=value` · ไม่พูดชื่อ tool ออกเสียง ·
+  ผู้ใช้สั่งด้วยเสียงบน S3: 3 tool ในประโยคเดียว ตอบถูกทั้ง 3 อย่าง
 - **behavior ตามโมเดล:** 3.8 Live = `BLOCKING` (ยกเว้น `set_expression` = `NON_BLOCKING` + `scheduling: SILENT` — field ของ FunctionResponse ข้าง `response`, ใส่ใน `response` แล้วโมเดลพูดซ้ำ 2 รอบ T071), 3.8 Extended Thinking = `NON_BLOCKING` ทั้งหมด (BLOCKING = hard error), 3.1 Flash Live = ไม่ใส่ field
 - **การแจ้งเตือน:** ถึงเวลา → เสียงกริ๊ง 2 โน้ตทุก 2.5 วิ (สูงสุด 30 วิ หรือจนแตะจอ), ตาตกใจ, ข้อความบนจอ และส่ง `clientContent` "[แจ้งเตือนจากระบบ] ..." ให้ผู้ช่วยพูดบอก; ถ้ากำลังพักจะตื่นเอง
 - ไฟล์: `agent/reminders.json`, `agent/tasks.json` (เขียนแบบ atomic ผ่าน `.tmp`)

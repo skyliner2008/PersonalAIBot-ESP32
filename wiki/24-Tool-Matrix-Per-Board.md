@@ -19,6 +19,10 @@ status: active
 | ⚠️ | มี แต่ใช้ได้บางส่วน (ดูหมายเหตุ) |
 | ⚙️ | ประกาศให้ AI เฉพาะเมื่อตั้งค่า / เชื่อมต่อแล้ว |
 | ❌ | ไม่มีบนบอร์ดนี้ |
+| 🧰 | อยู่ใน "กล่องเครื่องมือ" `use_tool` (T209, ES3C28P + P4): ไม่ประกาศทีละตัว AI เรียกผ่าน `use_tool {name, args}` — ทำงานเหมือนเดิม ([[09-Assistant-Profiles-and-Tools]]) |
+
+> **T209 / T211 / T212 / T214:** จำนวนในตารางนับ tool ที่ AI ใช้ได้ (รวมในกล่อง) — สิ่งที่ส่งใน setup จริงของ ES3C28P คือ 42 คำประกาศ (54 − 13 ในกล่อง + `use_tool`),
+> P4 คือ 46 (55 − 10 + 1) · console `tools` แสดงทุกตัวแบบประกาศเต็ม (ตัวในกล่องติด `"boxed": true`)
 
 > **ES3C35P (จอ 3.5", T205):** ซอร์สเดียวกับ ES3C28P → tool ชุดเดียวกับคอลัมน์ ES3C28P ทุกตัว (49) — ยังไม่ได้ทดสอบบนบอร์ดจริง · [[25-ES3C35P-3.5inch]]
 
@@ -47,7 +51,7 @@ status: active
 | 6 | `recall_conversation` | ค้นบทสนทนาเก่า | ✅ | ✅ | ✅ | ✅ |
 | | **ตัวจับเวลา / เตือน** | | | | | |
 | 7 | `set_timer` | นับถอยหลัง | ✅ | ✅ | ✅ | ✅ |
-| 8 | `set_reminder` | เตือนตามเวลา / ปลุก (P4: `ai_task` ให้ AI ทำงานเอง) | ✅ | ✅ | ✅ | ✅ |
+| 8 | `set_reminder` | เตือนตามเวลา / ปลุก (S3 + P4: `ai_task` ให้ AI ทำงานเอง — S3 ตั้งแต่ T211) | ✅ | ✅ | ✅ | ✅ |
 | 9 | `list_reminders` | ดูรายการเตือน | ✅ | ✅ | ✅ | ✅ |
 | 10 | `cancel_reminder` | ยกเลิกเตือน | ✅ | ✅ | ✅ | ✅ |
 | 11 | `background_task` | งานหลายขั้นตอนทำเบื้องหลัง | ❌ | ✅ ¹ | ❌ | ❌ |
@@ -58,13 +62,13 @@ status: active
 | | **ตัว AI / จอ / เสียง** | | | | | |
 | 15 | `get_device_status` | วันเวลา แบต Wi-Fi การตั้งค่า | ✅ | ✅ | ✅ | ✅ |
 | 16 | `set_expression` | แสดงอารมณ์ทางดวงตา | ❌ ² | ✅ | ❌ ² | ❌ ² |
-| 17 | `configure_assistant` | เปลี่ยนโปรไฟล์ เสียง นิสัย ชื่อ สีตา | ☑️ | ☑️ | ☑️ | ☑️ |
-| 18 | `list_assistant_options` | ดูตัวเลือกโปรไฟล์ / เสียง / นิสัย / สีตา | ✅ | ✅ | ✅ | ✅ |
+| 17 | `configure_assistant` | เปลี่ยนโปรไฟล์ เสียง นิสัย ชื่อ สีตา | ☑️ 🧰 | ✅ 🧰 | ☑️ | ☑️ |
+| 18 | `list_assistant_options` | ดูตัวเลือกโปรไฟล์ / เสียง / นิสัย / สีตา | ✅ 🧰 | ✅ 🧰 | ✅ | ✅ |
 | 19 | `set_volume` | ความดังวิทยุ | ☑️ | ☑️ | ☑️ | ☑️ |
 | 20 | `set_brightness` | ความสว่างจอ | ☑️ | ☑️ | ☑️ | ☑️ |
-| 21 | `configure_device` | ไวไมค์ เวลาหลับเอง หน้านาฬิกา | ☑️ | ☑️ | ☑️ | ☑️ |
+| 21 | `configure_device` | ไวไมค์ เวลาหลับเอง หน้านาฬิกา | ☑️ 🧰 | ☑️ 🧰 | ☑️ | ☑️ |
 | 22 | `rest_screen` | พักหน้าจอ (นาฬิกาหรี่) | ☑️ | ☑️ | ☑️ | ☑️ |
-| 23 | `control_led` | ไฟ RGB | ✅ | ❌ ³ | ✅ | ❌ ³ |
+| 23 | `control_led` | ไฟ RGB | ✅ 🧰 | ❌ ³ | ✅ | ❌ ³ |
 | 24 | `go_to_sleep` | หลับหลังตอบจบ | ☑️ | ✅ | ☑️ | ✅ |
 | 25 | `play_radio` | วิทยุ / เพลง MP3 จาก SD | ☑️ | ☑️ | ☑️ | ❌ ⁴ |
 | 26 | `stop_radio` | ปิดวิทยุ | ✅ | ✅ | ✅ | ❌ ⁴ |
@@ -83,26 +87,30 @@ status: active
 | 37 | `get_news` | พาดหัวข่าว | ✅ | ✅ | ✅ | ✅ |
 | | **เครื่องมือทั่วไป** | | | | | |
 | 38 | `calculate` | เครื่องคิดเลข | ✅ | ✅ | ✅ | ✅ |
-| 39 | `convert_units` | แปลงหน่วย (ไร่ บาททอง ...) | ✅ | ✅ | ✅ | ✅ |
-| 40 | `get_world_time` | เวลาเมืองอื่น | ✅ | ✅ | ✅ | ✅ |
-| 41 | `get_location` | ตำแหน่งโดยประมาณจาก IP | ✅ | ✅ | ✅ | ✅ |
+| 39 | `convert_units` | แปลงหน่วย (ไร่ บาททอง ...) | ✅ 🧰 | ✅ 🧰 | ✅ | ✅ |
+| 40 | `get_world_time` | เวลาเมืองอื่น | ✅ 🧰 | ✅ 🧰 | ✅ | ✅ |
+| 41 | `get_location` | ตำแหน่งโดยประมาณจาก IP | ✅ 🧰 | ✅ 🧰 | ✅ | ✅ |
 | 42 | `search_knowledge` | สรุปจาก Wikipedia | ✅ | ✅ | ✅ | ✅ |
 | 43 | `notes` | สมุดโน้ต | ✅ | ✅ | ✅ | ✅ |
 | | **น้ำ (`set water 1`)** | | | | | |
 | 44 | `water` | ระดับน้ำ ฝน พายุ (ThaiWater) | ✅ | ⚠️ ¹⁰ | ⚠️ ¹⁰ | ⚠️ ¹¹ |
 | | **การเงิน (`set finance 1`, TradingView อ่านอย่างเดียว)** | | | | | |
 | 45 | `market_overview` | ภาพรวมตลาด | ✅ | ✅ | ✅ | ✅ |
-| 46 | `market_analysis` | วิเคราะห์เทคนิค (P4: `combined`) | ✅ | ✅ | ✅ | ✅ |
-| 47 | `market_scan` | สแกนหุ้น / คริปโต (P4: squeeze / breakout) | ✅ | ✅ | ✅ | ✅ |
-| 48 | `market_chart` | กราฟแท่งเทียน SMC สัญญาณ (P4: patterns) | ✅ | ✅ | ✅ | ✅ |
+| 46 | `market_analysis` | วิเคราะห์เทคนิค + ปัจจัยพื้นฐานครบชุด (T211) + `combined` (S3 + P4) | ✅ | ✅ | ✅ | ✅ |
+| 47 | `market_scan` | สแกนหุ้น / คริปโต (S3 + P4: squeeze / breakout) | ✅ | ✅ | ✅ | ✅ |
+| 48 | `market_chart` | กราฟแท่งเทียน SMC สัญญาณ (S3 + P4: patterns) | ✅ | ✅ | ✅ | ✅ |
 | 49 | `market_sentiment` | กลัว/โลภ หุ้น คริปโต เศรษฐกิจ | ✅ | ✅ | ✅ | ⚠️ ¹² |
-| 50 | `market_signals` | สมุดสัญญาณกลยุทธ์ + เฝ้ากราฟ | ❌ | ✅ | ❌ | ❌ |
+| 50 | `market_signals` | สมุดสัญญาณกลยุทธ์ + เฝ้ากราฟ | ✅ 🧰 | ✅ | ❌ | ❌ |
 | 51 | `market_anticipation` | คาดการณ์ล่วงหน้าแบบเรียลไทม์ | ✅ ¹³ | ✅ ¹³ | ❌ | ❌ |
 | 52 | `economic_calendar` | ปฏิทินข่าวเศรษฐกิจ | ✅ | ✅ | ✅ | ✅ |
-| 53 | `position_size` | คำนวณขนาด lot / หุ้น | ✅ | ✅ | ✅ | ✅ |
-| 54 | `day_trade` | เทรดรายวัน (ORB / backtest / setups) | ❌ | ✅ | ❌ | ❌ |
+| 53 | `position_size` | คำนวณขนาด lot / หุ้น | ✅ 🧰 | ✅ 🧰 | ✅ | ✅ |
+| 54 | `day_trade` | เทรดรายวัน (ORB / backtest / setups) | ✅ 🧰 | ✅ | ❌ | ❌ |
 | 55 | `price_alert` | แจ้งเตือนราคา / indicator | ✅ | ✅ | ✅ | ✅ |
-| | **รวมสูงสุดที่ประกาศได้** | | **49** | **52** | **47** | **44** |
+| | **โหมดโมเดล 3.5 (T212)** | | | | | |
+| 56 | `live_translate` | ล่ามแปลภาษาสด (Gemini 3.5 Live Translate) | ☑️ 🧰 ¹⁴ | ☑️ 🧰 ¹⁴ | ❌ | ❌ |
+| 57 | `meeting_notes` | จดประชุม / ถอดเสียง (Gemini 3.5 Transcribe Live) + อ่านกลับให้ AI สรุป | ☑️ 🧰 ¹⁴ | ☑️ 🧰 ¹⁴ | ❌ | ❌ |
+| 58 | `language_lesson` | สอนภาษา: คลังคำ + ทบทวนตามรอบ + ฝึกออกเสียง (Transcribe Live ให้คะแนน) (T214) | ✅ 🧰 ¹⁵ | ✅ 🧰 ¹⁵ | ❌ | ❌ |
+| | **รวมสูงสุดที่ประกาศได้** | | **54** | **55** | **47** | **44** |
 
 **หมายเหตุ**
 
@@ -119,30 +127,32 @@ status: active
 11. Xmini-C3 ต้องระบุจังหวัด (ข้อมูลทั้งประเทศ 4.8 MB เกิน RAM — AI จะถามจังหวัด) + หมายเหตุ 10
 12. Xmini-C3 ไม่มีหัวข้อ `stocks` (ต้องใช้ ~120 KB) — แนะนำ `get_market_quote TVC:VIX` แทน; `crypto` / `economy` ใช้ได้
 13. ทดสอบ `list` / `factors` / `summary` / `scan` — `create` / `remove` / `config` ไม่ได้ลอง (มีรายการเฝ้าทองของผู้ใช้อยู่บน P4)
+14. T212: ทดสอบ setup ทั้งสองโมเดล, สลับทิศ, หยุด, `list` / `read` และ `ask` ให้ AI เรียกเอง — **ยังไม่ได้ลองพูดจริง** (คุณภาพแปล / ซับบนจอ)
+15. T214: ทดสอบทุก action จาก console + `ask` (เริ่ม / ทบทวน / ฝึกออกเสียง / ฝึกฟัง / จบ) และ drill ครบวงจรด้วย `live heard` บนทั้งสองบอร์ด — ฝึกออกเสียง**ยังไม่ได้ลองพูดจริง** · P4 แสดงคำอ่านแทนตัวญี่ปุ่น/จีน/เกาหลี
 
 ---
 
 ## รายการแยกบอร์ด
 
-### ES3C28P (ESP32-S3) — 49
+### ES3C28P (ESP32-S3) — 54
 
-- **มีทุกครั้ง (47):** about_me · save_memory · save_relation · recall_memory · forget_memory · recall_conversation · set_timer · set_reminder · list_reminders · cancel_reminder ·
+- **มีทุกครั้ง (52):** about_me · save_memory · save_relation · recall_memory · forget_memory · recall_conversation · set_timer · set_reminder · list_reminders · cancel_reminder ·
   add_task · list_tasks · update_task · get_device_status · configure_assistant · list_assistant_options · set_volume · set_brightness · configure_device · rest_screen ·
   control_led · go_to_sleep · play_radio · stop_radio · mute_microphone · vehicle · get_weather · get_oil_price · get_market_quote · convert_currency · get_news ·
   calculate · convert_units · get_world_time · get_location · search_knowledge · notes · water ᵂ · market_overview ᶠ · market_analysis ᶠ · market_scan ᶠ ·
-  market_chart ᶠ · market_sentiment ᶠ · economic_calendar ᶠ · position_size ᶠ · price_alert ᶠ · market_anticipation ᶠ
+  market_chart ᶠ · market_sentiment ᶠ · economic_calendar ᶠ · position_size ᶠ · price_alert ᶠ · market_anticipation ᶠ · market_signals ᶠ · day_trade ᶠ (T211) · live_translate · meeting_notes (T212) · language_lesson (T214)
 - **เมื่อตั้งค่า / เชื่อมต่อ (2):** device (devices.json) · navigate (จับคู่มือถือ)
-- ไม่มี: set_expression · background_task · camera · modbus · market_signals · day_trade
+- ไม่มี: set_expression · background_task · camera · modbus
 
-### ESP32-P4 (JC4880P443C) — 52
+### ESP32-P4 (JC4880P443C) — 55
 
-- **มีทุกครั้ง (49):** ชุดเดียวกับ ES3C28P ยกเว้น `control_led` / `vehicle` + เพิ่ม `set_expression` · `background_task` · `market_signals` ᶠ · `day_trade` ᶠ
+- **มีทุกครั้ง (52):** ชุดเดียวกับ ES3C28P ยกเว้น `control_led` / `vehicle` + เพิ่ม `set_expression` · `background_task`
 - **เมื่อตั้งค่า / เชื่อมต่อ (3):** device (devices.json) · camera (เจอกล้องตอนบูต) · modbus (ตั้ง RS485)
 - ไม่มี: control_led · vehicle · navigate (ถอดออก T151)
 
 ### XH-S3E-AI (ESP32-S3 mini, OLED) — 47
 
-- **มีทุกครั้ง (45):** ชุดเดียวกับ ES3C28P ยกเว้น `vehicle` และ `market_anticipation`
+- **มีทุกครั้ง (45):** ชุดเดียวกับ ES3C28P ก่อน T211 ยกเว้น `vehicle` และ `market_anticipation` (ไม่มี market_signals · day_trade · live_translate · meeting_notes · language_lesson)
 - **เมื่อตั้งค่า / เชื่อมต่อ (2):** device · navigate
 - ไม่มี: vehicle · market_anticipation · set_expression · background_task · camera · modbus · market_signals · day_trade
 
@@ -162,8 +172,9 @@ status: active
 ## วิธีตรวจซ้ำ
 
 ```
-tools                                  # รายการที่ประกาศจริงตอนนี้ (JSON)
+tools                                  # รายการที่ใช้ได้ตอนนี้ (JSON, ตัวในกล่องติด "boxed": true)
 tool <ชื่อ> <json>                     # เรียก tool ตรงๆ เช่น tool get_weather {"location":"เชียงใหม่"}
+tool use_tool {"name":"get_world_time","args":"{\"city\":\"Tokyo\"}"}   # เรียกผ่านกล่องแบบที่ AI เรียก (T209)
 ```
 
 - Xmini-C3: สั่ง `sleep` ก่อนทดสอบ tool ข้อมูลสดจาก console (RAM ไม่พอเปิด TLS สายที่สองข้าง session ของ Gemini)
