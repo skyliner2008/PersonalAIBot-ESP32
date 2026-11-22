@@ -31,7 +31,8 @@ status: built (env watcher) — NOT yet run on a board; screen / touch / knob / 
 | I2C1 (ทัช) | **SDA 39 / SCL 38**: ทัช SPD2010 **0x53** · INT = expander P0.5 (ไม่ใช้ — อ่านแบบ poll) |
 | I2S (standard 16-bit stereo, 24 kHz, MCLK 256 fs) | MCLK 10, BCLK 11, WS 12, **DOUT 16** → ES8311, **DIN 15** ← ES7243E (ไมค์ = ช่อง**ขวา**) |
 | แอมป์ลำโพง | expander **P1.4** (เปิดตอนบูต) |
-| Knob | A **41**, B **42** (pull-up) · ปุ่มกด = expander **P0.3** (LOW = กด) |
+| Knob | A **41**, B **42** (ไม่มี pull-up บนบอร์ด — ใช้ของในชิป) · ปุ่มกด = expander **P0.3** (LOW = กด) |
+| USB | Type-C → **CH342** → UART0 (TX 43 / RX 44) = console + แฟลช (T235) · USB ในตัว S3 ไม่ได้ต่อออก |
 | SD (ต่อแบบ SPI บน SPI2) | CLK 4, MOSI 5, MISO 6, CS **46** → ใช้ SDMMC 1-bit (CLK 4 / CMD 5 / D0 6, D3=CS ยก HIGH) · Himax ใช้ 4/5/6 ร่วม (CS 21 ยก HIGH) |
 | แบต | ADC **GPIO 3** ผ่าน 62k/20k (**×4.1**) — ตัวแบ่งแรงดันเปิดด้วย expander P1.7 · ชาร์จ = expander P0.0 (LOW) |
 | RGB LED | **40** (WS2813-mini) |
@@ -69,6 +70,28 @@ P1.4 แอมป์ · P1.6 Grove · P1.7 ตัวแบ่งแรงดั�
   ทั้งหมดทดสอบกับบอร์ดจำลองเท่านั้น (wiki 17)
 - **สแกนบอร์ดของลูกค้า:** ให้ลูกค้ากด 🔍 สแกนบอร์ด แล้วส่งรายงาน (บรรทัด `i2c: sda47 scl48: 14 18 21` ฯลฯ) มาตรวจก่อน + สำรอง flash 32 MB ไว้ก่อนแฟลช
 
+## ผลสแกนบอร์ดจริงของลูกค้า (T235, 2026-11-22, Flasher 2.2.6)
+
+บอร์ดมี xiaozhi 2.5.2 (SKU sensecap-watcher) ต่อ USB ผ่าน **CH342 (1A86:55D2)** ไม่ใช่ USB ในตัว S3 · ESP32-S3 (QFN56) rev v0.2 ·
+flash 32 MB Winbond (JEDEC ef 40 19) · PSRAM 8 MB octal 3.3 V — ตรงกับ build `watcher` (qio_opi, ใช้ flash 16 MB ล่าง)
+
+| ผลสแกน | เทียบกับเฟิร์มแวร์ |
+|---|---|
+| pull-up: 0, 2, 4, 5, 17, 18, 39, 40, 47, 48 | ✔ BOOT 0 · INT expander 2 · SD/Himax CLK 4 / MOSI 5 · Grove UART 17/18 · ทัช SDA 39 · LED 40 · I2C0 47/48 |
+| ถูกดึงลง: 15, 38 | ✔ 15 = DIN ของ ES7243E (ชิปขับต่ำ) · 38 = SCL ทัช — ⚠ อ่านได้ต่ำทั้งที่ SDA 39 สูง: ทัชอาจไม่ตอบ (xiaozhi ก็ไม่เปิดทัช) ใช้ knob แทนได้ |
+| ไม่มีอะไรดึง: 41, 42 | ✔ knob ไม่มีตัวต้านทานบนบอร์ด — เฟิร์มแวร์เปิด pull-up ในชิปเอง (`INPUT_PULLUP`) |
+| ไม่มีอะไรดึง: 1, 7, 9, 13, 14, 45, 8, 10–12, 16, 3, 21, 46, 6 | ✔ จอ QSPI / ไฟจอ / I2S / ADC แบต / CS Himax / SD (CS 46 เฟิร์มแวร์ยก HIGH, D0 ใช้ pull-up ในชิปของ SDMMC) |
+| xiaozhi log `IO expander initialized: ffd9` (เสียบ USB) | port 0 = `0xD9`: P0.2 VBUS = **0 ทั้งที่เสียบ USB** → VBUS_IN_DET **active LOW** (xiaozhi: ชาร์จ = VBUS == 0) · CHRG 1 / STDBY 0 = แบตเต็ม · knob 1 = ไม่กด |
+
+**แก้ตามผลสแกน (T235):**
+- **Console = UART0 ผ่าน CH342** (`-DARDUINO_USB_CDC_ON_BOOT=0` เฉพาะ env `watcher`) — เดิมใช้ USB CDC ของ S3 ซึ่งไม่ได้ต่อออกช่อง Type-C:
+  Studio / Flasher / แอปมือถือจะไม่เห็น log และตั้ง Wi-Fi / API key ผ่านสายไม่ได้ · 115200 เหมือนทุกแอป · บัฟเฟอร์รับ 12 KB ตั้งแต่บูต
+  (UART ขยายตอนรันไม่ได้ — อัปโหลดเพลงใช้ได้) · แคปจอ 115 KB ที่ 115200 ใช้ ~10 วิ · การเปิดพอร์ตอาจรีสตาร์ตบอร์ด (วงจร auto-reset DTR/RTS)
+- **`Tca9555::usbPower()` กลับขั้ว** (LOW = มี USB) และใช้เป็น "เสียบสาย" ของตัววัดแบต (เดิมใช้ `HWCDC::isPlugged()` ซึ่งไม่มีทางรู้บนบอร์ดนี้)
+- **Flasher .exe 2.2.8:** สแกน I2C ลองคู่ขาของบอร์ดเราก่อน — ผ่าน CH342 คู่ละ ~1.5 วิ (USB ในตัว ~130 ms) 30 วิหมดที่ 19/90 คู่
+  ก่อนถึง 47/48 เลยรายงาน "ไม่พบ I2C / ขาไม่ตรงบอร์ดที่รองรับ" · ทดสอบ `ASlowLinkStillReachesTheWatchersBusFirst` (ตกกับลำดับเดิม)
+- ยังช้า: Flasher คุย ROM ที่ 115200 เสมอ (บอร์ด USB ในตัวไม่สนความเร็ว) → แฟลชผ่าน CH342 ช้ากว่าบอร์ดอื่นมาก (ยังไม่ได้เพิ่ม CHANGE_BAUDRATE)
+
 ## Console เฉพาะบอร์ด
 
 - `knob` — ตัวนับขอบ quadrature ดิบ, ระดับขา A/B, ปุ่ม, อินพุต expander (P0/P1), ชาร์จ, VBUS → ใช้ปรับ `kKnobEdgesPerStep` / ทิศหมุน
@@ -80,6 +103,6 @@ P1.4 แอมป์ · P1.6 Grove · P1.7 ตัวแบ่งแรงดั�
 2. ทัชตอบไหม (log `[Touch] SPD2010 (0x53) found`) — แกน x/y ตรงไหม
 3. ทิศหมุนของ knob (ตามเข็ม = เพิ่ม/ลด?) และ 4 ขอบ/คลิก ถูกไหม (`knob`)
 4. ไมค์อยู่ช่องไหน (`audio`), ระดับเสียงลำโพง, echo
-5. ขั้วของ CHRG_DET / VBUS_IN_DET (P0.0 / P0.2) และตัวคูณแบต 4.1 เทียบมิเตอร์
+5. ~~ขั้ว VBUS_IN_DET~~ (T235: LOW = มี USB จาก log xiaozhi) · ขั้ว CHRG_DET ขณะกำลังชาร์จจริง และตัวคูณแบต 4.1 เทียบมิเตอร์
 6. ปิดเครื่องบนแบต (ตัด SYSTEM) และปลุกจาก deep sleep บน USB
 7. สำรองเฟิร์มแวร์เดิมของ Seeed ก่อนแฟลช: `esptool --chip esp32s3 read_flash 0 0x2000000 watcher-factory-32MB.bin`

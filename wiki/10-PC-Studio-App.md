@@ -86,6 +86,8 @@ SmartScreen ถามครั้งแรก: *More info → Run anyway* เพ
   `EspLoader.kt` / `FlashJob.kt` ของแอปมือถือ) · tests: `python tools/pc_app/test_esp_flash.py` (ROM จำลอง 13 ข้อ + `REAL_RELEASE_DIR=dist` ไฟล์ release จริง 4 บอร์ด)
 - ลองจริง: ES3C28P (COM3) อัปเดต v4.9.6 ~50 วิ ทั้งจากสคริปต์และปุ่มใน Studio → บูตกลับ v4.9.6 การตั้งค่า (Wi-Fi / API key) ครบ ·
   ยังไม่ได้ลอง: บอร์ดเปล่า (factory), P4, บอร์ด mini
+- **T234: ลบ + เขียน + ตรวจ MD5 ทีละ 1 MB** (`Loader.write_flash` → `_write_piece`, `WRITE_CHUNK`) — เดิม ROM ลบทั้งก้อนก่อนตอบ: factory P4 15.8 MB แถบนิ่ง 0 % 34 วิ ดูเหมือนค้าง ·
+  สถานะ "กำลังลบ + เขียน … ราว N นาที — ห้ามถอดสาย" · ลองบน P4 จริง (app1 ที่ไม่ได้รัน): แถบขยับวินาทีที่ 3, 6.4 MB 63 วิ · [[17-Mobile-Flasher]]
 
 ### จากซอร์สโค้ด (มี Python)
 
