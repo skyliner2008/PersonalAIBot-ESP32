@@ -16,6 +16,7 @@ This page documents common issues encountered during development and their solut
 
 | # | Issue | Category | Status |
 |---|-------|----------|--------|
+| T237 | [[#T237 การ์ด SD 128 GB (exFAT) บอร์ดมองไม่เห็น + Flasher ตรวจการ์ด / ปุ่มฟอร์แมต]] | storage / Flasher | ✅ เฟิร์มแวร์ S3 + P4 + .exe 2.2.9 / .apk 2.1.8 (build + tests ผ่าน) · ⚠ ยังไม่ได้ลองกับการ์ด exFAT บนบอร์ดจริง |
 | T235 | [[#T235 SenseCAP Watcher ของลูกค้า: สแกนแล้วไม่พบ I2C + console อยู่ผิดพอร์ต (CH342) + ขั้ว VBUS กลับ]] | board / Flasher | ✅ แก้ในโค้ด (build ผ่าน) — ยังไม่ได้ลองบนบอร์ดจริง (เป็นของลูกค้า) · Flasher .exe 2.2.8 |
 | T234 | [[#T234 P4 ถอดการ์ด SD แล้วต่อ Wi-Fi / ใช้ API key ไม่ได้ ตั้งรหัสจากบอร์ดไม่ได้ หุ่น 3D หาย + Flasher ติดตั้งใหม่ทั้งหมดเหมือนค้าง]] | P4 / settings / UI / Flasher | ✅ แก้แล้ว — P4 แฟลช + ตรวจบนบอร์ดจริง (ดวงตา, factory install ด้วยโค้ด Flasher 175 วิ, เขียนทีละ 1 MB) · Flasher .exe 2.2.7 / .apk 2.1.7 / Studio เขียนทีละ 1 MB · เมนู Wi-Fi "ยังไม่มีรหัสผ่าน" ตรวจในโค้ดเท่านั้น |
 | T233 | [[#T233 เพิ่มบอร์ด SenseCAP Watcher: ขาในโน้ตผู้ใช้ผิด ใช้ขาจาก xiaozhi]] | board / Flasher | ✅ เฟิร์มแวร์ + Flasher 2.2.6 / apk 2.1.6 (build + tests ผ่าน) · release v4.9.17 · ยังไม่ได้ลองบนบอร์ดจริง |
@@ -183,6 +184,38 @@ P4 แฟลช + ภาพหน้าจอ (แจ้ง 51 + ข้าม 18
 
 **บทเรียน:** อย่าอ่านไฟล์ / ทำงานหนักใน `draw()` — `UiManager::frame` วาดทุกเฟรม · บน S3 ก้อนหน่วยความจำเล็กๆ จำนวนมาก (`std::string`) กิน RAM ภายในที่ TLS ต้องใช้
 ถึงข้อมูลจะอยู่ใน PSRAM ก็ตาม · ยังเหลือ: tool `market_anticipation` action `summary` ยังสร้าง 240 มุมมองพร้อมเหตุผลครั้งเดียวตอนผู้ใช้ถาม (ใช้เหตุผลนับหมวด "ทำไมไม่แจ้ง") → แก้ใน T219
+
+---
+
+## T237 การ์ด SD 128 GB (exFAT) บอร์ดมองไม่เห็น + Flasher ตรวจการ์ด / ปุ่มฟอร์แมต
+
+**วันที่:** 2026-11-24 · **บอร์ด:** ทุกบอร์ด S3 (env `esp32s3` และรุ่นที่ใช้ซอร์สเดียวกัน) + P4 · [[17-Mobile-Flasher]] · [[02-Installation-and-Setup]]
+
+**อาการ (คำถามผู้ใช้):** ใส่การ์ด 128 GB แล้วบอร์ดเห็นไหม — การ์ด SDXC (64 GB ขึ้นไป) มาจากโรงงานเป็น **exFAT** → บอร์ดขึ้นแค่
+"No SD card - using internal flash" แยกไม่ออกว่าไม่มีการ์ด หรือมีแต่อ่านไม่ได้
+
+**สาเหตุ:**
+1. FatFs ใน framework ที่ build มาแล้ว (`framework-arduinoespressif32-libs/.../fatfs/src/ffconf.h`) ตั้ง `FF_FS_EXFAT 0` — อ่านได้แค่ FAT12/16/32
+   (เปิดเองไม่ได้ถ้าไม่ build IDF ใหม่) · ตัวการ์ด/ไดรเวอร์ `SD_MMC` รับ SDXC ได้ปกติ, FAT32 รับได้ถึง 2 TB
+2. `SD_MMC.begin()` คืนแค่ `false` — ไม่บอกว่า `esp_vfs_fat_sdmmc_mount` ได้ `ESP_FAIL` (การ์ดตอบ แต่ระบบไฟล์ mount ไม่ได้) หรือ error ของ bus (ไม่มีการ์ด)
+3. ฟอร์แมตผ่าน `SD_MMC.begin(..., format_if_mount_failed = true)` ไม่ได้: Arduino ส่ง `allocation_unit_size = 0` → IDF ใช้ 1 sector
+   = cluster 512 B → การ์ด 128 GB ได้ FAT ~1 GB (ช้ามาก) · `sdformat` ของ P4 (T148) ใช้ได้เฉพาะการ์ดที่ mount แล้ว
+
+**แก้ (T237):**
+- `-Wl,--wrap=esp_vfs_fat_sdmmc_mount` (platformio.ini ทั้ง S3 และ P4) → `src/system/SdProbe.cpp` ครอบการ mount ของ Arduino:
+  เก็บผล mount, ถ้า `ESP_FAIL` เปิด bus ใหม่ด้วยค่าเดิม (ขา / ความกว้าง / ไฟ LDO ของ P4 ที่ Arduino ยังถืออยู่) แล้วอ่าน MBR + boot sector
+  (`src/system/SdBoot.cpp` — แยก exFAT / NTFS / ว่าง / FAT + ขนาด cluster, host test `test_sdboot.cpp`) · ตั้ง allocation unit 32 KB เสมอ
+- `sdformat confirm` ได้ทั้ง S3 และ P4 แม้การ์ดอ่านไม่ได้: ตั้ง flag ใน NVS แล้วรีสตาร์ท → ตอนบูต การ์ดที่ mount ไม่ได้ถูกฟอร์แมตในตัวครอบ
+  (FAT32, cluster 32 KB, MBR 1 พาร์ทิชัน) · การ์ดที่ mount ได้ฟอร์แมตด้วย `esp_vfs_fat_sdcard_format_cfg` แบบเดิม (เก็บ `secrets.json` / `wifi_known.json` คืน)
+  · การ์ดที่อ่านไม่ได้: Wi-Fi / API key อยู่ใน NVS อยู่แล้ว → หลังฟอร์แมตย้ายไปการ์ดเอง ("NVS wins") · ความจำที่เคยเก็บใน LittleFS ไม่ถูกย้ายไปการ์ด
+- คำสั่งใหม่ `sdinfo` → `SDINFO {"state":"ok|none|unreadable|error","fs":"FAT32|exFAT|NTFS|none|…","card_mb","cluster","bus","storage","total_mb","free_mb","format":true,"formatted":{ok,ms,error}}`
+- Flasher .exe 2.2.9 / .apk 2.1.8: ส่วน 💾 ไฟล์ SD มีการ์ดสถานะ (ใช้ได้ / ต้องฟอร์แมต / ไม่มีการ์ด / มีปัญหา / cluster เล็กบนการ์ดใหญ่)
+  + ปุ่ม 🔍 ตรวจการ์ด + 🧹 ฟอร์แมต (ยืนยันก่อน, รอบอร์ดรีสตาร์ทแล้วแสดงผล) · เฟิร์มแวร์เก่าที่ไม่รู้จัก `sdinfo` → บอกให้อัปเดตเฟิร์มแวร์
+  (`Shared/SdCheck.cs` + `SdCheckTests` 7 ข้อ, `SdCheck.kt` + `SdCheckTest` 5 ข้อ)
+
+**ยืนยัน:** build `esp32s3`, `esp32p4-r3`, `watcher` ผ่าน · objdump: `SDMMCFS::begin` → `__wrap_…` → `esp_vfs_fat_sdmmc_mount` จริง ·
+host tests 4,700 ผ่าน · dotnet 46 ผ่าน · gradle `:esp32:testDebugUnitTest` ผ่าน
+**ยังไม่ได้ลอง:** การ์ด exFAT จริงบนบอร์ด (การอ่าน boot sector ตอน mount ไม่ผ่าน + เวลาฟอร์แมตการ์ด 128 GB) · บอร์ดจิ๋ว XH-S3E / Xmini-C3 ยังไม่มี (`sdinfo` → Flasher บอกให้อัปเดต)
 
 ---
 

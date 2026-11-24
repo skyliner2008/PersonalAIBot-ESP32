@@ -219,6 +219,10 @@ Fill in your credentials:
 
 ### MicroSD (แนะนำ)
 ใส่การ์ด FAT32 ก่อนเปิดเครื่อง → ความจำเก็บที่ `/agent/` บนการ์ด (`ltm.jsonl`, `episodes/`)
+> [!WARNING] การ์ด 64 GB ขึ้นไป (SDXC) มาจากโรงงานเป็น exFAT — บอร์ดอ่านไม่ได้
+> FatFs ในเฟิร์มแวร์อ่านได้เฉพาะ FAT · ขนาดการ์ดไม่ใช่ปัญหา (FAT32 ได้ถึง 2 TB) · ตรวจ/ฟอร์แมตจาก ESP32-AI Flasher: เครื่องมือ → 💾 ไฟล์ SD →
+> 🔍 ตรวจการ์ด / 🧹 ฟอร์แมต (FAT32 cluster 32 KB, T237) หรือ console `sdinfo` / `sdformat confirm` · ฟอร์แมตบน PC: Windows ทำ FAT32 เกิน 32 GB
+> จากหน้าต่าง Format ไม่ได้ (ใช้ guiformat / Rufus) และ SD Card Formatter จะกลับเป็น exFAT
 ถ้าไม่มีการ์ด ระบบจะใช้ LittleFS ในแฟลช 3.4 MB แทนโดยอัตโนมัติ — ดู [[08-Long-Term-Memory-GraphRAG]]
 
 ### Get a Gemini API Key
