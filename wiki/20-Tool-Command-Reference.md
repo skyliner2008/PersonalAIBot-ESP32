@@ -139,7 +139,7 @@ Xmini-C3: `water` ต้องระบุจังหวัด, `market_sentime
 | `mute_microphone` | ปิดไมค์ (เปิดคืนได้ด้วยปุ่มไมค์บนจอเท่านั้น) | – |
 | `live_translate` 🧰 **(T212)** | โหมดล่าม: บอร์ดพูดคำแปลของทุกประโยคที่ได้ยิน (Gemini 3.5 Live Translate) — แตะจอ = สลับทิศ, "หยุดแปล" = กลับมาคุยกับผู้ช่วย | **target** (en / ja / zh / ko … หรือชื่อภาษา), from (ค่าปกติ th) |
 | `language_lesson` 🧰 **(T214)** | สอนภาษา: ผู้ช่วยเป็นครู บอร์ดเก็บคลังคำ + รอบทบทวน (1/2/4/8/16 วัน) + สถิติใน `agent/lang/<code>.json`, การ์ดคำศัพท์ (S3 แสดงตัวญี่ปุ่น/จีน/เกาหลี), ฝึกออกเสียงด้วย Gemini 3.5 Transcribe Live ให้คะแนนทีละประโยค, ฝึกฟัง (ซ่อนซับ) — "สอนภาษาญี่ปุ่นหน่อย", "ทบทวนคำศัพท์", "ฝึกออกเสียง" | **action** (start / show / review / drill / listen / progress / stop — ไม่ใส่ = เดาจาก argument), lang (ไม่ใส่ = ภาษาล่าสุด), text, reading, meaning, save, correct, items (drill: `text \| reading \| meaning` ต่อบรรทัด), on, level (A1–C2) |
-| `meeting_notes` 🧰 **(T212)** | จดประชุม / ถอดเสียงยาว (Gemini 3.5 Transcribe Live) ซับสดบนจอ เก็บไฟล์ใน `agent/meetings/` — "จบการประชุม" / แตะจอ = หยุด แล้วให้ AI สรุป | **action** (start / list / read), id (1 = ล่าสุด), part (read ไฟล์ยาว), words (start: คำเฉพาะ คั่นด้วย ,) |
+| `meeting_notes` 🧰 **(T212, T241)** | จดประชุม / ถอดเสียงยาว (Gemini 3.5 Transcribe Live) ซับสดบนจอ เก็บไฟล์ใน `agent/meetings/` — "จบการประชุม" / แตะจอ = หยุด แล้วให้ AI สรุป · "ลบบันทึกประชุมล่าสุด" = delete (T241) | **action** (start / list / read / delete), id (1 = ล่าสุด), part (read ไฟล์ยาว), words (start: คำเฉพาะ คั่นด้วย ,), all (delete: ทุกอัน) |
 
 - 🗣️
   - "ตอนนี้กี่โมง" · "แบตเหลือเท่าไหร่"
